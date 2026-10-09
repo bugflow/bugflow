@@ -1,12 +1,12 @@
-"""A database holding the archive's tables, for the tests that need one."""
+"""A database holding the journal, for the tests that need one."""
 
 from collections.abc import Iterator
 
 import pytest
 import sqlalchemy as sa
 
-from bugflow.archive.infrastructure.schema import create_tables
 from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.sqlalchemy_journal import create_tables
 from bugflow.shared.tests.postgres import scratch_database
 
 
