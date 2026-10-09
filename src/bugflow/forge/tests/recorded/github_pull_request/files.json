@@ -1,0 +1,8 @@
+[
+  {
+    "filename": "README.md",
+    "additions": 13,
+    "deletions": 5,
+    "patch": "@@ -1,5 +1,13 @@\n-A retry waits.\n+A retry waits for the server to answer."
+  }
+]
