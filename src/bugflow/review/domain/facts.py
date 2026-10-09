@@ -32,3 +32,8 @@ FINDING_REWRITTEN = "finding.rewritten"
 
 #: A warning was kept out of the pull request on purpose.
 FINDING_WITHHELD = "finding.withheld"
+
+#: A snapshot of a pull request was taken and stored. The forge context
+#: records this fact. This context only reads it, to learn which commit
+#: an evaluation read.
+PR_OBSERVED = "pr.observed"
