@@ -1,6 +1,6 @@
-.PHONY: check lint fmt types
+.PHONY: check lint fmt imports types test
 
-check: lint fmt types ## Everything a change must pass before it is pushed
+check: lint fmt imports types test ## Everything a change must pass before it is pushed
 
 lint:
 	uv run ruff check .
@@ -8,5 +8,11 @@ lint:
 fmt:
 	uv run ruff format --check .
 
+imports:
+	uv run lint-imports
+
 types:
 	uv run mypy
+
+test:
+	uv run pytest

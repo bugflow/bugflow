@@ -5,12 +5,17 @@ description = "Self-hosted infrastructure for teams that want to converge on met
 readme = "README.md"
 requires-python = ">=3.12"
 license-files = ["LICENSE"]
-dependencies = []
+dependencies = [
+    "boto3>=1.43.97",
+]
 
 [dependency-groups]
 dev = [
+    "import-linter>=2.1",
     "mypy>=1.13",
+    "pytest>=8.3",
     "ruff>=0.8",
+    "types-boto3>=1.43.97",
 ]
 
 [build-system]
@@ -33,3 +38,16 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+[tool.pytest.ini_options]
+testpaths = ["src"]
+
+# The rules of docs/ADRs/001-code-layout.md, held by lint-imports.
+[tool.importlinter]
+root_package = "bugflow"
+
+[[tool.importlinter.contracts]]
+name = "Inside shared, imports point inward"
+type = "layers"
+containers = ["bugflow.shared"]
+layers = ["infrastructure", "domain"]
