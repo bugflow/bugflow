@@ -98,7 +98,7 @@ forbidden_modules = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflo
 [[tool.importlinter.contracts]]
 name = "A use case does not import what runs it"
 type = "forbidden"
-source_modules = ["bugflow.archive.usecases", "bugflow.forge.usecases", "bugflow.work.usecases"]
+source_modules = ["bugflow.archive.usecases", "bugflow.forge.usecases", "bugflow.work.usecases", "bugflow.review.usecases"]
 forbidden_modules = ["fastapi", "starlette", "temporalio", "sqlalchemy", "psycopg", "boto3"]
 
 [[tool.importlinter.contracts]]
