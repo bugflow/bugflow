@@ -41,3 +41,11 @@ PR_OBSERVED = "pr.observed"
 #: A person dismissed a policy's findings on a pull request. The forge
 #: context records this fact. This context only reads it.
 FINDING_DISMISSED = "finding.dismissed"
+
+#: A person reacted to a comment this server posted. Recorded when the
+#: pull request closes.
+REACTION_RECORDED = "reaction.recorded"
+
+#: A pull request closed. The payload says whether it merged and which
+#: findings were still standing.
+PR_CLOSED = "pr.closed"
