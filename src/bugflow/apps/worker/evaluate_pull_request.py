@@ -44,6 +44,7 @@ with workflow.unsafe.imports_passed_through():
         Reviewed,
     )
     from bugflow.review.domain.models.submission import SubmissionRef
+    from bugflow.review.domain.services.evaluation import ObservationService
     from bugflow.review.dtos.assess_policy import (
         AssessPolicyRequest,
         AssessPolicyResponse,
@@ -550,14 +551,18 @@ class WorkflowObservation:
         )
 
 
-@workflow.defn(name=EVALUATE_WORKFLOW)
-class EvaluatePullRequestWorkflow:
-    """The workflow. It builds the use case with the five proxies and
-    runs it.
+class EvaluatePullRequestPipeline:
+    """The workflow without the proxy that reads the pull request.
+
+    It holds the workflow's state and its signal, and builds the use
+    case. The registered workflow below is a subclass that supplies the
+    proxy.
     """
 
     def __init__(self) -> None:
+        # For each agent, the run that a completion signal named.
         self._completed: dict[str, str] = {}
+        # For each agent, how many completion signals have arrived.
         self._told: dict[str, int] = {}
 
     @workflow.signal(name=REVIEW_COMPLETE_SIGNAL)
@@ -566,14 +571,27 @@ class EvaluatePullRequestWorkflow:
         self._completed[agent_id] = remote_id
         self._told[agent_id] = self._told.get(agent_id, 0) + 1
 
-    @workflow.run
-    async def run(
-        self, request: EvaluatePullRequestRequest
+    async def evaluate(
+        self,
+        request: EvaluatePullRequestRequest,
+        observation: ObservationService,
     ) -> EvaluatePullRequestResponse:
+        """Build the use case with its five proxies and run it."""
         return await EvaluatePullRequestUseCase(
             execution=WorkflowExecution(),
-            observation=WorkflowObservation(),
+            observation=observation,
             assessment=WorkflowAssessment(),
             reviews=WorkflowReviews(self._completed, self._told),
             publishing=WorkflowPublishing(),
         ).execute(request)
+
+
+@workflow.defn(name=EVALUATE_WORKFLOW)
+class EvaluatePullRequestWorkflow(EvaluatePullRequestPipeline):
+    """The workflow, as Temporal registers it."""
+
+    @workflow.run
+    async def run(
+        self, request: EvaluatePullRequestRequest
+    ) -> EvaluatePullRequestResponse:
+        return await self.evaluate(request, WorkflowObservation())
