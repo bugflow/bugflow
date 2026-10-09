@@ -1,4 +1,4 @@
-"""Interface: the blocks put to kept ledgers ahead of their events."""
+"""The interface for storing the records of block uploads."""
 
 from typing import Protocol
 
@@ -8,10 +8,12 @@ from bugflow.shared.domain.repositories.base import BaseRepository
 
 class BlockPutRepository(BaseRepository[BlockPut], Protocol):
     def record(self, put: BlockPut) -> None:
-        """Record the put. The same block put to the same ledger again
-        renews the record's time and keeps whether it was new."""
+        """Record an upload. If the same block was uploaded to the same ledger
+        before, update the time on the existing record and keep its note of
+        whether the block was new.
+        """
         ...
 
     def of_ledger(self, ledger_id: str) -> list[BlockPut]:
-        """The blocks put to the ledger, by CID in order."""
+        """The uploads recorded for the ledger, sorted by CID."""
         ...

@@ -1,11 +1,13 @@
-"""A block put to a kept ledger before an event enrols it.
+"""A record that a block was uploaded.
 
-Under version 2 of the remote archive protocol a client puts the blocks
-of an item's files first and appends the event alone. A block
-put is held whether or not an event ever claims it, so each put is
-recorded: which ledger it was put to, by whom, how large, and whether
-the store lacked it, so that a block put and never claimed can be found
-and, after the protocol's seven days, forgotten.
+In version 2 of the protocol a client uploads a file's blocks first and
+sends the event that refers to them afterwards. If the client stops in
+between, the blocks stay stored with no event referring to them.
+
+So every upload is recorded: which ledger, which block, who sent it, how
+big it was, and whether the store already had it. The record lets such
+leftover blocks be found later and deleted. The protocol allows deleting
+them after seven days.
 """
 
 from dataclasses import dataclass
@@ -17,7 +19,7 @@ class BlockPut:
     cid: str
     size: int
     caller: str
-    #: Whether the store held no such block before this put. A block
-    #: that was held already is some ledger's, and is never forgotten
-    #: for want of an event claiming this put.
+    #: True if the store did not have this block before this upload.
+    #: A block the store already had may belong to another ledger, so
+    #: it must not be deleted as a leftover of this upload.
     new: bool

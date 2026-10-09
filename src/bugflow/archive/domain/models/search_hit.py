@@ -1,9 +1,8 @@
-"""Where a query was found in a kept archive, as the remote archive
-protocol's search answers it.
+"""One search result.
 
-A hit is the index's claim and the archive is the authority: reading
-``ref`` at the range gives ``passage``, byte for byte, or the index is
-wrong. A hit that composes text of its own is not one.
+A result quotes the archive exactly: reading the file at ``ref`` and taking
+the lines given returns ``passage`` byte for byte. A result never contains
+text the server wrote itself, such as a summary.
 """
 
 from dataclasses import dataclass
@@ -11,15 +10,16 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, kw_only=True)
 class SearchHit:
-    #: The file, as a sealed item's links name it: ``ipfs://{cid}/{path}``.
+    #: A reference to the file: ``ipfs://{cid}/{path}``.
     ref: str
-    #: The lines of the file the passage is, counting from 1, both
-    #: included.
+    #: The first and last line of the passage, counting from 1. Both
+    #: lines are part of it.
     first_line: int
     last_line: int
-    #: The file's text at those lines, joined by LF with no terminator
-    #: after the last.
+    #: The text of those lines, joined by newlines, with no newline at
+    #: the end.
     passage: str
-    #: In a ranked mode, higher being better, ordering one answer and
-    #: nothing else. None in literal and regex.
+    #: A relevance score, for search modes that rank results. Higher is
+    #: better. Scores from different searches cannot be compared. None
+    #: for the literal and regex modes, which do not rank.
     score: float | None = None

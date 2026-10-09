@@ -1,11 +1,12 @@
-"""What a repository inherits to say which entity it is bound to."""
+"""The base class for repository interfaces."""
 
 from typing import Protocol
 
 
 class BaseRepository[Entity](Protocol):
-    """Declares the one entity a repository is bound to, and nothing else.
+    """A repository interface inherits from this to say which entity it
+    stores: ``class BindingRepository(BaseRepository[ArchiveBinding])``.
 
-    It has no methods: a repository loads, stores or lists as its entity
-    needs, and none is CRUD.
+    It has no methods. Each repository declares the methods its entity
+    needs.
     """

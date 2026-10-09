@@ -1,11 +1,12 @@
-"""DTOs for BindLedgerUseCase: what asks and what comes back."""
+"""The request and response of ``BindLedgerUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
 
 class BindLedgerRequest(BaseModel):
-    """An operator's declaration that this server keeps the archive of
-    one ledger, for a scope of a repository."""
+    """An operator's instruction to register a ledger: this server is to store
+    its archive, for the named repository and scope.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -16,7 +17,7 @@ class BindLedgerRequest(BaseModel):
 
 
 class BoundTo(BaseModel):
-    """Where a ledger was bound before."""
+    """The repository and scope a ledger was registered for."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -32,12 +33,12 @@ class BindLedgerResponse(BaseModel):
     forge: str
     repo: str
     scope: str
-    # False when the ledger was already bound exactly so, and nothing was
-    # written or recorded.
+    # False if the ledger was already registered for exactly this
+    # repository and scope, so nothing was changed or recorded.
     bound: bool
-    # Where the ledger was bound until now, when this moved it.
+    # What the ledger was registered for before, if this changed it.
     replaces: BoundTo | None
-    # The other ledgers bound to the same scope. More than one is what an
-    # archive replaced looks like, and what a scope whose ledger was
-    # started again looks like; the operator is told, and decides.
+    # Other ledgers registered for the same scope. A scope normally has
+    # one ledger. More than one can mean an archive was replaced or a
+    # ledger was started afresh, so the operator is shown them.
     beside: tuple[str, ...]

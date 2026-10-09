@@ -1,4 +1,4 @@
-"""DTOs for MissingBlocksUseCase: what asks and what comes back."""
+"""The request and response of ``MissingBlocksUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -6,8 +6,9 @@ from bugflow.shared.domain.values.caller import Caller
 
 
 class MissingBlocksRequest(BaseModel):
-    """Some CIDs a client means to put, from one who may append to the
-    ledger."""
+    """A list of block CIDs a client intends to upload, to learn which the
+    server lacks.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -17,8 +18,9 @@ class MissingBlocksRequest(BaseModel):
 
 
 class MissingBlocksResponse(BaseModel):
-    """Those of the CIDs asked after that no block is held for, in the
-    order asked."""
+    """The CIDs from the request that the server has no block for, in the
+    order they were given.
+    """
 
     model_config = ConfigDict(frozen=True)
 

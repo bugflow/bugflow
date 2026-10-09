@@ -1,8 +1,8 @@
-"""Use case: say what is kept of a ledger.
+"""Use case: say what is stored of a ledger. This is the protocol's "describe"
+operation.
 
-The remote archive protocol's describe. A client asks it before it
-sends, to find whether its ledger and the one kept here agree, and
-after a failure, to find what it has to catch up on.
+A client asks before sending, to check that its copy of the ledger and the
+server's agree, and after a failure, to see what it still has to send.
 """
 
 from bugflow.archive.domain.admission import reader
@@ -18,8 +18,10 @@ from bugflow.archive.dtos.describe_archive import (
 
 
 class DescribeArchiveUseCase:
-    """Given a ledger and a caller who may read it, answers with its
-    head, how many events are kept, its root and what was erased."""
+    """Takes a ledger and a caller allowed to read it. Returns the name of its
+    latest event, how many events are stored, the archive's root CID, and
+    which CIDs have been deleted on request.
+    """
 
     def __init__(
         self,

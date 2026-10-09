@@ -1,8 +1,8 @@
-"""Use case: give one event of a kept ledger, by its number.
+"""Use case: return one stored event by its number. This is the protocol's
+"event" operation.
 
-The remote archive protocol's event. A client behind what is kept here
-fetches the events it lacks, verifies them as it verifies its own
-ledger, and writes them.
+A client whose copy of the ledger is behind the server's uses it to fetch
+the events it is missing.
 """
 
 from bugflow.archive.domain.admission import reader
@@ -18,8 +18,9 @@ from bugflow.archive.dtos.fetch_event import (
 
 
 class FetchEventUseCase:
-    """Given a ledger, a number and a caller who may read the ledger,
-    answers with the event's bytes as the ledger's file holds them."""
+    """Takes a ledger, an event number and a caller allowed to read the
+    ledger. Returns the event's bytes exactly as stored.
+    """
 
     def __init__(
         self,

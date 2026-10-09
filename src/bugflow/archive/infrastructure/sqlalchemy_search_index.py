@@ -1,20 +1,28 @@
-"""The search index in the domain Postgres.
+"""The search index, in Postgres.
 
-Operational storage, not the journal, and not the keeper's: a view of
-what the kept blocks hold as text, apart from the bucket and the kept
-events, that can be dropped and read again from them. One row
-per line of each text file read, by the CID of the file, which is the
-same under every ledger that enrols it; one row per file read, text or
-not, so a file is read once; and one row per ledger for how many of its
-events are read. The tables are created from their definitions here.
+The index is a copy of the text in the stored files, arranged for
+searching. It can be deleted and rebuilt from the stored files at any time.
 
-Matching is Postgres's: ``strpos`` for literal, and ``~`` for regex,
-whose expressions are POSIX's as ``grep -E`` takes them and more. The
-more includes back-references, which Postgres matches by backtracking:
-``^(aa+)\\1+$`` took 0.8 seconds over one line of 10,007 characters and
-8.6 over one of 30,011, measured on a laptop's Postgres 16. The
-database is the one the journal and the worker use, so a search is
-given a time, and one that outruns it is refused as request.
+Three tables:
+
+- one row for each file looked at, text or not, so that no file is fetched
+  twice;
+- one row for each line of each text file;
+- one row for each ledger, saying how many of its events the index has
+  covered.
+
+Files are identified by CID, so a file that appears in several ledgers is
+indexed once.
+
+Matching is done by Postgres: ``strpos`` for the literal mode and the ``~``
+operator for regex. Postgres regular expressions include everything ``grep
+-E`` accepts, and more.
+
+A search has a time limit. Some regular expressions are very slow:
+``^(aa+)\\1+$`` took 0.8 seconds on one line of 10,007 characters and 8.6
+seconds on one of 30,011, on a laptop running Postgres 16. Other parts of
+the system use the same database, so a search that runs over the limit is
+stopped and refused.
 """
 
 from collections.abc import Sequence
@@ -67,15 +75,15 @@ archive_index_positions = sa.Table(
     ),
 )
 
-#: Lines written in one statement. A file of a hundred thousand lines
-#: is a few statements rather than one the driver holds whole.
+#: How many lines are inserted in one statement. A very long file is written in
+#: several statements, so no single one is huge.
 LINES_AT_ONCE = 5000
 
-#: How long a search may take in Postgres before it is refused, unless
-#: the adapter is told otherwise.
+#: The time limit for one search, in seconds, unless the adapter is given
+#: another.
 SEARCH_WITHIN_SECONDS = 10.0
 
-#: How a mode is asked of Postgres, as a condition on a line's text.
+#: The SQL condition used for each search mode.
 _MATCH = {
     "literal": "strpos(line.text, :query) > 0",
     "regex": "line.text ~ :query",
@@ -110,8 +118,9 @@ class SqlAlchemyIndexedFiles:
                 .returning(archive_index_files.c.cid)
             ).first()
             if claimed is None:
-                # Indexed already, by an earlier catch-up or one running
-                # beside this: the bytes a CID names do not change.
+                # Already in the index, from an earlier catch-up or one running
+                # at the same time. Nothing to do: a CID always names the same
+                # content.
                 return
             for start in range(0, len(lines), LINES_AT_ONCE):
                 connection.execute(
@@ -147,8 +156,8 @@ class SqlAlchemyIndexedFiles:
         )
         try:
             with self._engine.begin() as connection:
-                # For this transaction alone, so the connection goes back
-                # to the pool with no limit of its own.
+                # The time limit applies to this transaction only, so the
+                # connection returns to the pool without it.
                 connection.execute(
                     sa.text(
                         "SELECT set_config('statement_timeout', :within, true)"
@@ -157,7 +166,7 @@ class SqlAlchemyIndexedFiles:
                 )
                 rows = connection.execute(statement).all()
         except sa.exc.DataError as error:
-            # An expression Postgres does not take.
+            # Postgres could not parse the regular expression.
             raise ArchiveRefusedError(
                 "request", f"Not a regular expression: {query}"
             ) from error

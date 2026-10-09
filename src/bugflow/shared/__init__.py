@@ -1,1 +1,3 @@
-"""What more than one context uses, and nothing any one of them owns."""
+"""Code that more than one context uses. Nothing here belongs to a single
+context.
+"""

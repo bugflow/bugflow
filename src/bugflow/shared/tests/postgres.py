@@ -1,8 +1,9 @@
-"""A database of a test session's own.
+"""A temporary Postgres database for tests.
 
-DATABASE_URL names a Postgres server. A session makes a database beside
-the one it names and drops it afterwards, so tests leave nothing behind
-and never touch a database somebody keeps.
+Tests that need Postgres read the server's address from the DATABASE_URL
+environment variable. They do not use the database it names. They create a
+new one with a random name on the same server and drop it when done, so
+they cannot damage real data.
 """
 
 import os
@@ -16,8 +17,9 @@ from bugflow.shared.infrastructure.database import engine_url
 
 
 def scratch_database() -> Iterator[str]:
-    """The url of a new, empty database, dropped when the caller is done.
-    Skips the test asking when DATABASE_URL names no server."""
+    """Create an empty database, yield its URL, and drop it afterwards. If
+    DATABASE_URL is not set, the test that asked is skipped.
+    """
     named = os.environ.get("DATABASE_URL")
     if not named:
         pytest.skip("DATABASE_URL names no Postgres to make a database in")

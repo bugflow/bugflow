@@ -1,9 +1,10 @@
-"""A request to catch up answered at once, in the caller's thread.
+"""An indexing request that is carried out straight away, in the same thread,
+instead of being handed to a worker.
 
-For a host run with no scheduler, and for tests, where a search after
-an append must see the event. The request port never raises, so a
-catch-up that fails is dropped here, for the next request or the
-schedule to make good.
+It is for tests, where a search right after an append must find the new
+files, and for a server run without a worker. A request is never allowed to
+raise, so if the catch-up fails the failure is dropped; the next request or
+the schedule tries again.
 """
 
 from contextlib import suppress

@@ -1,4 +1,6 @@
-"""A kept ledger's events come back in order, each kept once."""
+"""Tests that stored events are returned in order, and that an event number
+can be stored only once.
+"""
 
 import pytest
 

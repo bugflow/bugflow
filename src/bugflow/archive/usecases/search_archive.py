@@ -1,8 +1,8 @@
-"""Use case: search what a kept ledger enrols.
+"""Use case: search a ledger's files. This is the protocol's "search"
+operation.
 
-The remote archive protocol's search, for a caller who may read the
-ledger: a hit is a read of a passage, so it takes read's access and no
-other. Where the hits come from is the search port's.
+A search result shows text from a file, so searching needs the same
+permission as reading.
 """
 
 from bugflow.archive.domain.admission import reader
@@ -18,8 +18,9 @@ from bugflow.archive.dtos.search_archive import (
 
 
 class SearchArchiveUseCase:
-    """Given a ledger, a query and a caller who may read the ledger,
-    answers with where the query is found."""
+    """Takes a ledger, a query and a caller allowed to read the ledger.
+    Returns where the query was found.
+    """
 
     def __init__(
         self,
@@ -33,7 +34,7 @@ class SearchArchiveUseCase:
 
     @property
     def modes(self) -> tuple[str, ...]:
-        """The modes searched in, for describe to list."""
+        """The search modes offered."""
         return self._searching.modes
 
     def execute(self, request: SearchArchiveRequest) -> SearchArchiveResponse:

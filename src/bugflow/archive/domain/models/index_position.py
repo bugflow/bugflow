@@ -1,9 +1,8 @@
-"""How far the search index has read a ledger.
+"""How far the search index has got with a ledger.
 
-A ledger is a numbered list of events that nothing is inserted into or
-removed from, so what the index has read of it is one number: the
-events whose files it has indexed. Catching up is reading the events
-after that number, and no queue is needed to say what is new.
+A ledger's events are numbered from 1 and only ever added at the end. So
+one number says what the index has covered: the count of events whose files
+it has indexed. To catch up, the index reads the events after that number.
 """
 
 from dataclasses import dataclass
@@ -12,8 +11,8 @@ from dataclasses import dataclass
 @dataclass(frozen=True, kw_only=True)
 class IndexPosition:
     ledger_id: str
-    #: How many of the ledger's events the index has read, from the
-    #: first. 0 for a ledger it has not read.
+    #: The number of the ledger's events the index has covered, counting
+    #: from the first. 0 if it has covered none.
     events: int
 
     def __post_init__(self) -> None:
@@ -25,10 +24,10 @@ class IndexPosition:
 
 @dataclass(frozen=True, kw_only=True)
 class CaughtUp:
-    """What one catch-up of a ledger did."""
+    """The result of bringing one ledger's index up to date."""
 
     ledger_id: str
-    #: The ledger's events, all of them read.
+    #: The number of events the ledger has, all now covered.
     events: int
-    #: How many files were read and indexed this time.
+    #: The number of files indexed in this catch-up.
     files: int

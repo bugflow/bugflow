@@ -1,13 +1,16 @@
-"""Use case: keep one event of a ledger, with the files it enrols.
+"""Use case: check and store one event a client sends. This is the protocol's
+"append" operation.
 
-The remote archive protocol's append, for a caller who may append to a
-bound ledger. What verifies the event is the keeping port; this decides
-who may ask, and records what came of it: ``archive.sealed`` for an
-event kept, ``archive.refused`` for one the keeper turned away, with
-its kind. A caller who may not append, or a ledger nobody bound, is
-refused before the keeper is asked and leaves no fact, since there is
-no repository to record it against. An event newly kept asks the
-search index to catch up with the ledger, where there is one to ask.
+The keeper does the checking and storing. This use case does two other
+things. It decides whether the caller may append, and it writes the outcome
+to the journal: ``archive.sealed`` when the event was stored,
+``archive.refused`` with the kind of refusal when it was not.
+
+A caller who may not append, or a ledger that is not registered, is refused
+before the keeper is asked. Nothing is written to the journal in that case.
+
+After a new event is stored, the search index is asked to catch up, if the
+application provided a way to ask.
 """
 
 from bugflow.archive.domain import facts
@@ -29,15 +32,16 @@ from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.services.recording import RecordingService
 
-# An append arrives from a client's seal, not from a workflow, so its
-# facts carry a correlation naming what recorded them.
+# A journal entry names the workflow that recorded it. An append comes
+# from a client's request and not from a workflow, so its entries use
+# this fixed name in that place.
 WORKFLOW_ID = "archive/kept"
 
 
 class AppendEventUseCase:
-    """Given an event of a ledger with its files and claims, from a
-    caller who may append to the ledger, answers with what is then kept
-    and whether the event was newly kept."""
+    """Takes an event with its files and claims from a caller. Returns what is
+    stored of the ledger afterwards, and whether the event was new.
+    """
 
     def __init__(
         self,
@@ -76,15 +80,16 @@ class AppendEventUseCase:
         except ArchiveRefusedError as refusal:
             self._journal.append([self._refused(binding, request, refusal)])
             raise
-        # Recorded for an event sent again too: its id is the event's, so
-        # the journal keeps one fact, and an event kept whose fact could
-        # not be written the first time gets it on the next attempt.
+        # Written even when the event was already stored. The id is made
+        # from the event, so the journal still ends up with one entry.
+        # And if the entry could not be written the first time, the
+        # client's retry writes it.
         self._journal.append(
             [self._sealed(binding, request, answer.description)]
         )
         if answer.appended and self._indexing is not None:
-            # So that what was sealed is searchable at once; the schedule
-            # catches up whatever this misses.
+            # So the new files can be searched straight away. If this
+            # request is lost, the scheduled catch-up covers it.
             self._indexing.request_catch_up(request.ledger_id)
         kept = answer.description
         return AppendEventResponse(

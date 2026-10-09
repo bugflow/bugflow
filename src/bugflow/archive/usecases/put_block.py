@@ -1,11 +1,12 @@
-"""Use case: hold one block a client is about to enrol.
+"""Use case: store one block. This is the protocol's "put" operation, in
+version 2.
 
-The remote archive protocol's put, version 2. The keeping port holds
-the bytes to their CID and keeps them; this decides who may ask and
-records the put, so that a block no event ever claims can be found by
-the ledger it was put to and when. A block is not a fact against the
-ledger's repository until an event enrols it, so nothing is journalled
-here: the append that follows is.
+The keeper checks that the bytes hash to the CID, and stores them. This use
+case decides whether the caller may upload, and records the upload so that
+a block no event ever refers to can be found later.
+
+Nothing is written to the journal here. A block only matters once an event
+refers to it, and the append that follows is what the journal records.
 """
 
 from bugflow.archive.domain.admission import admitted
@@ -25,8 +26,9 @@ from bugflow.archive.dtos.put_block import (
 
 
 class PutBlockUseCase:
-    """Given a block and the CID it claims to be, from a caller who may
-    append to the ledger, holds it and answers whether it was new."""
+    """Takes a block, the CID it should have, and a caller allowed to append
+    to the ledger. Stores it and returns whether it was new.
+    """
 
     def __init__(
         self,

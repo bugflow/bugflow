@@ -1,10 +1,14 @@
-"""Normalising a database url, for every SQLAlchemy adapter."""
+"""A helper for database URLs, used by every adapter that talks to Postgres
+through SQLAlchemy.
+"""
 
 
 def engine_url(database_url: str) -> str:
-    """Accept postgresql:// as a compose file writes it.
+    """Turn ``postgresql://...`` into ``postgresql+psycopg://...``.
 
-    SQLAlchemy needs the psycopg driver named explicitly.
+    Configuration usually gives the short form. SQLAlchemy needs the driver
+    named, and this project uses psycopg. Any other URL is returned
+    unchanged.
     """
     prefix = "postgresql://"
     if database_url.startswith(prefix):

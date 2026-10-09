@@ -1,8 +1,9 @@
-"""The archive's tables in Postgres, created from their definitions.
+"""Creates the archive's Postgres tables.
 
-Each adapter defines the table it reads and writes. There are no
-migrations: a table is created as it is defined, and one is written the
-first time a table that holds rows has to change.
+Each adapter module defines the table it uses. There are no migration
+scripts: a missing table is created directly from its definition. A
+migration will be needed the first time a table that already holds data has
+to change.
 """
 
 import sqlalchemy as sa
@@ -24,8 +25,9 @@ _DEFINED = (
 
 
 def create_tables(database_url: str) -> None:
-    """Create each of the archive's tables that the database lacks. One
-    already there is left as it is."""
+    """Create whichever of the archive's tables the database does not have.
+    Existing tables are not altered.
+    """
     engine = sa.create_engine(engine_url(database_url))
     try:
         for metadata in _DEFINED:

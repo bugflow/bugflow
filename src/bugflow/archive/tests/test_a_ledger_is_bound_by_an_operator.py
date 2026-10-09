@@ -1,8 +1,8 @@
-"""A ledger's archive is kept only where an operator bound it.
+"""Tests of registering a ledger.
 
-The binding is the gate: a ledger nobody bound is kept for no one. So
-the test is of what binding records, since a binding made with nothing
-to show for it is how one person would replace an archive unseen.
+A ledger is stored only if an operator has registered it. The tests check
+what a registration writes to the journal, because a registration that left
+no record would let someone replace an archive without anyone noticing.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -20,8 +20,10 @@ OTHER = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 
 
 class TickingClock:
-    """A clock that never gives the same time twice, as a real one does
-    not: two bindings of one ledger are two facts."""
+    """A clock that gives a later time on each call, as a real clock does.
+    Registering the same ledger twice then gives two different journal
+    entries.
+    """
 
     def __init__(self) -> None:
         self._now = datetime(2026, 10, 1, tzinfo=UTC)
@@ -90,8 +92,9 @@ def test_binding_what_is_already_bound_records_nothing() -> None:
 
 
 def test_moving_a_ledger_says_where_it_was() -> None:
-    """A repository renamed or moved keeps its ledger; the fact names
-    what the ledger was bound to, so the move can be read back."""
+    """When a ledger is registered for a different repository, as after a
+    rename, the journal entry records what it was registered for before.
+    """
     bind, bindings, journal = use_case()
     bind.execute(request(repo="someone/garden"))
 
@@ -112,10 +115,11 @@ def test_a_ledger_moved_away_and_back_is_three_facts() -> None:
 
 
 def test_a_second_ledger_on_a_scope_is_named_beside_the_first() -> None:
-    """What replacing an archive looks like: a new ledger for a scope
-    that has one. It is bound, since a ledger started again looks the
-    same, and the fact and the answer both name the ledger already
-    there."""
+    """Registering a second ledger for a scope that already has one is
+    allowed. It may be legitimate (a ledger started afresh) or an archive
+    being replaced, so both the answer and the journal entry name the
+    ledger that was already there.
+    """
     bind, bindings, journal = use_case()
     bind.execute(request(LEDGER, scope="projects/example"))
 

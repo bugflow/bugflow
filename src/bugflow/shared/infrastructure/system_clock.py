@@ -1,4 +1,4 @@
-"""The system clock, in UTC."""
+"""A clock that reads the system's time, in UTC."""
 
 from datetime import UTC, datetime
 

@@ -1,7 +1,6 @@
-"""The events of kept ledgers, against the real database.
+"""Tests of the Postgres store of ledger events, against a real database.
 
-Skipped unless DATABASE_URL names a Postgres. The in-memory double
-answers the same questions in the unit test beside it.
+Skipped unless DATABASE_URL names a Postgres server.
 """
 
 import uuid

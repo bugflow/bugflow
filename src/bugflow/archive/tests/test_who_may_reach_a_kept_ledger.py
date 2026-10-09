@@ -1,4 +1,6 @@
-"""Who is let through to a kept ledger, and what the rest are told."""
+"""Tests of the access rule: which roles let a caller reach a ledger, and what
+a caller without them is told.
+"""
 
 import pytest
 
@@ -11,7 +13,7 @@ from bugflow.archive.infrastructure.role_archive_access import (
 )
 from bugflow.shared.domain.values.caller import Caller
 
-#: The roles the access adapter is told open the archives.
+#: The role names these tests give the access adapter.
 ARCHIVE_READER = "an-archive-reader"
 ARCHIVE_WRITER = "an-archive-writer"
 
@@ -50,8 +52,9 @@ def refused(operation: object) -> str:
 def test_two_roles_open_the_archives_and_the_writer_s_reads_too(
     roles: tuple[str, ...], reads: bool, appends: bool
 ) -> None:
-    """A client that seals asks what is kept before it sends, so one
-    who may append may read."""
+    """The reader role allows reading. The writer role allows appending and
+    reading, since a client asks what is stored before it sends.
+    """
     access = RoleArchiveAccess(ARCHIVE_READER, ARCHIVE_WRITER)
 
     assert access.may_read(caller(*roles), LEDGER) is reads
@@ -79,8 +82,10 @@ def test_a_ledger_nobody_bound_is_absent_to_one_who_is_allowed() -> None:
 def test_one_who_is_not_allowed_is_refused_the_same_for_any_ledger(
     ledger: str,
 ) -> None:
-    """So that a caller with no role cannot learn which ledgers are
-    kept."""
+    """A caller without a role gets the same refusal for a registered ledger
+    and an unregistered one, so the answer does not reveal which ledgers
+    exist.
+    """
     assert refused(lambda: admitted(False, bindings(), ledger)) == "access"
     assert (
         refused(

@@ -1,9 +1,8 @@
-"""The blocks put ahead of their events, in the domain Postgres.
+"""The store of block upload records, in Postgres.
 
-Operational storage, not the journal. One row per block a ledger was
-put, renewed when the same block is put again, so that a block no event
-has claimed can be found by when it was last put. The table is created
-from its definition here.
+One row for each block uploaded to each ledger. Uploading the same block
+again updates the row's time. The time is what lets a block that no event
+ever referred to be found later.
 """
 
 import sqlalchemy as sa

@@ -1,8 +1,8 @@
-"""Under version 2 of the remote archive protocol a client puts the
-blocks of an item's files first and appends the event alone.
+"""Tests of protocol version 2, where a client uploads a file's blocks first
+and sends the event afterwards.
 
-The use cases run over the real keeper, pyposlib's behind its adapter,
-with storage, the puts and the journal in memory.
+The use cases run on the real keeper (pyposlib's), with storage, upload
+records and the journal in memory.
 """
 
 from datetime import UTC, datetime
@@ -37,7 +37,7 @@ from bugflow.shared.infrastructure.in_memory_object_store import (
     InMemoryObjectStore,
 )
 
-#: The roles the access adapter is told open the archives.
+#: The role names these tests give the access adapter.
 ARCHIVE_READER = "an-archive-reader"
 ARCHIVE_WRITER = "an-archive-writer"
 
@@ -57,8 +57,9 @@ class Clock:
 
 
 class Keeping:
-    """A bound ledger with nothing kept yet, and the three use cases a
-    version 2 seal goes through."""
+    """A registered ledger with nothing stored yet, and the three use cases a
+    version 2 upload uses: missing blocks, put block, and append.
+    """
 
     def __init__(self) -> None:
         bindings = InMemoryBindings()
@@ -128,9 +129,13 @@ def refused(operation: object) -> str:
 def test_a_file_of_several_chunks_is_held_block_by_block(
     tmp_path: Path,
 ) -> None:
-    """The keeper is asked which blocks it lacks, is put each, and takes
-    the event once the file's node and every leaf beneath it are held;
-    the node alone is not enough."""
+    """A file too big for one block is stored as a parent block that lists
+    several child blocks.
+
+    The client asks which blocks are missing and uploads them. The event is
+    accepted only when the parent and every child are stored. With the
+    parent alone, it is refused.
+    """
     keeping = Keeping()
     big = bytes(i % 251 for i in range(2 * cid.CHUNK_SIZE + 1))
     name, data, _ = Scope(tmp_path).seal("first", {"big": big})
@@ -145,8 +150,8 @@ def test_a_file_of_several_chunks_is_held_block_by_block(
     assert keeping.missing(sorted(blocks)) == []
     assert keeping.append_alone(name, data) == 1
     assert len(keeping.puts.of_ledger(LEDGER)) == 4
-    # The append sent too early is a refusal recorded against the
-    # ledger's repository, as any other; the puts themselves are not.
+    # The append that was sent too early was refused, and that refusal is in
+    # the journal like any other. The block uploads are not in the journal.
     assert [fact.event_type for fact in keeping.journal.entries] == [
         "archive.refused",
         "archive.sealed",

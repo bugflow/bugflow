@@ -1,5 +1,6 @@
-"""A fact has one id however often it is derived, and the journal keeps
-one entry of an id however often it is appended."""
+"""Tests that the same fact always gets the same id, and that the journal
+keeps one entry for each id.
+"""
 
 from datetime import UTC, datetime
 from uuid import UUID
@@ -34,9 +35,11 @@ def entry(id_: UUID, payload: dict[str, object] | None = None) -> JournalEntry:
 
 
 def test_the_ids_are_those_already_in_journals_that_exist() -> None:
-    """Journals written before this package derived these ids from the
-    same parts. A change to the namespace or to how the parts are joined
-    would record an old fact again under a new id."""
+    """The two ids here were computed by the software this code was taken
+    from. Existing journals contain ids made that way. If this test fails,
+    the way ids are made has changed, and an old fact recorded again would
+    get a new id and be stored twice.
+    """
     assert event_id(RUN, "archive.sealed", "a-key") == UUID(
         "1962fe15-e238-5f2c-946e-02c4ca25c4e7"
     )

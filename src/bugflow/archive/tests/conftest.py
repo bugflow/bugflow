@@ -1,4 +1,4 @@
-"""A database holding the archive's tables, for the tests that need one."""
+"""Test fixtures: a temporary database with the archive's tables in it."""
 
 from collections.abc import Iterator
 

@@ -1,8 +1,6 @@
-"""The ledgers whose archives this server keeps, against the real
-database.
+"""Tests of the Postgres store of bindings, against a real database.
 
-Skipped unless DATABASE_URL names a Postgres. The in-memory double
-answers the same questions in the unit test of the use case.
+Skipped unless DATABASE_URL names a Postgres server.
 """
 
 import uuid

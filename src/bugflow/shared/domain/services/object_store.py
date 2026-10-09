@@ -1,14 +1,16 @@
-"""Where bytes are kept by a key.
+"""The interface for an object store: a place that keeps bytes under a key,
+such as an S3 bucket.
 
-The interface knows nothing about which store: a hosted S3 service on
-one deployment and a self-hosted one on another are the same code, and
-which one is a fact about a deployment.
+Code that uses it does not know which store is behind it. That is chosen
+when an application is set up.
 """
 
 from typing import Protocol
 
 
 class ObjectStoreService(Protocol):
+    """Keeps bytes under a key."""
+
     def put(
         self,
         key: str,
@@ -16,22 +18,25 @@ class ObjectStoreService(Protocol):
         content_type: str = "application/json",
         content_encoding: str | None = "gzip",
     ) -> None:
-        """Write the object, once. Keys are never reused or overwritten.
-        A store that cannot be written raises ``ObjectStoreError``."""
+        """Store ``body`` under ``key``. A key is written once and never
+        overwritten. Raises ``ObjectStoreError`` if the store cannot be
+        written to.
+        """
         ...
 
     def get(self, key: str) -> bytes | None:
-        """The object's bytes as they were written, or None if there is no
-        such object. A store that cannot be read raises
-        ``ObjectStoreError``."""
+        """Return the bytes stored under ``key``, or None if there are none.
+        Raises ``ObjectStoreError`` if the store cannot be read.
+        """
         ...
 
     def has(self, key: str) -> bool:
-        """Whether there is such an object, without reading it."""
+        """Whether anything is stored under ``key``, without fetching it."""
         ...
 
     @property
     def configured(self) -> bool:
-        """Whether anything is actually stored. An application given no
-        store runs with one that keeps nothing, and says so here."""
+        """False for a stand-in that stores nothing, used when an application
+        has no store set up. True otherwise.
+        """
         ...

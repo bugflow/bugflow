@@ -1,9 +1,10 @@
-"""The Postgres search index, against a real database, and
-the host's search over it held to the library's adapter on disk.
+"""Tests of the Postgres search index, against a real database.
 
-Skipped unless DATABASE_URL names a Postgres. The matching here is
-Postgres's, where the unit tests' is Python's, so this is where the two
-are shown to agree on what the protocol's conformance test asks.
+The other search tests match with Python. Here Postgres does the matching,
+so this is where the two are shown to give the same results as pyposlib's
+search over the same archive on disk.
+
+Skipped unless DATABASE_URL names a Postgres server.
 """
 
 import time
@@ -93,8 +94,9 @@ ANOTHER = "2b3c4d5e-6f70-4a8b-9c0d-1e2f3a4b5c6d"
 def test_a_search_that_outruns_its_time_is_refused_and_the_next_answers(
     engine: sa.Engine, database_url: str
 ) -> None:
-    # Postgres backtracks on a back-reference: this expression asks
-    # whether the line's length is composite, and 30,011 is prime.
+    # This regular expression is slow in Postgres. It matches only a line whose
+    # length is not a prime number, and 30,011 is prime, so Postgres tries
+    # every possibility before giving up.
     files = SqlAlchemyIndexedFiles(database_url, within_seconds=0.2)
     files.keep(IndexedFile(cid="bafylong", lines=("a" * 30011, "short")))
     began = time.monotonic()
@@ -103,7 +105,8 @@ def test_a_search_that_outruns_its_time_is_refused_and_the_next_answers(
     assert refused.value.kind == "request"
     assert "0.2 seconds" in str(refused.value)
     assert time.monotonic() - began < 5
-    # The limit was the one search's: the pool's connection takes another.
+    # The time limit applied to that search only. The same connection pool runs
+    # the next search normally.
     assert files.find(["bafylong"], "short", "literal", 10) == [
         FoundLine(position=0, number=2, text="short")
     ]
@@ -117,8 +120,10 @@ def test_a_search_that_outruns_its_time_is_refused_and_the_next_answers(
 def test_a_position_only_advances(
     engine: sa.Engine, database_url: str
 ) -> None:
-    """A ledger of its own: the conformance test below reads LEDGER from
-    nothing, in the same database."""
+    """The recorded position never goes down. This uses a ledger id of its
+    own, because the comparison test below shares the database and needs
+    LEDGER to start with no position.
+    """
     positions = SqlAlchemyIndexPositions(database_url)
     assert positions.position(ANOTHER) == 0
     positions.advance(ANOTHER, 3)
@@ -144,7 +149,9 @@ def test_the_postgres_index_answers_what_the_library_finds_on_disk(
     query: str,
     options: dict[str, Any],
 ) -> None:
-    """The protocol's conformance test, with Postgres doing the matching."""
+    """The index, with Postgres matching, returns the same results in the same
+    order as pyposlib's search over the same archive on disk.
+    """
     scope = Scope(tmp_path)
     bindings = InMemoryBindings()
     bindings.save(

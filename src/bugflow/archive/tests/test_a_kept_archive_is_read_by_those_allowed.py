@@ -1,8 +1,9 @@
-"""What is kept of a ledger is read through use cases that ask who is
-calling and whether the ledger is bound.
+"""Tests of the use cases that read a stored ledger: describe, fetch an event,
+and read a file. Each must check the caller's role and that the ledger is
+registered.
 
-The use cases run over the real keeper, pyposlib's behind its adapter,
-with storage in memory: what they hand back is what a seal sent.
+The use cases run on the real keeper (pyposlib's), with all storage in
+memory. So what they return is checked against what was really sealed.
 """
 
 from pathlib import Path
@@ -33,7 +34,7 @@ from bugflow.shared.infrastructure.in_memory_object_store import (
     InMemoryObjectStore,
 )
 
-#: The roles the access adapter is told open the archives.
+#: The role names these tests give the access adapter.
 ARCHIVE_READER = "an-archive-reader"
 ARCHIVE_WRITER = "an-archive-writer"
 
@@ -50,7 +51,9 @@ STRANGER = caller("some-other-role")
 
 
 class Kept:
-    """A bound ledger with two items kept, and the use cases over it."""
+    """A registered ledger with two items stored in it, and the reading use
+    cases set up over it.
+    """
 
     def __init__(self, tmp_path: Path) -> None:
         self.scope = Scope(tmp_path)
@@ -93,7 +96,9 @@ def test_a_reader_is_told_what_is_kept(kept: Kept) -> None:
 
 
 def test_one_who_may_append_is_told_too(kept: Kept) -> None:
-    """A client that seals asks what is kept before it sends."""
+    """A caller who may append may also read, because a client asks what is
+    stored before it sends anything.
+    """
     said = kept.describe.execute(
         DescribeArchiveRequest(ledger_id=LEDGER, caller=WRITER)
     )

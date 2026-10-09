@@ -1,8 +1,9 @@
-"""A scope on disk whose seals give real events to send to a keeper.
+"""A test helper that produces real archive events.
 
-The tests of the archive context send what a client sends: each seals
-an item into a scope with pyposlib, as a client does, and takes the
-event the seal wrote and the files it enrolled.
+It makes a scope in a temporary directory and seals files into it with
+pyposlib, exactly as a sealing tool does. Each seal writes a real event.
+The tests send those events to the code under test, so what is tested is
+what a real client sends.
 """
 
 import json
@@ -12,8 +13,8 @@ from pyposlib import archive_integrity, seal
 
 LEDGER = "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1"
 
-#: What an append sends: the ledger file's name, its bytes, and the
-#: files it enrols by their CIDs.
+#: What a client sends in one append: the event's file name, the event's bytes,
+#: and the files it adds, by CID.
 Sent = tuple[str, bytes, dict[str, bytes]]
 
 
@@ -25,7 +26,10 @@ class Scope:
         self.ledger = ledger
 
     def seal(self, item: str, files: dict[str, bytes]) -> Sent:
-        """Seal an item of those files; what its event's append sends."""
+        """Seal ``files`` into the scope as one item. Return what a client
+        would send for it: the event's file name, its bytes, and the files
+        by CID.
+        """
         for path, data in files.items():
             target = self.scope / item / path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -46,7 +50,9 @@ class Scope:
         )
 
     def cids(self) -> dict[str, str]:
-        """The CID of every file and directory sealed, the root as "."."""
+        """The CID of every file and directory sealed so far. The archive's
+        top level is ".".
+        """
         return dict(archive_integrity.fold_cids(self.archive))
 
     def head_and_root(self) -> tuple[str, str]:

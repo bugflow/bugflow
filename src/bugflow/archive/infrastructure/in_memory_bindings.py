@@ -1,5 +1,4 @@
-"""The ledgers whose archives this server keeps, held in memory, for
-tests."""
+"""A store of bindings kept in memory, for tests."""
 
 from bugflow.archive.domain.models.binding import ArchiveBinding
 

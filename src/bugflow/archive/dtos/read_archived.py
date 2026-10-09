@@ -1,4 +1,4 @@
-"""DTOs for ReadArchivedUseCase: what asks and what comes back."""
+"""The request and response of ``ReadArchivedUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,9 +10,10 @@ class ReadArchivedRequest(BaseModel):
 
     ledger_id: str
     caller: Caller
-    #: What the ledger enrols: a file, an event, or a directory.
+    #: The CID of a file, an event or a directory in the ledger.
     cid: str
-    #: The path of a file beneath a directory, or empty.
+    #: When ``cid`` is a directory, the path of a file inside it.
+    #: Otherwise empty.
     path: str = ""
 
 

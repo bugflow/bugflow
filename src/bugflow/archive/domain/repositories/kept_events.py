@@ -1,4 +1,4 @@
-"""Interface: the events of the ledgers whose archives are kept."""
+"""The interface for storing ledger events."""
 
 from typing import Protocol
 
@@ -7,20 +7,21 @@ from bugflow.shared.domain.repositories.base import BaseRepository
 
 
 class EventTakenError(Exception):
-    """The ledger already has an event of that number.
+    """The ledger already has an event with that number.
 
-    Two clients appended at once, or one appended twice: the first to
-    arrive is the ledger's event and the other is refused, never
-    merged."""
+    This happens when two clients send an event at the same moment, or one
+    sends twice. The first to arrive is stored. The other is refused; two
+    events are never merged.
+    """
 
 
 class KeptEventRepository(BaseRepository[KeptEvent], Protocol):
     def of_ledger(self, ledger_id: str) -> list[KeptEvent]:
-        """The ledger's events in order, none for a ledger with none."""
+        """The ledger's events in order. Empty if it has none."""
         ...
 
     def add(self, event: KeptEvent) -> None:
-        """Keep the event. Raises EventTakenError when the ledger has one
-        of that number already: an event is kept once and never
-        replaced."""
+        """Store the event. Raises ``EventTakenError`` if the ledger already
+        has an event with that number. A stored event is never replaced.
+        """
         ...

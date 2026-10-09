@@ -1,9 +1,10 @@
-"""The events of kept ledgers, in the domain Postgres.
+"""The store of ledger events, in Postgres.
 
-Operational storage, not the journal: the journal holds that an event
-was accepted, and this holds the event, byte for byte, because the next
-one is verified against it. One row per event of a ledger, written once
-and never updated. The table is created from its definition here.
+One row for each event, holding its exact bytes. A row is written once and
+never updated. The bytes are kept because the next event a client sends is
+checked against them.
+
+The journal separately records that each event was accepted.
 """
 
 import sqlalchemy as sa

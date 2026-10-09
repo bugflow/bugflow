@@ -1,4 +1,4 @@
-"""DTOs for FetchEventUseCase: what asks and what comes back."""
+"""The request and response of ``FetchEventUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,12 +10,12 @@ class FetchEventRequest(BaseModel):
 
     ledger_id: str
     caller: Caller
-    #: The event's place in the ledger, counting from 1.
+    #: The event's number in the ledger, counting from 1.
     number: int
 
 
 class FetchEventResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    #: The event's bytes, as the ledger's file holds them.
+    #: The event's bytes, exactly as stored.
     data: bytes

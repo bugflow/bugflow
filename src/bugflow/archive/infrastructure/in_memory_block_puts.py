@@ -1,4 +1,4 @@
-"""The blocks put ahead of their events, held in memory, for tests."""
+"""A store of block upload records kept in memory, for tests."""
 
 from bugflow.archive.domain.models.block_put import BlockPut
 
@@ -11,7 +11,7 @@ class InMemoryBlockPuts:
     def record(self, put: BlockPut) -> None:
         key = (put.ledger_id, put.cid)
         if key in self._puts:
-            # The first put says whether the store lacked the block.
+            # Keep the first upload's note of whether the block was new.
             self.renewed.append(key)
             return
         self._puts[key] = put

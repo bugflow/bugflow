@@ -1,7 +1,8 @@
-"""The journal over Postgres: what it keeps, what it refuses, and the
-columns its readers depend on.
+"""Tests of the Postgres journal: that it stores entries, that the database
+refuses changes to them, and that the table has the columns other software
+relies on.
 
-Skipped unless DATABASE_URL names a Postgres.
+Skipped unless DATABASE_URL names a Postgres server.
 """
 
 from dataclasses import replace
@@ -18,7 +19,7 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
     journal,
 )
 
-# column: (data type, nullable)
+# The columns other software relies on: name -> (type, nullable)
 CONTRACT = {
     "event_id": ("uuid", "NO"),
     "occurred_at": ("timestamp with time zone", "NO"),

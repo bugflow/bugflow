@@ -1,4 +1,4 @@
-"""DTOs for IndexArchiveUseCase: what asks and what comes back."""
+"""The request and response of ``IndexArchiveUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,8 +10,9 @@ class IndexArchiveRequest(BaseModel):
 
 
 class IndexArchiveResponse(BaseModel):
-    """What the catch-up did: the ledger's events, all read, and how
-    many files it indexed this time."""
+    """The result of a catch-up: how many events the ledger has, all now
+    covered by the index, and how many files were indexed this time.
+    """
 
     model_config = ConfigDict(frozen=True)
 

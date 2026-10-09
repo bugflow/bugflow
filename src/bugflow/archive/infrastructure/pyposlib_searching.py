@@ -1,23 +1,21 @@
-"""Searching a kept archive beside its keeper, by the sealing library's
-rules.
+"""Search over a stored archive, using an index.
 
-An indexer that is a client of the archive protocol: it learns the
-files a ledger enrols from the ledger's events, reads each through
-read, and keeps the lines of those that are text by CID, in an index
-apart from the keeper's store. The keeper verifies and stores as
-before and reads nothing it keeps.
+The index is separate from the keeper. It finds out which files a ledger
+has from the ledger's events, reads each file through the reading
+interface, and stores the lines of the text files, by CID. The keeper is
+not changed by any of this.
 
-A search asks the index for the files the ledger's fold names, in the
-archive's order, and answers hits as section 12 of poslib's
-``doc/remote-archive-protocol.txt`` has them. The matching is the
-index's, in ``literal`` and ``regex``; which files are searched, how a
-file is named in a hit, the order and the refusals are pyposlib's, so
-this host and the library's own adapter over the same archive on disk
-answer the same hits.
+A search works out which files the ledger currently has, in the archive's
+order, and asks the index for matching lines in those files. The index does
+the matching, in the ``literal`` and ``regex`` modes. Everything else
+follows pyposlib: which files are searched, how a file is named in a
+result, the order of results and the refusals. So this server and
+pyposlib's own search over the same archive on disk give the same results.
 
-The ledger is the queue. What the index has read of a ledger is a count
-of events; a catch-up reads the events after it, and an append of
-another event meanwhile is read by the next.
+Keeping the index up to date needs no queue. The index remembers how many
+of a ledger's events it has covered. A catch-up reads the events after
+that. If another event arrives during a catch-up, the next catch-up picks
+it up.
 """
 
 import json
@@ -42,15 +40,17 @@ from bugflow.archive.domain.repositories.indexed_files import (
 from bugflow.archive.domain.services.reading import ArchiveReadingService
 from bugflow.archive.infrastructure.pyposlib_keeping import _refusing
 
-#: The modes the index answers. Every other is a ranked mode, and none
-#: is built yet.
+#: The search modes this index offers. The protocol's other modes rank their
+#: results, and none of those is built yet.
 MODES: tuple[str, ...] = ("literal", "regex")
 
 
 @dataclass(frozen=True)
 class _Layout:
-    """What a ledger's events say of its files: the entries, what each
-    path folds to, and the items and collections a hit is named by."""
+    """What a ledger's events say about its files: the entry for each path,
+    the CID of each path, and the items and collections, which are used to
+    name a file in a result.
+    """
 
     events: int
     erased: frozenset[str]
@@ -60,8 +60,10 @@ class _Layout:
     collections: set[str]
 
     def paths(self, chosen: Callable[[str], bool]) -> list[str]:
-        """The enrolled files, in the archive's order, that fold to a CID,
-        are not erased, and ``chosen`` takes."""
+        """The paths of the ledger's files, in the archive's order, leaving
+        out any with no CID, any whose bytes were deleted on request, and
+        any that ``chosen`` rejects.
+        """
         return [
             path
             for path in searching.by_path(self.entries)
@@ -72,9 +74,12 @@ class _Layout:
 
 
 def _name_of(number: int, data: bytes) -> str:
-    """The ledger file's name for event ``number`` of bytes ``data``: the
-    protocol's event gives the bytes alone, and the chain checks the name
-    against them, so the name is the bytes' own."""
+    """Work out the file name of event ``number`` from its bytes.
+
+    The protocol's "event" operation returns only the bytes. The name is
+    the number followed by a hash of the bytes (or their CID, for a schema
+    3 event), so it can be rebuilt.
+    """
     recorded = json.loads(data)
     schema = recorded.get("schema") if isinstance(recorded, dict) else None
     named = (
@@ -86,9 +91,10 @@ def _name_of(number: int, data: bytes) -> str:
 
 
 def _lines(data: bytes) -> tuple[str, ...] | None:
-    """The file's lines as the protocol counts them, or None for a file
-    that is not text: not UTF-8, or holding a NUL, which no text store
-    keeps."""
+    """Split a file's bytes into lines, or return None if the file is not
+    text. A file is not text if it is not valid UTF-8, or if it contains a
+    NUL character, which a database text column cannot store.
+    """
     lines = searching.lines_of(data)
     if lines is None or any("\x00" in line for line in lines):
         return None
@@ -139,8 +145,8 @@ class PyposlibSearching:
         try:
             cids = dict(archive_integrity.fold(entries, empty))
         except Refused:
-            # A ledger still of a schema that enrols no CIDs folds to
-            # nothing, and has nothing a hit could name.
+            # An old ledger whose events record no CIDs has no archive CIDs to
+            # work out, so there is nothing a result could refer to.
             cids = {}
         return _Layout(
             events=events,
@@ -171,7 +177,8 @@ class PyposlibSearching:
                 self._files.keep(IndexedFile(cid=cid, lines=_lines(data)))
                 files += 1
             self._positions.advance(ledger_id, described.events)
-            # An event appended while this read is the next pass's.
+            # If an event arrived while this pass was running, the loop goes
+            # round again for it.
             described = self._reading.describe(ledger_id)
         return CaughtUp(
             ledger_id=ledger_id, events=described.events, files=files

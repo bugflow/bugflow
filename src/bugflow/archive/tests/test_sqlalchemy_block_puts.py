@@ -1,7 +1,7 @@
-"""The blocks put ahead of their events, against the real database.
+"""Tests of the Postgres store of block upload records, against a real
+database.
 
-Skipped unless DATABASE_URL names a Postgres. The in-memory double
-answers the same questions in the unit tests beside it.
+Skipped unless DATABASE_URL names a Postgres server.
 """
 
 import uuid
@@ -36,8 +36,9 @@ def test_a_ledger_s_puts_read_back_by_cid_and_a_second_put_renews(
                 archive_block_puts.c.cid == "bafkreia",
             )
         ).scalar_one()
-    # Put again, by another caller, the block the store held by then:
-    # the time is renewed and the first put still says it was new.
+    # The same block is uploaded again by a different caller, after the store
+    # has it. The record's time is updated, and it still says the block was new
+    # the first time.
     puts.record(
         BlockPut(
             ledger_id=ledger,

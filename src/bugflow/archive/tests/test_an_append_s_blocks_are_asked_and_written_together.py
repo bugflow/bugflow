@@ -1,12 +1,13 @@
-"""An append asks the object store after its blocks, and writes them,
-several at a time.
+"""Tests that an append talks to the object store several calls at a time, not
+one by one.
 
-The store may be far from the host that keeps, and each call to it then
-costs a round trip. An event of a thousand files asked after and
-written one at a time took longer than a sealing client waits. The
-stores here make that visible without a network: one lets no call
-through until several are waiting together, so a keeper that calls one
-at a time is stopped, and one counts what it is asked.
+The object store may be on another machine, so each call takes time. One
+call at a time for a thousand files took longer than a client waits.
+
+The tests use two fake stores to show this without a network. ``Counting``
+counts the calls. ``Together`` blocks a call until several are waiting at
+once, so code that makes its calls one at a time gets stuck and the test
+fails.
 """
 
 import threading
@@ -33,7 +34,9 @@ FOUR = {name: name.encode() for name in ("a.txt", "b.txt", "c.txt", "d.txt")}
 
 
 class Counting(InMemoryObjectStore):
-    """Counts each question and each write, by key."""
+    """An object store that counts how often each key is asked about and
+    written.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -56,9 +59,10 @@ class Counting(InMemoryObjectStore):
 
 
 class Together(InMemoryObjectStore):
-    """Lets a call of the gated kind through only when ``parties`` of
-    them wait at once: a caller that makes them one at a time waits for
-    company that never comes, and the gate breaks."""
+    """An object store that lets a call through only when ``parties`` calls
+    are waiting at the same time. Code that makes one call at a time never
+    gets through, and the test fails with a broken barrier.
+    """
 
     def __init__(self, gated: str, parties: int) -> None:
         super().__init__()
@@ -100,9 +104,11 @@ def test_an_event_s_blocks_are_written_several_at_once(tmp_path: Path) -> None:
 def test_files_already_held_are_asked_after_several_at_once(
     tmp_path: Path,
 ) -> None:
-    """A keeper takes an event without the bytes of a file it holds, and
-    has to ask the store whether it does. A second ledger enrolling the
-    files of the first, sent without them, is that case."""
+    """An event may refer to a file the store already has, sent without the
+    file's bytes. The keeper then has to ask the store whether it has it.
+    Here a second ledger adds the first ledger's files that way, and the
+    questions must go several at once.
+    """
     first = Scope(tmp_path / "one").seal("first", FOUR)
     name, data, _ = Scope(tmp_path / "two", OTHER).seal("first", FOUR)
     events, held = InMemoryKeptEvents(), InMemoryObjectStore()
@@ -118,8 +124,9 @@ def test_files_already_held_are_asked_after_several_at_once(
 
 
 def test_a_block_the_store_holds_is_not_written_again(tmp_path: Path) -> None:
-    """Two items that share a file's bytes share its block, which the
-    second append finds held and leaves."""
+    """Two items containing the same file share one block. The second append
+    finds the block already stored and does not write it again.
+    """
     scope = Scope(tmp_path)
     first = scope.seal("first", FOUR)
     second = scope.seal("second", {"a.txt": b"a.txt", "e.txt": b"e"})
@@ -145,8 +152,10 @@ def test_an_append_asks_no_question_twice(tmp_path: Path) -> None:
 
 
 def test_a_block_that_cannot_be_written_keeps_no_event(tmp_path: Path) -> None:
-    """The event's row is written after its blocks, so a store that
-    fails part way leaves no event whose bytes are not held."""
+    """If writing a block fails, the event is not stored. Blocks are written
+    before the event, so there is never a stored event whose files are
+    missing.
+    """
     scope = Scope(tmp_path)
     name, data, files = scope.seal("first", FOUR)
     unwritable = BLOCKS + scope.cids()["first/c.txt"]

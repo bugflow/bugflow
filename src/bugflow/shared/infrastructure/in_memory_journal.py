@@ -1,8 +1,8 @@
-"""A journal in a list, for tests.
+"""A journal that keeps its entries in a list, for tests.
 
-It applies the rules a stored journal does: a repeated event id is
-ignored, a payload that JSON cannot say is refused, and every entry is
-stamped with the build.
+It follows the same rules as the Postgres journal: an entry whose id is
+already present is skipped, a payload that cannot be written as JSON is
+refused, and every entry is marked with the build.
 """
 
 import json

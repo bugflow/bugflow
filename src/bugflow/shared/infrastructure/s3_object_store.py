@@ -1,9 +1,7 @@
-"""An S3 bucket, whoever runs it.
+"""An object store backed by an S3 bucket.
 
-A hosted S3 service on one deployment and a self-hosted one on another
-are this same class with a different endpoint.
-
-Write-once: nothing here overwrites an object.
+It works with any service that speaks the S3 API, hosted or self-hosted:
+only the endpoint differs. An object is written once and never overwritten.
 """
 
 from __future__ import annotations
@@ -12,13 +10,15 @@ from typing import Any, cast
 
 from bugflow.shared.domain.errors import ObjectStoreError
 
-#: What an S3 service calls an object that is not there: reading one
-#: answers the first, asking after one the others.
+#: The error codes an S3 service gives for a missing object. A read
+#: gives the first; a check for existence gives one of the others.
 ABSENT = ("NoSuchKey", "404", "NotFound")
 
 
 def _absent(exc: Exception) -> bool:
-    """Whether a client's error says there is no such object."""
+    """Whether an error from the S3 client means "no such object", as opposed
+    to a failure.
+    """
     response = getattr(exc, "response", None)
     if not isinstance(response, dict):
         return False

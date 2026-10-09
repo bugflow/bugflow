@@ -1,31 +1,31 @@
-"""The keeping side of the protocol, by the sealing library's keeper.
+"""The keeper, built on pyposlib's own ``Keeper`` class.
 
-pyposlib's ``Keeper`` verifies what a client sends as the remote archive
-protocol requires. Here it is given what this server holds: a ledger's
-events from their repository, and the object store as the mapping its
-blocks live in. So the rules a seal is held to are the library's, kept
-in lockstep with the client that seals, and nothing of them is written
-here.
+pyposlib's ``Keeper`` contains the protocol's rules for checking what a
+client sends. This module does not repeat them. It gives ``Keeper`` this
+server's storage: a ledger's events from the events repository, and the
+object store, wrapped to look like the dictionary of blocks that ``Keeper``
+expects. The sealing tools use the same library, so client and server apply
+the same rules.
 
-A keeper is made for each call, over the events as they are then. The
-blocks an event needs are written once the keeper has verified it and
-before the event's row is: a failure between the two leaves blocks no
-ledger enrols, which are harmless, and never an event whose bytes are
-not held. Under version 2 a client puts the blocks first, each written
-once the keeper has verified it hashes to its CID, and the event is
-appended alone; the keeper then reads each entry's blocks from the
-store to see that every one is held.
+A new ``Keeper`` is created for each call, from the events stored at that
+moment.
 
-Which versions this keeper serves, and any it is retiring, are given
-to it; the libraries' keeper lists them in describe and refuses what a
-version it does not serve would allow.
+Order of writing. For an append, the blocks are written to the object store
+first, after ``Keeper`` has accepted the event, and the event's row is
+written last. If something fails in between, some blocks are stored that no
+event refers to, which does no harm. The opposite, an event stored without
+its files, cannot happen.
 
-The object store may be far from this host, and a call to it then costs
-a round trip. An event of a thousand files asked after and written one
-at a time took longer than a sealing client waits. So the questions an
-append will put to the store are asked together beforehand, and what
-the keeper assigns is held and written together afterwards, several
-calls at once.
+Protocol version 2. The client uploads blocks before the event. Each block
+is written once ``Keeper`` has confirmed it hashes to its CID. The event
+then arrives on its own, and ``Keeper`` checks that every block it needs is
+in the store.
+
+Speed. The object store may be on another machine, so each call to it takes
+time. Checking and writing a thousand files one call at a time took longer
+than a client waits for an answer. So an append first asks the store about
+all the blocks it will need, several calls at once, and afterwards writes
+the new blocks the same way.
 """
 
 import json
@@ -51,24 +51,29 @@ from bugflow.archive.domain.repositories.kept_events import (
 )
 from bugflow.shared.domain.services.object_store import ObjectStoreService
 
-#: Where a block is kept in the object store, by its CID. Blocks are
-#: kept once however many ledgers enrol them.
+#: The start of a block's key in the object store. The CID follows. A block is
+#: stored once, however many ledgers refer to it.
 BLOCKS = "archive/blocks/"
 
 
-#: How many calls to the object store are in flight at once for one
-#: append. Below the ten connections an S3 client keeps by default.
+#: How many calls to the object store one append makes at the same time. An S3
+#: client keeps ten connections by default, so this stays below ten.
 AT_ONCE = 8
 
 
 class _Blocks:
-    """The object store as the mapping a keeper keeps blocks in, for one
-    call: it asks whether a block is held, reads one, and assigns one.
+    """The object store, wrapped as the dictionary of blocks that pyposlib's
+    ``Keeper`` expects. One is made for each call.
 
-    What is assigned is held here until ``write`` puts it in the store,
-    so that nothing of an append the keeper refuses is written. Whether
-    a block is held is asked of the store once and remembered; ``ask``
-    asks after many together.
+    ``Keeper`` uses it in three ways: ``cid in blocks``, ``blocks[cid]``
+    and ``blocks[cid] = data``.
+
+    Assignments are not written to the store at once. They are held here
+    until ``write`` is called, so that if ``Keeper`` refuses the append,
+    nothing has been written.
+
+    Whether the store has a block is asked once and remembered. ``ask``
+    asks about many blocks at the same time.
     """
 
     def __init__(self, store: ObjectStoreService) -> None:
@@ -87,13 +92,16 @@ class _Blocks:
         if not cids:
             return
         with ThreadPoolExecutor(max_workers=AT_ONCE) as pool:
-            # Consumed, so that a call that failed raises here.
+            # Read all the results, so that an error in any call is raised
+            # here.
             list(pool.map(operation, cids))
 
     def ask(self, cids: Iterable[str]) -> None:
-        """Learn whether each of ``cids`` is held, asking the store after
-        several at once. A CID left out is asked after when the keeper
-        asks: leaving one out costs time and changes no answer."""
+        """Find out whether the store has each of ``cids``, several calls at
+        once, and remember the answers. This is only to save time: a CID
+        not asked about here is asked about later, when ``Keeper`` needs
+        it.
+        """
 
         def learn(cid: str) -> None:
             held = self._store.has(BLOCKS + cid)
@@ -102,9 +110,9 @@ class _Blocks:
         self._together(learn, sorted(set(cids) - self._held.keys()))
 
     def write(self) -> None:
-        """Put in the store each block assigned that it does not hold,
-        several at once. A block is kept once however many ledgers enrol
-        it."""
+        """Write to the store every block that was assigned and that the store
+        does not already have, several calls at once.
+        """
         self.ask(self._assigned)
 
         def put(cid: str) -> None:
@@ -135,8 +143,9 @@ class _Blocks:
         return found
 
     def get(self, cid: str, default: bytes | None = None) -> bytes | None:
-        """The block, or ``default`` where none is held: what a mapping
-        answers, which the keeper asks when it walks a file's blocks."""
+        """Return the block, or ``default`` if there is none, as ``dict.get``
+        does. ``Keeper`` calls this when it follows a file's blocks.
+        """
         try:
             return self[cid]
         except KeyError:
@@ -152,14 +161,16 @@ def _asked_after(
     data: bytes,
     sent: Collection[str],
 ) -> set[str]:
-    """The CIDs a keeper holding ``kept`` asks its blocks after when it
-    is sent the event ``data`` with the files ``sent``: those the event
-    enrols if the ledger was of schema 3 before it, and otherwise every
-    one the ledger then enrols, since that event is where a keeper
-    requires them all.
+    """Predict which CIDs ``Keeper`` will look up while checking this event,
+    so they can all be asked about beforehand.
 
-    A guess made to ask early, and nothing the keeper goes by: an event
-    it will refuse gives no CIDs here, and the keeper says why.
+    If the ledger was already in the current format (schema 3), it is the
+    files this event adds. If this is the ledger's first schema 3 event, it
+    is every file the ledger refers to, because that is the point where the
+    keeper requires them all.
+
+    This is only a prediction to save time. ``Keeper`` does the real check.
+    For an event that will be refused, this returns nothing.
     """
     try:
         recorded = json.loads(data)
@@ -181,8 +192,10 @@ def _asked_after(
 
 
 def _refusing[T](operation: Callable[[], T]) -> T:
-    """What the operation returns, its refusal carried as this
-    context's. Bytes that are not JSON at all are an encoding fault."""
+    """Run ``operation``. Turn a refusal from pyposlib into this context's
+    ``ArchiveRefusedError``. Bytes that are not JSON at all are refused as
+    "encoding".
+    """
     try:
         return operation()
     except Refused as refused:
@@ -207,16 +220,20 @@ def _description(ledger_id: str, described: Mapping[str, Any]) -> Description:
 
 
 def _number(name: str) -> int | None:
-    """The number an event file's name gives it, or None for a name
-    that is no event file's."""
+    """The number at the start of an event file's name, or None if the name is
+    not an event file's.
+    """
     named = archive_integrity.EVENT_NAME.fullmatch(name)
     return int(named[1]) if named else None
 
 
 class PyposlibKeeping:
-    """The library's keeper over this server's storage. It is given no
-    search modes: the keeper reads nothing it keeps, and search is
-    answered beside it from an index."""
+    """The keeper: pyposlib's ``Keeper`` over this server's events and object
+    store.
+
+    It is created with no search modes. Search is handled separately, from
+    an index (see ``pyposlib_searching.py``).
+    """
 
     def __init__(
         self,

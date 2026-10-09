@@ -1,8 +1,8 @@
-"""An event reaches a kept ledger through a use case that asks who is
-sending, has the keeper verify it, and records what came of it.
+"""Tests of the append use case: it checks the caller's role, has the keeper
+check the event, and writes the outcome to the journal.
 
-The use case runs over the real keeper, pyposlib's behind its adapter,
-with storage and the journal in memory.
+It runs on the real keeper (pyposlib's), with storage and the journal in
+memory.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -29,7 +29,7 @@ from bugflow.shared.infrastructure.in_memory_object_store import (
     InMemoryObjectStore,
 )
 
-#: The roles the access adapter is told open the archives.
+#: The role names these tests give the access adapter.
 ARCHIVE_READER = "an-archive-reader"
 ARCHIVE_WRITER = "an-archive-writer"
 
@@ -53,7 +53,9 @@ class TickingClock:
 
 
 class Keeping:
-    """A bound ledger with nothing kept yet, and the use case over it."""
+    """A registered ledger with nothing stored yet, and the append use case
+    set up over it.
+    """
 
     def __init__(self) -> None:
         bindings = InMemoryBindings()
@@ -191,8 +193,9 @@ def test_one_who_may_only_read_cannot_append(
 def test_a_ledger_nobody_bound_keeps_nothing_and_records_nothing(
     tmp_path: Path,
 ) -> None:
-    """There is no repository to record a fact against, and no archive
-    is kept on a client's say."""
+    """An append to a ledger that is not registered stores nothing and writes
+    nothing to the journal.
+    """
     sent = Scope(tmp_path, UNBOUND).seal("first", {"a.txt": b"first"})
     keeping = Keeping()
 

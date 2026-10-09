@@ -1,4 +1,4 @@
-"""DTOs for DescribeArchiveUseCase: what asks and what comes back."""
+"""The request and response of ``DescribeArchiveUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,8 +13,9 @@ class DescribeArchiveRequest(BaseModel):
 
 
 class DescribeArchiveResponse(BaseModel):
-    """What is kept of the ledger, as the remote archive protocol's
-    describe answers."""
+    """What is stored of the ledger. This is the answer to the protocol's
+    "describe" operation.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -23,7 +24,7 @@ class DescribeArchiveResponse(BaseModel):
     events: int
     root: str | None
     erased: tuple[str, ...]
-    #: The versions of the protocol served, and by version the date
-    #: after which one may stop being served.
+    #: ``protocols`` is the protocol versions served. ``retiring`` gives, for a
+    #: version about to be dropped, the date after which it may be.
     protocols: tuple[int, ...] = (1, 2)
     retiring: tuple[tuple[int, str], ...] = ()

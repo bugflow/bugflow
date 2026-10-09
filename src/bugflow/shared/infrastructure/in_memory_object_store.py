@@ -1,4 +1,6 @@
-"""An object store in a dict, for tests."""
+"""An object store that keeps its objects in a dictionary, for tests. Writing
+a key twice is an error, since a real key is never overwritten.
+"""
 
 
 class InMemoryObjectStore:

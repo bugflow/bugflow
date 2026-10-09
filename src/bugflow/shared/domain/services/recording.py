@@ -1,8 +1,8 @@
-"""Recording facts in the journal.
+"""The interface for writing to the journal.
 
-Every context appends its own facts and may ask whether one is already
-recorded. Reading the journal back is not here: a context that needs to
-declares an interface of its own for the question it asks.
+Any context may write facts and ask whether a fact is already there.
+Reading facts back is not part of this interface: a context that needs
+to query the journal declares its own interface for the query.
 """
 
 from collections.abc import Sequence
@@ -14,8 +14,10 @@ from bugflow.shared.domain.models.journal_entry import JournalEntry
 
 class RecordingService(Protocol):
     def append(self, entries: Sequence[JournalEntry]) -> None:
-        """Record entries. An entry whose event id is already recorded is
-        ignored, which makes retried writes safe."""
+        """Write the entries. An entry whose id is already in the journal
+        is skipped, so writing the same entry twice is safe."""
         ...
 
-    def has_event(self, event_id: UUID) -> bool: ...
+    def has_event(self, event_id: UUID) -> bool:
+        """Whether the journal has an entry with this id."""
+        ...

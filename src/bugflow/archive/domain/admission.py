@@ -1,9 +1,11 @@
-"""Who is let through to a kept ledger, and what they are told if not.
+"""The rule for letting a caller reach a ledger.
 
-Access is asked before the binding, so that a caller with no role is
-refused the same way whether a ledger is kept here or not, and learns
-nothing of which are. A ledger nobody bound is absent to everyone:
-this server keeps an archive only where an operator said so.
+Two things are checked, in this order: whether the caller has the right
+role, and then whether the ledger is registered here.
+
+The order matters. A caller without the role gets the same refusal for
+every ledger id, registered or not, so they cannot use the answers to find
+out which ledgers exist.
 """
 
 from bugflow.archive.domain.errors import ArchiveRefusedError
@@ -18,8 +20,12 @@ from bugflow.shared.domain.values.caller import Caller
 def admitted(
     allowed: bool, bindings: BindingRepository, ledger_id: str
 ) -> ArchiveBinding:
-    """The ledger's binding, for a caller who is ``allowed``. Refused as
-    access otherwise, and as absent for a ledger that is not bound."""
+    """Return the ledger's binding if the caller may proceed.
+
+    ``allowed`` is whether the caller has the role needed. If not, the
+    refusal is "access". If the ledger is not registered here, the refusal
+    is "absent".
+    """
     if not allowed:
         raise ArchiveRefusedError("access", "Not allowed")
     binding = bindings.for_ledger(ledger_id)
@@ -34,5 +40,7 @@ def reader(
     caller: Caller,
     ledger_id: str,
 ) -> ArchiveBinding:
-    """The binding of a ledger ``caller`` may read."""
+    """Return the ledger's binding if ``caller`` may read the ledger. Refuses
+    as ``admitted`` does.
+    """
     return admitted(access.may_read(caller, ledger_id), bindings, ledger_id)

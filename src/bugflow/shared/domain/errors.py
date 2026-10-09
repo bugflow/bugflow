@@ -1,14 +1,16 @@
-"""What the interfaces here raise."""
+"""Errors raised by the shared interfaces."""
 
 
 class ObjectStoreError(Exception):
-    """The object could not be written, or the store could not be read.
+    """The object store failed: it could not write an object, or could not be
+    reached to read one.
 
-    Not the answer for an object that is not there: reading one answers
-    None, and asking after one answers False.
+    A missing object is not an error. Reading one returns None, and asking
+    whether it exists returns False.
     """
 
 
 class TokenRefusedError(Exception):
-    """The token does not vouch for anyone this server accepts. The
-    message says why, for the log, and is not shown to the caller."""
+    """A bearer token was not accepted. The message says why. It is meant for
+    the server's log and should not be shown to the caller.
+    """

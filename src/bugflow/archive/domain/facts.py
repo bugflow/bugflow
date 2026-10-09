@@ -1,7 +1,8 @@
-"""The facts the archive records in the journal, and the id of each.
+"""The three facts the archive writes to the journal, and how the id of each
+is made.
 
-An id is derived from what makes the fact that fact, so one recorded
-twice is recorded once.
+An id is made from the details that identify the fact, so that writing the
+same fact twice leaves one journal entry.
 """
 
 from datetime import datetime
@@ -9,38 +10,44 @@ from uuid import UUID
 
 from bugflow.shared.domain.models.journal_entry import fact_id
 
-#: An operator bound a ledger to a scope of a repository, so that its
-#: archive is kept here: where it was bound before, if it was, and the
-#: other ledgers the scope already had.
+#: An operator registered a ledger with this server. The payload says
+#: which repository and scope it was registered for, what it was
+#: registered for before, and which other ledgers that scope has.
 BOUND = "archive.bound"
 
-#: An event of a bound ledger was kept, once the keeper had verified
-#: it: the event's name, the head and root after it, who appended it
-#: and what the client claimed of where it came from.
+#: An event was checked and stored. The payload has the event's name,
+#: the ledger's state afterwards, who sent it, and what the client
+#: said about where it came from.
 SEALED = "archive.sealed"
 
-#: An event a client sent to a bound ledger was turned away, with the
-#: kind of refusal: nothing of it was kept.
+#: An event was refused and nothing was stored. The payload has the
+#: kind of refusal.
 REFUSED = "archive.refused"
 
 
 def bound_id(
     ledger_id: str, forge: str, repo: str, scope: str, when: datetime
 ) -> UUID:
-    """From what the binding says and when: a ledger bound to one place,
-    away, and back is three facts."""
+    """The id of a "ledger registered" fact, made from the ledger, where it
+    was registered, and the time. Registering a ledger again later is a new
+    fact.
+    """
     return fact_id(
         "archive-bound", ledger_id, forge, repo, scope, when.isoformat()
     )
 
 
 def sealed_id(ledger_id: str, name: str) -> UUID:
-    """From the event it is of: a ledger has one event of a name, so the
-    event sent twice is one fact."""
+    """The id of an "event stored" fact, made from the ledger and the event's
+    name. A ledger has one event of each name, so sending the same event
+    twice gives one fact.
+    """
     return fact_id("archive-sealed", ledger_id, name)
 
 
 def refused_id(ledger_id: str, name: str, kind: str, when: datetime) -> UUID:
-    """From what the refusal says and when: the same event refused twice
-    was refused twice."""
+    """The id of an "event refused" fact, made from the ledger, the event's
+    name, the kind of refusal, and the time. The same event refused on two
+    occasions is two facts.
+    """
     return fact_id("archive-refused", ledger_id, name, kind, when.isoformat())

@@ -1,10 +1,11 @@
-"""An event is kept only once the sealing library's keeper has verified
-it, over this server's own storage.
+"""Tests that the keeper stores an event only after checking it.
 
-The events are real: each test seals into a scope on disk with pyposlib,
-as a client does, and sends what the seal wrote. The object store is the
-in-memory one, which refuses a key written twice, so a block kept once
-is also a test here.
+The events are real. Each test seals files into a scope on disk with
+pyposlib, as a sealing tool does, and sends what the seal produced.
+
+The object store is the in-memory one, which raises an error if a key is
+written twice. So these tests also show that a block is never written a
+second time.
 """
 
 import json
@@ -76,7 +77,10 @@ def test_a_sealed_item_is_kept_with_its_claims_and_who_appended_it(
 def test_what_was_kept_is_read_back_by_a_keeper_made_later(
     tmp_path: Path,
 ) -> None:
-    """Nothing is held between calls but the events and the store."""
+    """A new keeper object, given the same events and store, reads back what
+    an earlier one stored. Nothing is remembered in the keeper object
+    between calls.
+    """
     scope = Scope(tmp_path)
     first = scope.seal("first", {"a.txt": b"first"})
     second = scope.seal("second", {"sub/c.txt": b"c"})
@@ -98,9 +102,10 @@ def test_what_was_kept_is_read_back_by_a_keeper_made_later(
 
 
 def sharded_item() -> tuple[dict[str, bytes], str]:
-    """The files of poslib's fixture of a directory IPFS shards, whose
-    plain node would be a byte past the threshold, and the CID kubo
-    recorded for it."""
+    """Load a test fixture from poslib: the files of a directory with so many
+    entries that IPFS stores it in a special split form, and the CID that
+    kubo, the IPFS reference implementation, computed for it.
+    """
     fixture = json.loads(SHARDED.read_text())
     files: dict[str, bytes] = {}
     for entry in fixture["tree"]:
@@ -118,9 +123,11 @@ def sharded_item() -> tuple[dict[str, bytes], str]:
 def test_an_item_whose_directory_shards_is_kept_with_its_shard_blocks(
     tmp_path: Path,
 ) -> None:
-    """A directory whose plain node would pass 262144 bytes is a HAMT
-    shard. The keeper folds the root the client sealed and keeps the
-    block of every shard, the sub-shards included."""
+    """A directory whose listing would be larger than 262,144 bytes is stored
+    by IPFS as a tree of smaller blocks, called a HAMT shard. The keeper
+    must arrive at the same root CID as the client and store every block of
+    that tree.
+    """
     files, recorded = sharded_item()
     scope = Scope(tmp_path)
     sent = scope.seal("t", files)
@@ -136,9 +143,10 @@ def test_an_item_whose_directory_shards_is_kept_with_its_shard_blocks(
     shards = [
         key
         for key, block in store.objects.items()
-        # Only a dag-pb block, "bafybei" in base32, parses as a node; a
-        # raw leaf or the dag-json event does not. A HAMT shard's data
-        # begins with its UnixFS type, 5.
+        # Pick out the HAMT shard blocks. A directory or file-list block
+        # (format "dag-pb") has a CID starting "bafybei"; a plain file block
+        # and the event do not. Inside such a block, a HAMT shard is marked by
+        # type number 5.
         if key.startswith(BLOCKS + "bafybei")
         and cid.parse(block)[1][:2] == b"\x08\x05"
     ]
@@ -184,9 +192,10 @@ def test_another_ledger_s_event_is_refused(tmp_path: Path) -> None:
 def begun(
     unnamed: int, ledger: str = LEDGER, text: str = "old"
 ) -> list[tuple[str, bytes]]:
-    """The first events of a ledger begun before events carried a
-    ledger_id: ``unnamed`` events that name no ledger, then one that
-    names ``ledger``. ``text`` tells one such ledger from another."""
+    """Make the first events of an old-style ledger: ``unnamed`` events that
+    carry no ledger id, followed by one that carries ``ledger``. ``text``
+    makes the content differ, to tell two such ledgers apart.
+    """
     events: list[tuple[str, bytes]] = []
     previous = None
     for number in range(1, unnamed + 2):
@@ -213,8 +222,10 @@ def begun(
 def test_first_events_that_name_no_ledger_are_kept_with_those_after_them() -> (
     None
 ):
-    """Each is sent with the events after it, up to the one that names
-    the ledger, and is the only event kept of that append."""
+    """An event with no ledger id is sent together with the events after it,
+    up to the first that has the id. Only the first event of each request
+    is stored.
+    """
     sent = begun(2)
     keeping, events, _ = kept()
 
@@ -296,8 +307,10 @@ def test_an_event_out_of_turn_is_refused_and_nothing_is_merged(
 
 
 def test_a_block_two_items_share_is_kept_once(tmp_path: Path) -> None:
-    """The in-memory store refuses a key written twice, so this passes
-    only because the keeper asks before it writes."""
+    """Two items share a block. The in-memory store raises an error if a key
+    is written twice, so this passes only because the keeper checks whether
+    a block is stored before writing it.
+    """
     scope = Scope(tmp_path)
     first = scope.seal("first", {"a.txt": b"same"})
     second = scope.seal("second", {"b.txt": b"same"})
@@ -315,8 +328,10 @@ def test_a_block_two_items_share_is_kept_once(tmp_path: Path) -> None:
 def test_an_event_that_lost_the_race_for_its_number_is_refused(
     tmp_path: Path,
 ) -> None:
-    """Two clients append at once: both verify against the same chain,
-    and the row's primary key lets one in."""
+    """Two clients send an event for the same number at the same time. Both
+    pass the checks against the same earlier events. The database's primary
+    key lets one be stored, and the other is refused.
+    """
 
     class Raced(InMemoryKeptEvents):
         def add(self, event: KeptEvent) -> None:

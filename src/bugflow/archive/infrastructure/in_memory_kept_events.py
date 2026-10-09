@@ -1,4 +1,4 @@
-"""The events of kept ledgers, held in memory, for tests."""
+"""A store of ledger events kept in memory, for tests."""
 
 from bugflow.archive.domain.models.kept_event import KeptEvent
 from bugflow.archive.domain.repositories.kept_events import EventTakenError

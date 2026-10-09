@@ -1,9 +1,9 @@
-"""Use case: read what a kept ledger enrols, by its CID.
+"""Use case: return the bytes stored under a CID in a ledger. This is the
+protocol's "read" operation.
 
-The remote archive protocol's read: a file, an event, or the file at a
-path beneath a directory. What is read is what a scope sealed, content
-from a repository under study, and is handed on as bytes and never
-interpreted here.
+The CID may be a file's or an event's, or a directory's together with the
+path of a file inside it. The bytes are other people's content. They are
+returned as they are and never interpreted.
 """
 
 from bugflow.archive.domain.admission import reader
@@ -19,8 +19,9 @@ from bugflow.archive.dtos.read_archived import (
 
 
 class ReadArchivedUseCase:
-    """Given a ledger, a CID, a path and a caller who may read the
-    ledger, answers with the bytes the ledger enrols there."""
+    """Takes a ledger, a CID, an optional path and a caller allowed to read
+    the ledger. Returns the bytes.
+    """
 
     def __init__(
         self,

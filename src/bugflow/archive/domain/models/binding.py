@@ -1,11 +1,13 @@
-"""Whose archive this server keeps, and for which repository.
+"""The binding: the record that this server stores the archive of one ledger.
 
-A scope's archive is known by its ledger: every event of a ledger
-carries one id, which stays when the repository is renamed or moves.
-A binding says that this server keeps the archive of that ledger, for
-a scope of a repository. Only an operator makes one, so
-that nobody with a repository's commit access alone can have a
-different archive kept in a scope's name.
+A ledger is identified by a UUID that every one of its events carries. The
+id stays the same if the repository is renamed or moved, so the archive is
+registered by ledger id and not by repository name. The binding also notes
+which repository and scope the ledger belongs to.
+
+Only an operator creates a binding. A client cannot register a ledger by
+uploading to it. Otherwise anyone with commit access to a repository could
+start a new ledger and have it stored as that repository's archive.
 """
 
 import re
@@ -18,13 +20,12 @@ _LEDGER_ID = re.compile(
 
 @dataclass(frozen=True, kw_only=True)
 class ArchiveBinding:
-    #: The ledger's id, a UUID in canonical lower-case form, as every
-    #: event of the ledger carries it.
+    #: The ledger's id: a lower-case UUID.
     ledger_id: str
     forge: str
     repo: str
-    #: The scope's path within the repository, "/"-separated, and empty
-    #: for the repository's own root scope.
+    #: The path of the scope inside the repository, with "/" between
+    #: parts. Empty for the repository's top level.
     scope: str = ""
 
     def __post_init__(self) -> None:

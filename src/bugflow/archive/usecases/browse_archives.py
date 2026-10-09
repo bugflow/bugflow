@@ -1,7 +1,10 @@
-"""Administrative reads, reached only behind the site's role gate.
+"""Use cases for an administrator's pages: listing registered ledgers, listing
+a ledger's bundles and files, downloading a file, and searching.
 
-The gate admits readers of all archives and passes no person identity.
-These use cases are not the corpus API's per-caller reads.
+These use cases do not check who is calling. They are for an application
+that has already established that its user is an administrator allowed to
+see every archive. The use cases that serve the protocol's clients check
+each caller themselves.
 """
 
 from bugflow.archive.domain.errors import ArchiveRefusedError
@@ -31,7 +34,7 @@ from bugflow.archive.dtos.browse_archives import (
 
 
 class ListArchivesUseCase:
-    """List every operator-bound archive for an admitted site reader."""
+    """List every registered ledger."""
 
     def __init__(self, bindings: BindingRepository) -> None:
         self._bindings = bindings
@@ -41,7 +44,9 @@ class ListArchivesUseCase:
 
 
 class BrowseArchiveUseCase:
-    """List a bound archive's bundles, or one bundle's files."""
+    """List a ledger's bundles, or the files of one bundle. A bundle is the
+    set of files one event added.
+    """
 
     def __init__(
         self, bindings: BindingRepository, inventory: ArchiveInventoryService
@@ -79,7 +84,7 @@ class BrowseArchiveUseCase:
 
 
 class DownloadArchivedFileUseCase:
-    """Read the bytes of one exact file path enrolled by a bound ledger."""
+    """Return the bytes of the file at one exact path in a ledger."""
 
     def __init__(
         self, browse: BrowseArchiveUseCase, keeping: KeepingService
@@ -119,7 +124,9 @@ class DownloadArchivedFileUseCase:
 
 
 class LocateArchivedReferenceUseCase:
-    """Find where a bound ledger enrols the file a reference names."""
+    """Find where in a ledger the file named by an ``ipfs://`` reference
+    appears.
+    """
 
     def __init__(self, browse: BrowseArchiveUseCase) -> None:
         self._browse = browse
@@ -145,9 +152,9 @@ class LocateArchivedReferenceUseCase:
 
 
 class SearchBoundArchiveUseCase:
-    """Search a bound ledger as the remote archive protocol does, for an
-    admitted site reader: the hits a client is answered, each with where
-    its file is enrolled."""
+    """Search a ledger as the protocol's search does, and add to each result
+    where its file appears in the ledger.
+    """
 
     def __init__(
         self, browse: BrowseArchiveUseCase, searching: ArchiveSearchService
@@ -157,7 +164,7 @@ class SearchBoundArchiveUseCase:
 
     @property
     def modes(self) -> tuple[str, ...]:
-        """The modes searched in, as describe lists them to a client."""
+        """The search modes offered."""
         return self._searching.modes
 
     def execute(

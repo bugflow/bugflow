@@ -1,10 +1,12 @@
-"""Search over a kept archive is answered from an index beside the
-keeper, which reads through the protocol's own operations.
+"""Tests of search.
 
-The index runs over the real keeper, pyposlib's behind its adapter,
-with storage in memory, and the library's own adapter over the same
-archive on disk is the measure: the two answer the same hits in literal
-and regex, which is the protocol's conformance test (section 12).
+Search is answered from an index. The index runs on the real keeper
+(pyposlib's), with all storage in memory.
+
+The results are compared with pyposlib's own search over the same archive
+on disk. The protocol requires that two implementations give the same
+results in the same order for the ``literal`` and ``regex`` modes (section
+12, "Conformance").
 """
 
 from pathlib import Path
@@ -38,7 +40,7 @@ from bugflow.shared.infrastructure.in_memory_object_store import (
     InMemoryObjectStore,
 )
 
-#: The roles the access adapter is told open the archives.
+#: The role names these tests give the access adapter.
 ARCHIVE_READER = "an-archive-reader"
 ARCHIVE_WRITER = "an-archive-writer"
 
@@ -59,8 +61,9 @@ STRANGER = caller("some-other-role")
 
 
 class Kept:
-    """A bound ledger with two items kept, the index beside it, and the
-    library's adapter over the same archive on disk."""
+    """A registered ledger with two items stored, the search index over it,
+    and pyposlib's own search over the same archive on disk for comparison.
+    """
 
     def __init__(self, tmp_path: Path, ledger: str = LEDGER) -> None:
         self.scope = Scope(tmp_path, ledger)
@@ -143,14 +146,16 @@ QUERIES: list[tuple[str, dict[str, Any]]] = [
 def test_the_index_answers_what_the_library_finds_on_disk(
     kept: Kept, query: str, options: dict[str, Any]
 ) -> None:
-    """The protocol's conformance test: two keepers of one archive
-    answer the same hits in the same order."""
+    """The index and pyposlib's search over the same archive return the same
+    results in the same order.
+    """
     assert kept.hits(query, **options) == kept.on_disk.search(query, **options)
 
 
 def test_a_hit_is_what_read_gives_at_its_reference(kept: Kept) -> None:
-    """The trust invariant: the archive is the authority and a hit is the
-    index's claim about it."""
+    """Each result quotes the archive exactly: reading the file it refers to,
+    at the lines it gives, returns the result's text.
+    """
     for hit in kept.hits("first"):
         assert isinstance(hit["ref"], str)
         cid, _, path = hit["ref"].removeprefix("ipfs://").partition("/")
@@ -191,7 +196,7 @@ def test_a_file_that_is_not_text_gives_no_hit_and_is_read_once(
     cids = kept.scope.cids()
     assert kept.hits("not text") == []
     assert kept.files.files[cids["picture/blob.bin"]].lines is None
-    # Read once: a second catch-up reads nothing.
+    # A second catch-up finds nothing new to index.
     assert kept.catch_up() == (2, 0)
 
 
@@ -219,8 +224,8 @@ def test_the_index_follows_the_ledger_by_its_event_count(
     assert kept.catch_up() == (1, 1)
     assert [hit["passage"] for hit in kept.hits("first")] == ["the first line"]
     kept.seal("notes", {"notes.txt": NOTES})
-    # What an index behind the ledger misses is new files, never the
-    # content of old.
+    # An index that has not caught up is missing the newest files. It never has
+    # wrong content for older ones.
     assert len(kept.hits("first")) == 1
     assert kept.catch_up() == (2, 1)
     assert len(kept.hits("first")) == 2

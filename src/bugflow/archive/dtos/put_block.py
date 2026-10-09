@@ -1,4 +1,4 @@
-"""DTOs for PutBlockUseCase: what asks and what comes back."""
+"""The request and response of ``PutBlockUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -6,9 +6,9 @@ from bugflow.shared.domain.values.caller import Caller
 
 
 class PutBlockRequest(BaseModel):
-    """One block of an item a client is about to seal: the CID it
-    claims to be, and the bytes, which are content from a repository
-    under study and are held to the CID before anything is kept."""
+    """One block to store: the CID the client says it has, and its bytes. The
+    bytes are untrusted, and are stored only if they hash to that CID.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -21,5 +21,5 @@ class PutBlockRequest(BaseModel):
 class PutBlockResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    #: Whether the store lacked the block before this put.
+    #: True if the store did not have the block before.
     new: bool

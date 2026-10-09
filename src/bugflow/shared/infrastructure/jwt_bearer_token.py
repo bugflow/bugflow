@@ -1,14 +1,20 @@
-"""Bearer tokens checked here, as an identity provider's JWTs.
+"""Checks a bearer token that is a JWT signed by an identity provider.
 
-A token is accepted when it is signed with one of the provider's
-published keys, names the provider as its issuer, is addressed to this
-server, has not expired, and was issued to a client this server
-expects. The provider is asked for its keys and never about a token,
-so a check costs no call to it once the keys are held.
+A token is accepted when all of these hold:
 
-Nothing here is one provider's. Where its keys are is read from what
-it publishes about itself, and which claim carries a person's roles is
-given, since providers differ.
+- it is signed with one of the provider's public keys;
+- its issuer is the provider;
+- its audience is this server;
+- it has not expired;
+- it was issued to one of the clients this server expects.
+
+The check is done here, with the provider's public keys. The provider is
+asked for its keys, and those are cached; it is not asked about each token.
+
+Nothing here is specific to one provider. The address of the keys is read
+from the provider's OpenID Connect discovery document. The name of the
+claim that lists a person's roles is a setting, because providers use
+different names.
 """
 
 import json
@@ -22,21 +28,24 @@ import jwt
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.values.caller import Caller
 
-#: A clock a second ahead of the provider's makes a fresh token "not yet
-#: valid" without it.
+#: Seconds of clock difference allowed between this server and the
+#: provider. Without it, a token issued a moment ago can be refused as
+#: "not yet valid".
 LEEWAY_SECONDS = 60
 
-#: How long the provider is waited for, in seconds, when it is asked
-#: what it publishes or for its keys.
+#: Seconds to wait for the provider when fetching its discovery
+#: document or its keys.
 WAIT_SECONDS = 10
 
-#: The key a token was signed with, found from the token's header.
+#: A function that takes a token and returns the public key it was
+#: signed with.
 type SigningKey = Callable[[str], Any]
 
 
 def _published(issuer: str) -> dict[str, Any]:
-    """What the provider publishes about itself (OpenID Connect
-    Discovery)."""
+    """Fetch the provider's OpenID Connect discovery document: a JSON object
+    at a standard path that says, among other things, where its keys are.
+    """
     url = f"{issuer.rstrip('/')}/.well-known/openid-configuration"
     with urllib.request.urlopen(url, timeout=WAIT_SECONDS) as answered:
         found = json.load(answered)
@@ -49,9 +58,15 @@ def published_keys(
     issuer: str,
     published: Callable[[str], dict[str, Any]] = _published,
 ) -> SigningKey:
-    """The provider's keys, found at the ``jwks_uri`` it publishes, then
-    fetched and cached. The provider is first asked when the first token
-    is checked, so a server starts while its provider is away."""
+    """Return a function that finds the public key a token was signed with.
+
+    The function reads the address of the keys (``jwks_uri``) from the
+    provider's discovery document, then fetches and caches the keys. It
+    first contacts the provider when the first token is checked, not when
+    the server starts, so the server can start while the provider is down.
+
+    ``published`` replaces the fetch of the discovery document, for tests.
+    """
     lock = Lock()
     clients: list[jwt.PyJWKClient] = []
 
@@ -70,9 +85,13 @@ def published_keys(
 
 
 class JwtBearerToken:
-    """Satisfies ``BearerTokenService`` for tokens ``issuer`` signs,
-    addressed to ``audience``, from one of ``clients``, with a person's
-    roles in the claim ``roles_claim``."""
+    """Implements ``BearerTokenService`` for JWTs.
+
+    ``issuer`` is the provider's address. ``audience`` is the audience a
+    token must have. ``clients`` are the client ids a token may be issued
+    to. ``key`` finds the public key for a token. ``roles_claim`` is the
+    name of the claim that lists the person's roles.
+    """
 
     def __init__(
         self,
@@ -94,8 +113,9 @@ class JwtBearerToken:
         except jwt.PyJWTError as exc:
             raise TokenRefusedError(str(exc)) from exc
         except (OSError, ValueError, KeyError) as exc:
-            # The provider could not be asked, or what it publishes
-            # names no keys: nobody can be vouched for.
+            # The provider could not be reached, or its discovery
+            # document does not say where its keys are. Without keys no
+            # token can be checked, so the token is refused.
             raise TokenRefusedError(
                 f"the provider's keys could not be had: {exc}"
             ) from exc
@@ -113,9 +133,10 @@ class JwtBearerToken:
             raise TokenRefusedError(str(exc)) from exc
         client = str(claims.get("client_id") or claims.get("azp") or "")
         if client not in self._clients:
-            # A token taken from elsewhere and presented here is
-            # addressed to this server too; the client is what says it
-            # did not come through one this server expects.
+            # A valid token issued to some other application has the
+            # right issuer and audience too. The client id is what
+            # shows it was not issued to an application this server
+            # expects.
             raise TokenRefusedError(f"issued to {client or 'no client'}")
         roles = claims.get(self._roles_claim) or []
         if not isinstance(roles, list):

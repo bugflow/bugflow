@@ -1,4 +1,4 @@
-"""DTOs for SearchArchiveUseCase: what asks and what comes back."""
+"""The request and response of ``SearchArchiveUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -11,13 +11,13 @@ class SearchArchiveRequest(BaseModel):
 
     ledger_id: str
     caller: Caller
-    #: The query, as the mode reads it.
+    #: What to search for. How it is read depends on the mode.
     query: str
-    #: A mode describe lists, or None for literal.
+    #: One of the modes the server offers. None means ``literal``.
     mode: str | None = None
-    #: The most hits to answer with, or None for the keeper's own cap.
+    #: The most results to return. None means the server's own limit.
     limit: int | None = None
-    #: A CID the ledger enrols, to search beneath, or None for all of it.
+    #: A CID to search inside. None means the whole ledger.
     within: str | None = None
 
 

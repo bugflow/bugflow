@@ -1,4 +1,6 @@
-"""Inventory from the sealing library's chain, with no bucket reads."""
+"""Works out a ledger's inventory from its stored events, using pyposlib. It
+reads only the events, never the object store.
+"""
 
 import json
 
@@ -67,8 +69,8 @@ class PyposlibInventory:
         try:
             folded = dict(archive_integrity.fold(entries, empty))
         except Refused:
-            # Entries of a schema that records no CID fold to nothing,
-            # and no reference names them.
+            # An old ledger whose events record no CIDs has no archive CIDs to
+            # work out, so no reference can point into it.
             folded = {}
         return ArchiveInventory(
             events=len(events),

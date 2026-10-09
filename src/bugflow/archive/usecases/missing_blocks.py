@@ -1,9 +1,9 @@
-"""Use case: say which blocks of some a client holds are not kept.
+"""Use case: say which of a list of blocks the server does not have. This is
+the protocol's "held" operation, in version 2.
 
-The remote archive protocol's held, version 2. A client about to seal
-asks it before putting, and again when it resumes after an
-interruption, so that it puts only what the keeper lacks. Asked by one
-who may append to the ledger, as a put is the first half of an append.
+A client asks before uploading, and again when resuming an interrupted
+upload, so that it uploads only what is missing. The caller must be allowed
+to append, since uploading blocks is the first step of an append.
 """
 
 from bugflow.archive.domain.admission import admitted
@@ -19,8 +19,9 @@ from bugflow.archive.dtos.missing_blocks import (
 
 
 class MissingBlocksUseCase:
-    """Given some CIDs and a caller who may append to the ledger,
-    answers with those no block is held for."""
+    """Takes a list of CIDs and a caller allowed to append to the ledger.
+    Returns the CIDs the server has no block for.
+    """
 
     def __init__(
         self,

@@ -1,4 +1,4 @@
-"""A database url reaches SQLAlchemy naming the driver it is to use."""
+"""Tests of ``engine_url``, which adds the driver name to a Postgres URL."""
 
 from bugflow.shared.infrastructure.database import engine_url
 

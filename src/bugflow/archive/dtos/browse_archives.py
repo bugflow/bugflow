@@ -1,4 +1,6 @@
-"""Requests and responses for the administrator's archive browser."""
+"""The requests and responses of the use cases behind an administrator's
+archive pages.
+"""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -49,8 +51,7 @@ class LocateArchivedReferenceRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     ledger_id: str
-    #: ``ipfs://{cid}/{path}``, as a sealed item's links and a search
-    #: hit's ``ref`` name a file.
+    #: A reference to a file: ``ipfs://{cid}/{path}``.
     reference: str
 
 
@@ -58,13 +59,15 @@ class LocateArchivedReferenceResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     binding: ArchiveBinding
-    #: Each place the reference's file is enrolled, in order of path.
+    #: Every place the file appears in the ledger, sorted by path.
     places: tuple[EnrolledPlace, ...]
 
 
 class SearchBoundArchiveRequest(BaseModel):
-    """The remote archive protocol's search parameters, for one bound
-    ledger and no caller."""
+    """A search of one registered ledger, with the same parameters as the
+    protocol's search. It names no caller: see
+    ``usecases/browse_archives.py``.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -79,7 +82,8 @@ class LocatedHit(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     hit: SearchHit
-    #: Where the hit's file is enrolled, for a link to its bundle.
+    #: Where the result's file appears in the ledger, so a page can
+    #: link to its bundle.
     places: tuple[EnrolledPlace, ...]
 
 
@@ -87,5 +91,5 @@ class SearchBoundArchiveResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     binding: ArchiveBinding
-    #: The hits a client of the protocol is answered, in its order.
+    #: The results, in the order the protocol's search returns them.
     hits: tuple[LocatedHit, ...]

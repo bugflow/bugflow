@@ -1,9 +1,8 @@
-"""Use case: bring a kept ledger's search index up to its events.
+"""Use case: bring a ledger's search index up to date.
 
-Run by the worker, for every bound ledger on a schedule and for one
-after an append; no caller is asked after, since nothing is answered to
-anyone. A ledger nobody bound is refused as absent: this server keeps,
-and so indexes, an archive only where an operator said so.
+A worker runs it: on a schedule for every registered ledger, and for one
+ledger after an append. It takes no caller, because it returns nothing to
+anyone outside. A ledger that is not registered is refused as "absent".
 """
 
 from bugflow.archive.domain.errors import ArchiveRefusedError
@@ -16,8 +15,9 @@ from bugflow.archive.dtos.index_archive import (
 
 
 class IndexArchiveUseCase:
-    """Given a bound ledger, reads the events its index has not read and
-    answers with how far it got."""
+    """Takes a registered ledger. Indexes the events the index has not
+    covered, and returns how far it got.
+    """
 
     def __init__(
         self, bindings: BindingRepository, indexing: ArchiveIndexingService

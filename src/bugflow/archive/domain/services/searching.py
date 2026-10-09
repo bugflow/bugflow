@@ -1,11 +1,10 @@
-"""Interface: the search operation of the remote archive protocol,
-for the ledger named.
+"""The interface for searching a ledger's files.
 
-Section 12 of poslib's ``doc/remote-archive-protocol.txt``: hits in the
-archive's order in ``literal`` and ``regex``, in order of score in a
-ranked mode, each a reference, a range and the passage there, which a
-read at the reference gives byte for byte. How an implementation finds
-them is its own.
+The operation is defined in section 12 of the remote archive protocol
+(poslib's ``doc/remote-archive-protocol.txt``). Each result is a reference
+to a file, a range of lines, and the text of those lines. In the
+``literal`` and ``regex`` modes, results come in the archive's own order.
+In a mode that ranks, they come best first.
 """
 
 from typing import Protocol
@@ -16,8 +15,7 @@ from bugflow.archive.domain.models.search_hit import SearchHit
 class ArchiveSearchService(Protocol):
     @property
     def modes(self) -> tuple[str, ...]:
-        """The modes searched in, ``literal`` among them, as describe
-        lists them."""
+        """The search modes offered. ``literal`` is always one of them."""
         ...
 
     def search(
@@ -28,10 +26,13 @@ class ArchiveSearchService(Protocol):
         limit: int | None = None,
         within: str | None = None,
     ) -> list[SearchHit]:
-        """Where ``query`` is found in the files the ledger enrols: in
-        ``literal`` where ``mode`` is None, at most ``limit`` hits, and
-        beneath the CID ``within`` where it is given. Refused as mode
-        for a mode not served, as absent for a ``within`` the ledger
-        does not enrol, as request for a query or limit not as the
-        protocol has them."""
+        """Search the ledger's files for ``query``.
+
+        ``mode`` defaults to ``literal``. ``limit`` is the most results to
+        return. ``within``, a CID, restricts the search to that file or
+        directory.
+
+        Refuses as "mode" for a mode not offered, as "absent" if ``within``
+        is not in the ledger, and as "request" for a bad query or limit.
+        """
         ...

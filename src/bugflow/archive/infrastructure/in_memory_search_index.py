@@ -1,7 +1,7 @@
-"""The search index held in memory, for tests.
+"""A search index kept in memory, for tests.
 
-Matching is Python's: ``in`` for literal and ``re`` for regex, which is
-what the sealing library's own adapters match with.
+It matches with Python: ``in`` for the literal mode and the ``re`` module
+for regex. pyposlib's own search matches the same way.
 """
 
 import re

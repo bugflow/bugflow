@@ -1,8 +1,8 @@
-"""What was put in an object store is read back as it was written.
+"""Tests that an object store returns what was stored.
 
-The S3 adapter is run over a real boto3 client whose answers botocore's
-own stubber supplies, so the calls it makes and the errors it reads are
-the service's shapes and not a double's.
+The S3 store is tested with a real boto3 client. botocore's ``Stubber``
+supplies the service's answers, so no network is used but the requests and
+error formats are the real ones.
 """
 
 from __future__ import annotations
@@ -80,8 +80,10 @@ def test_an_object_that_is_not_in_the_bucket_is_absent_not_an_error(
 def test_a_bucket_that_cannot_be_read_says_so(
     s3: tuple[S3ObjectStore, Stubber], operation: str
 ) -> None:
-    """Refused access is not absence: a reader whose store is down must
-    not be told the bytes were never there."""
+    """An "access denied" from the bucket must raise an error. It must not be
+    reported as "no such object", or a caller would wrongly conclude the
+    data was never stored.
+    """
     store, stubber = s3
     stubber.add_client_error(
         operation, service_error_code="AccessDenied", http_status_code=403

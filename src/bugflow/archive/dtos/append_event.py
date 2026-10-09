@@ -1,4 +1,4 @@
-"""DTOs for AppendEventUseCase: what asks and what comes back."""
+"""The request and response of ``AppendEventUseCase``."""
 
 from pydantic import BaseModel, ConfigDict
 
@@ -6,15 +6,20 @@ from bugflow.shared.domain.values.caller import Caller
 
 
 class AppendEventRequest(BaseModel):
-    """One event of a ledger, as a client that sealed it sends it: the
-    ledger file's name and bytes, the files it or earlier events enrol by
-    their CIDs, and what the client says of where the event came from.
-    ``following`` is the ledger's later events, each a file's name and
-    bytes in order, that a client sends with an event that names no
-    ledger: by them the keeper knows whose the event is, and it keeps
-    none of them. All of it is content from a repository under study and
-    none of it is trusted: the event, the files and the later events are
-    verified, the claims recorded."""
+    """One event sent by a client, to be checked and stored.
+
+    ``name`` is the event's file name and ``data`` its bytes. ``files`` are
+    the files the event adds, by CID. ``claims`` is what the client says
+    about where the event came from.
+
+    ``following`` is only for old ledgers whose first events carry no
+    ledger id: it is the events that come after this one, sent so the
+    server can tell which ledger this event belongs to. They are checked
+    and not stored.
+
+    Everything here comes from outside and is untrusted. The event, the
+    files and the later events are checked; the claims are only recorded.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -28,7 +33,7 @@ class AppendEventRequest(BaseModel):
 
 
 class AppendEventResponse(BaseModel):
-    """What is kept of the ledger after the event."""
+    """What is stored of the ledger after the append."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -39,6 +44,6 @@ class AppendEventResponse(BaseModel):
     erased: tuple[str, ...]
     protocols: tuple[int, ...] = (1, 2)
     retiring: tuple[tuple[int, str], ...] = ()
-    # False when the event was already the ledger's event of that number,
-    # and sending it again changed nothing.
+    # False if this exact event was already stored at that number, so
+    # sending it again changed nothing.
     appended: bool

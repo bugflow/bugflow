@@ -1,11 +1,12 @@
-"""Use case: bind a ledger to a scope of a repository.
+"""Use case: register a ledger, so that this server stores its archive.
 
-Only this binds one. A ledger nobody bound is kept for no one,
-so a client with a repository's commit access cannot start a new ledger
-and have it kept in the scope's name: an operator has to say so, here,
-and the saying is a fact in the journal. Binding a ledger again
-elsewhere, or a second ledger to a scope that has one, is the same act
-and recorded the same way, with what it replaced or stands beside.
+This is the only way a ledger becomes registered. A client cannot do it by
+uploading. Otherwise anyone with commit access to a repository could start
+a new ledger and have it stored as that repository's archive.
+
+Every registration is written to the journal as ``archive.bound``,
+including a change of what a ledger is registered for, with what it
+replaced and which other ledgers the same scope has.
 """
 
 from bugflow.archive.domain import facts
@@ -20,15 +21,17 @@ from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.services.recording import RecordingService
 
-# A binding is declared by an operator at a command line, not run in a
-# workflow, so it carries a correlation naming what recorded it.
+# A journal entry names the workflow that recorded it. A registration
+# comes from an operator's command and not from a workflow, so its
+# entries use this fixed name in that place.
 WORKFLOW_ID = "archive/bound"
 
 
 class BindLedgerUseCase:
-    """Given a ledger and a scope of a repository, answers with whether
-    the binding was made, what it replaced, and which other ledgers the
-    scope already had."""
+    """Takes a ledger id, a repository and a scope. Returns whether anything
+    changed, what the ledger was registered for before, and the scope's
+    other ledgers.
+    """
 
     def __init__(
         self,
@@ -61,9 +64,10 @@ class BindLedgerUseCase:
         )
         bound = previous != binding
         if bound:
-            # The fact first, the row second: a row whose fact could not
-            # be written would be a binding nobody can be shown was made,
-            # and a second attempt would find it made and record nothing.
+            # Write the journal entry before saving the binding. If it
+            # were the other way round and the journal write failed, the
+            # binding would exist with no record of it, and a retry
+            # would see nothing to change and record nothing.
             self._journal.append([self._entry(binding, previous, beside)])
             self._bindings.save(binding)
         return BindLedgerResponse(

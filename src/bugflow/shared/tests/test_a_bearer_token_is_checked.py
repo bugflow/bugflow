@@ -1,9 +1,8 @@
-"""A bearer token, checked as an identity provider's JWT.
+"""Tests of the JWT bearer token check.
 
-The provider is stood in for by a key made here: a token is accepted
-when that key signed it, it names the issuer, is addressed to this
-server, has not expired, and was issued to a client this server
-expects. Each refusal is one of those failing.
+The tests play the identity provider: they make a key pair, sign tokens
+with it, and give the checker the public key. Each refusal test changes one
+thing about an otherwise valid token.
 """
 
 import time
@@ -29,8 +28,9 @@ OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
 
 def token(signer: Any = KEY, **claims: Any) -> str:
-    """A token as the provider issues one, with ``claims`` replacing
-    its own; a claim given as None is left out."""
+    """Make a signed token with sensible claims. Keyword arguments replace
+    claims; a claim set to None is left out.
+    """
     now = int(time.time())
     held = {
         "iss": ISSUER,
@@ -112,8 +112,8 @@ def test_the_keys_are_found_where_the_provider_says_and_asked_for_once() -> (
     key = published_keys(ISSUER, published)
     assert asked == []
 
-    # Nothing listens at the address, so each lookup fails, having
-    # asked the provider where its keys are the first time only.
+    # Nothing is listening at that address, so fetching the keys fails
+    # both times. The discovery document should be asked for only once.
     for _ in range(2):
         with pytest.raises(jwt.PyJWTError):
             key(token())

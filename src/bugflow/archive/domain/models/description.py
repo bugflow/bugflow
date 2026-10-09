@@ -1,4 +1,6 @@
-"""What is kept of a ledger, as the remote archive protocol describes it."""
+"""The description of a ledger: what the server currently stores of it. This
+is what the protocol's "describe" operation answers.
+"""
 
 from dataclasses import dataclass
 
@@ -6,17 +8,19 @@ from dataclasses import dataclass
 @dataclass(frozen=True, kw_only=True)
 class Description:
     ledger_id: str
-    #: What names the ledger's last event, its hash or its CID, or None
-    #: for a ledger with no event kept.
+    #: The name of the ledger's latest event (its hash or its CID), or
+    #: None if no event is stored.
     head: str | None
-    #: How many events are kept.
+    #: The number of events stored.
     events: int
-    #: The root the last event recorded, or None.
+    #: The root CID of the archive as the latest event recorded it, or
+    #: None.
     root: str | None
-    #: The CIDs whose bytes were erased, sorted.
+    #: CIDs whose bytes have been deleted on request, sorted.
     erased: tuple[str, ...] = ()
-    #: The versions of the protocol the keeper serves, ascending, and
-    #: by version the date after which it may stop serving one.
+    #: ``protocols`` is the protocol versions this server serves, in
+    #: ascending order. ``retiring`` gives, for a version about to be
+    #: dropped, the date after which it may be.
     protocols: tuple[int, ...] = (1, 2)
     retiring: tuple[tuple[int, str], ...] = ()
 
@@ -24,6 +28,6 @@ class Description:
 @dataclass(frozen=True, kw_only=True)
 class Appended:
     description: Description
-    #: False when the event was already the ledger's event of that
-    #: number, and appending it again changed nothing.
+    #: False if this exact event was already stored at that number, so
+    #: the append changed nothing.
     appended: bool

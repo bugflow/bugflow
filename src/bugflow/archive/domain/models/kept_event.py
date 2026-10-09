@@ -1,10 +1,12 @@
-"""An event of a ledger, as this server keeps it.
+"""An event of a ledger, as stored on this server.
 
-A scope's ledger stays with the scope; what is kept here is a copy of
-each event, so that what a client sends next can be verified against
-the chain so far and the two copies can be compared. The
-bytes are the ledger file's, untouched: an event's name is its hash or
-its CID, and a byte changed would be another event.
+The ledger itself lives in the repository it belongs to. This server stores
+a copy of each event. The copy is needed to check the next event a client
+sends, since each event must follow the one before, and it lets the
+server's copy be compared with the repository's.
+
+The event's bytes are stored exactly as received. An event is named by a
+hash of its bytes, so changing one byte would make it a different event.
 """
 
 from dataclasses import dataclass, field
@@ -13,17 +15,17 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True, kw_only=True)
 class KeptEvent:
     ledger_id: str
-    #: The event's place in the ledger, counting from 1 without gaps.
+    #: The event's position in the ledger: 1, 2, 3 and so on.
     number: int
-    #: The ledger file's name, its number and what names the event.
+    #: The event's file name: its number, then its hash or CID.
     name: str
-    #: The ledger file's bytes.
+    #: The event file's bytes, exactly as received.
     data: bytes
-    #: What the client said of where the event came from: the
-    #: repository, the commit, the scope. Its words, recorded as said
-    #: and verified by nobody.
+    #: What the client said about where the event came from, such as
+    #: the repository and the commit. Stored as given. The server does
+    #: not check any of it.
     claims: dict[str, str] = field(default_factory=dict)
-    #: Who appended it, as the token said: the subject.
+    #: Who sent it: the subject from the caller's token.
     caller: str = ""
 
     def __post_init__(self) -> None:

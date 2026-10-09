@@ -1,9 +1,10 @@
-"""The ledgers whose archives this server keeps, in the domain Postgres.
+"""The store of bindings, in Postgres.
 
-Operational storage, not the journal: the journal holds the fact that a
-binding was made, and this holds what is bound now. One row per ledger;
-a ledger with no row is kept for no one. The table is created from its
-definition here.
+One row for each registered ledger. A ledger with no row is not stored by
+this server.
+
+This table holds the current state. The journal separately records each
+time a ledger was registered.
 """
 
 import sqlalchemy as sa

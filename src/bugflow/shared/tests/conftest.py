@@ -1,4 +1,4 @@
-"""A database holding the journal, for the tests that need one."""
+"""Test fixtures: a temporary database with the journal table in it."""
 
 from collections.abc import Iterator
 

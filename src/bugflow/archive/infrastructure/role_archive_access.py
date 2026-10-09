@@ -1,15 +1,16 @@
-"""Archive access by two roles at the identity provider.
+"""Access to archives decided by two roles.
 
-The first answer to the archive access port: a caller holding the
-reading role may read every ledger kept here, and one holding the
-writing role may append to every one, and read it, since a client that
-seals has to ask what is kept before it sends. The identity provider
-carries roles and knows nothing about content, so revoking a role there
-ends a person's access whatever a repository says. It does not say
-which ledgers a person may reach: a holder reaches every one.
+A caller with the reader role may read every ledger stored here. A caller
+with the writer role may append to every ledger, and read it too, since a
+client has to ask what is stored before it sends.
 
-Which two roles is a deployment's answer: the provider it signs people
-in at names its roles, so this is given them and holds no name itself.
+The roles come from the identity provider, in the caller's token. Taking a
+role away there ends the person's access.
+
+This does not give access ledger by ledger: a role covers all of them.
+
+The names of the two roles are passed in. They belong to whoever runs the
+server, because each identity provider names its own roles.
 """
 
 from dataclasses import dataclass
@@ -19,8 +20,8 @@ from bugflow.shared.domain.values.caller import Caller
 
 @dataclass(frozen=True)
 class RoleArchiveAccess:
-    #: The role that reads every ledger kept, and the role that appends
-    #: to every one, as the provider's tokens carry them.
+    #: The name of the role that may read every ledger, and the name of the
+    #: role that may also append, as they appear in a token.
     reader: str
     writer: str
 

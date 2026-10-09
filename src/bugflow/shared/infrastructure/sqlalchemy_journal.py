@@ -1,11 +1,11 @@
-"""The journal in Postgres: fact rows that are appended and never changed.
+"""The journal stored in a Postgres table.
 
-The table's columns are a published contract: whoever reads the journal
-depends on them. A column may be added that existing writers can
-ignore; none is removed, retyped or tightened.
+Other software reads this table, so its columns are a contract. A new
+column may be added if existing writers can ignore it. No column is
+removed, changed in type, or made stricter.
 
-The database itself refuses to change a row. Two triggers reject an
-update, a delete and a truncate.
+The database itself stops a row being changed: two triggers reject any
+UPDATE, DELETE or TRUNCATE on the table.
 """
 
 from collections.abc import Sequence
@@ -49,7 +49,8 @@ journal = sa.Table(
     sa.Index("journal_build_idx", "build", "occurred_at"),
 )
 
-# Sent to the driver as written, where a percent sign is doubled.
+# These statements go to the database driver unprocessed, and the
+# driver needs a literal percent sign written twice.
 _APPEND_ONLY = (
     """
     CREATE OR REPLACE FUNCTION journal_reject_change() RETURNS trigger
@@ -69,9 +70,9 @@ _APPEND_ONLY = (
 
 
 def create_tables(database_url: str) -> None:
-    """Create the journal's table in a database that lacks it, and see
-    that its triggers are in place. A table already there is left as it
-    is."""
+    """Create the journal table if the database does not have it, and make
+    sure its two triggers exist. An existing table is not altered.
+    """
     engine = sa.create_engine(engine_url(database_url))
     try:
         metadata.create_all(engine)
@@ -87,16 +88,15 @@ class SqlAlchemyJournal:
         self._engine = sa.create_engine(
             engine_url(database_url), pool_pre_ping=True
         )
-        #: Written on every row this adapter appends. The application
-        #: names it, being the one place that knows which build it is.
+        #: Stored in the ``build`` column of every row this adapter
+        #: writes. The application passes it in.
         self._build = build
 
     def append(self, entries: Sequence[JournalEntry]) -> None:
         if not entries:
             return
-        # The adapter's build, not the entry's: what wrote the row is a
-        # fact about this process, so a build an entry arrives with is
-        # replaced and not trusted.
+        # Always store this adapter's build, even if the entry carries
+        # one: the build is about the process doing the writing.
         rows = [asdict(entry) | {"build": self._build} for entry in entries]
         statement = (
             insert(journal)
