@@ -1,0 +1,7 @@
+{
+  "number": 6,
+  "title": "Say what a retry waits for",
+  "body": "The retry comment said only that it waits. It now says what for.",
+  "head": {"ref": "explain-the-retry"},
+  "base": {"ref": "master"}
+}
