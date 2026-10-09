@@ -57,3 +57,17 @@ STOCKTAKE_TAKEN = "stocktake.taken"
 #: A pull request was merged. The forge context records this fact. This
 #: context only reads it, to learn what a stocktake's range holds.
 PR_MERGED = "pr.merged"
+
+#: A stocktake's review was handed to a runner, or could not be. The
+#: payload's ``step`` says which.
+STOCKTAKE_DISPATCHED = "stocktake.dispatched"
+
+#: A stocktake's review finished. The payload has its outcome, its cost
+#: and its write-up.
+STOCKTAKE_REVIEWED = "stocktake.reviewed"
+
+#: One finding of a stocktake's review.
+STOCKTAKE_FOUND = "stocktake.found"
+
+#: A grader read a stocktake's write-up and gave a verdict.
+STOCKTAKE_GRADED = "stocktake.graded"
