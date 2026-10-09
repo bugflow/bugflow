@@ -18,6 +18,7 @@ from bugflow.archive.infrastructure import (
     sqlalchemy_kept_events,
     sqlalchemy_search_index,
 )
+from bugflow.forge.infrastructure import sqlalchemy_snapshots
 from bugflow.shared.infrastructure import sqlalchemy_journal
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.migrations import VERSION_TABLE, upgrade
@@ -32,6 +33,7 @@ def defined() -> sa.MetaData:
         sqlalchemy_block_puts.metadata,
         sqlalchemy_search_index.metadata,
         sqlalchemy_journal.metadata,
+        sqlalchemy_snapshots.metadata,
     ):
         for table in metadata.tables.values():
             table.to_metadata(together)

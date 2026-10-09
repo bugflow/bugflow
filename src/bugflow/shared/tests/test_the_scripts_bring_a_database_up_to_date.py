@@ -20,7 +20,7 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0002"
+LAST = "0003"
 
 
 @pytest.fixture
