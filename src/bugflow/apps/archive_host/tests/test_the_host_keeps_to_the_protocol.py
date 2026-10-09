@@ -1,14 +1,20 @@
-"""The archive host, held to the remote archive protocol.
+"""Tests that the archive host follows the remote archive protocol.
 
-The protocol's own fixtures decide whether it is one: poslib's tapes,
-each a sequence of exchanges a keeper must answer as recorded. They are
-replayed here by pyposlib's client, which makes the requests as the
-tapes record them, against the host over the real keeper with its
-storage in memory. The rest is what the protocol leaves to a keeper:
-who is calling, which ledger a host names, and how much is taken.
+The protocol comes with recorded conversations, called tapes. A tape is a
+JSON file listing requests in order and the answer a correct server must
+give to each. They are written by poslib, the library that defines the
+protocol. The files in ``tapes/`` are copies of poslib's.
 
-The token check is stood in for by a table of tokens, since what a
-token is worth is the bearer token adapter's own test.
+The main test here plays each tape's requests at the host and fails if any
+answer differs from the recording. It uses pyposlib's own client to send
+them, so the requests are exactly what a real sealing tool sends.
+
+The other tests cover what the protocol leaves to each server: checking who
+is calling, working out which ledger a request is for, and limiting how
+much a request may send.
+
+The host under test keeps everything in memory. Tokens are looked up in a
+small table here; real token checking has its own tests.
 """
 
 import asyncio
@@ -96,11 +102,13 @@ class Clock:
 
 
 class Host:
-    """The archive host with one ledger bound and nothing kept of it,
-    serving the versions of the protocol it is told to. With
-    ``searches``, the modes, it searches too, from an index an append
-    brings up to date before it answers, as the worker does between
-    requests."""
+    """The archive host set up for a test: one ledger registered, nothing
+    stored in it yet, everything kept in memory.
+
+    ``protocols`` is which protocol versions it serves. ``searches`` is
+    which search modes it offers; when given, the search index is updated
+    straight after every append, so a test can search at once.
+    """
 
     def __init__(
         self,
@@ -177,8 +185,9 @@ class Host:
         return self.client.request(method, path, headers=sent, content=body)
 
     def keeper(self, token: str = "tape-token") -> Any:
-        """pyposlib's client of the protocol, its requests made of the
-        host."""
+        """pyposlib's protocol client, wired to send its requests to this
+        host.
+        """
 
         def send(
             method: str, url: str, headers: Mapping[str, str], body: bytes
@@ -199,9 +208,9 @@ def refused(answered: Any) -> tuple[int, str]:
 
 
 def test_there_are_tapes_to_hold_it_to() -> None:
-    """They are poslib's, copied from its fixtures/remote at a commit the
-    tapes directory names. Without them the test below would replay
-    nothing and pass."""
+    """Check that all seven tapes are present. If the directory were empty,
+    the replay test below would run zero times and look like a pass.
+    """
     assert [tape.name for tape in TAPES] == [
         "tape-blocks.json",
         "tape-first-events-unnamed.json",
@@ -215,11 +224,13 @@ def test_there_are_tapes_to_hold_it_to() -> None:
 
 @pytest.mark.parametrize("tape", TAPES, ids=lambda tape: tape.stem)
 def test_a_tape_s_requests_are_answered_as_it_records(tape: Path) -> None:
-    """Each request in order, from a ledger with nothing kept: the
-    status recorded, and the body recorded, or for a refusal its kind.
-    A tape that says which ledger its keeper keeps names the one bound
-    here, the host serves the versions the tape's keeper did, and it
-    searches in the modes the tape's keeper did."""
+    """Play one tape at a fresh host and compare every answer with the
+    recording: the status and the body, or for a refusal the kind of
+    refusal.
+
+    A tape may say which ledger, protocol versions and search modes its
+    server had. The host is set up to match.
+    """
     recorded = json.loads(tape.read_text())
     assert recorded.get("ledger_id", LEDGER) == LEDGER
     host = Host(
@@ -300,9 +311,10 @@ WELL_KNOWN = "/.well-known/oauth-protected-resource"
 def test_a_refusal_for_want_of_a_token_says_where_to_learn_to_sign_in() -> (
     None
 ):
-    """As the protocol lets a keeper say. The address is at the origin
-    the request was made to, which behind an edge that ends TLS is the
-    one the edge names."""
+    """A request with no token is refused, and the refusal gives a URL that
+    explains how to sign in. The URL uses https when the proxy in front of
+    the host says the request arrived over https.
+    """
     answered = Host(sign_in=SIGN_IN).request(
         "GET", "/", token=None, headers={"X-Forwarded-Proto": "https"}
     )
@@ -314,8 +326,9 @@ def test_a_refusal_for_want_of_a_token_says_where_to_learn_to_sign_in() -> (
 
 
 def test_how_to_sign_in_is_told_to_anyone_at_any_host() -> None:
-    """No token is needed to learn how to get one, and the answer is the
-    same of a ledger's host, of one nobody bound, and of none."""
+    """The sign-in instructions need no token, and are the same whichever host
+    name is asked: a registered ledger's, an unregistered one's, or none.
+    """
     host = Host(sign_in=SIGN_IN)
 
     for ledger in (LEDGER, UNBOUND, None):
@@ -347,8 +360,10 @@ def test_a_token_that_vouches_for_nobody_is_refused() -> None:
 
 
 class SlowTokens:
-    """A token check that waits, as one does that fetches the issuer's
-    keys, and records whether another request was answered meanwhile."""
+    """A token checker that takes a while, like a real one fetching keys over
+    the network. It records whether another request was answered while it
+    was busy.
+    """
 
     def __init__(self) -> None:
         self.waiting = threading.Event()
@@ -409,8 +424,10 @@ def test_a_ledger_nobody_bound_is_absent_to_one_who_may_read() -> None:
 
 
 def test_a_host_that_names_no_ledger_answers_only_its_healthcheck() -> None:
-    """A deploy's probe asks a route's root whether it answers,
-    with no token and no ledger."""
+    """A request to a host name with no ledger id in it gets a health check at
+    ``/`` and nothing else. Deployment tools use this to see that the
+    server is up.
+    """
     host = Host()
 
     answered = host.request("GET", "/", token=None, ledger=None)
@@ -451,7 +468,10 @@ def test_an_append_is_recorded_with_who_sent_it_and_what_they_claimed(
 def test_what_is_read_is_served_as_bytes_a_browser_must_not_run(
     tmp_path: Path,
 ) -> None:
-    """What a scope sealed is content from a repository under study."""
+    """Stored files are other people's content, so a file is served as plain
+    bytes with headers telling a browser not to run it, even when it is
+    HTML with a script in it.
+    """
     host = Host()
     name, data, files = Scope(tmp_path).seal(
         "first", {"page.html": b"<script>alert(1)</script>"}
@@ -468,9 +488,10 @@ def test_what_is_read_is_served_as_bytes_a_browser_must_not_run(
 
 
 def test_a_path_is_decoded_once(tmp_path: Path) -> None:
-    """A read's path is percent-encoded by the client and decoded by
-    the wire. Decoded again on the way, a name that itself holds an
-    escape would be read as another."""
+    """A file name containing ``%20`` is fetched correctly. The client
+    percent-encodes the path and the server must decode it exactly once;
+    decoding twice would turn the name into a different one.
+    """
     host = Host()
     scope = Scope(tmp_path)
     name, data, files = scope.seal("first", {"a%20b.txt": b"first"})
@@ -497,9 +518,12 @@ def test_an_append_larger_than_is_taken_is_refused_and_keeps_nothing(
 def test_a_block_is_put_before_its_event_and_the_put_is_recorded(
     tmp_path: Path,
 ) -> None:
-    """Version 2: the client asks which blocks are missing, puts them,
-    and appends the event alone; each put is recorded against the
-    ledger and the caller, and a block put again is not new."""
+    """Protocol version 2 uploads a file in pieces, called blocks, before the
+    event that refers to them. The client asks which blocks the server
+    lacks, uploads those, then sends the event. Each upload is recorded
+    with the ledger and the caller, and uploading the same block again is
+    reported as not new.
+    """
     host = Host()
     name, data, files = Scope(tmp_path).seal("first", {"a.txt": b"first"})
     (cid,) = files
@@ -544,8 +568,9 @@ def test_one_who_may_only_read_puts_nothing_and_asks_after_nothing(
 def test_a_block_larger_than_one_leaf_is_refused_whatever_an_append_may_be(
     tmp_path: Path,
 ) -> None:
-    """An append may be as large as the host is told; a block is never
-    more than one raw leaf, so the body is not read past that."""
+    """A block is limited to 1 MiB even when the limit for a whole append is
+    set higher.
+    """
     host = Host(max_upload_bytes=4 * remote.BLOCK_LIMIT)
     _, _, files = Scope(tmp_path).seal("first", {"a.txt": b"first"})
     (cid,) = files
@@ -557,9 +582,10 @@ def test_a_block_larger_than_one_leaf_is_refused_whatever_an_append_may_be(
 
 
 def test_the_versions_served_are_the_host_s_to_say() -> None:
-    """A host told to serve version 2 alone says so and takes no file
-    inside an append; one of version 1 alone describes as that version
-    did and has no blocks."""
+    """The host can be set to serve protocol version 1 only, 2 only, or both,
+    and its description of itself says which. A version 2 only host refuses
+    files sent inside an append; a version 1 only host has no block upload.
+    """
     only_two = Host(protocols=(2,)).keeper().describe()
     assert (only_two["protocol"], only_two["protocols"]) == (2, [2])
     only_one = Host(protocols=(1,)).keeper().describe()
@@ -624,10 +650,9 @@ ENVIRONMENT = {
 def test_it_does_not_start_without_a_way_to_check_or_to_keep(
     missing: str,
 ) -> None:
-    """With no token checked anyone could append; with no role named
-    nobody is admitted; with no bucket an event would be recorded whose
-    bytes are held nowhere; with no database nothing is recorded at
-    all."""
+    """The host refuses to start when a required setting is missing, and the
+    error names the setting.
+    """
     environ = dict(ENVIRONMENT)
     del environ[missing]
 
@@ -644,8 +669,9 @@ def told_to_sign_in(environ: Mapping[str, str]) -> Any:
 
 
 def test_the_scopes_to_sign_in_with_are_the_environment_s() -> None:
-    """A provider that puts roles or an audience in a token only when
-    asked has its own names for asking, so the host holds none."""
+    """The sign-in instructions list the scopes from the ``ARCHIVE_SCOPES``
+    setting, or just ``openid`` when it is not set.
+    """
     assert told_to_sign_in(ENVIRONMENT)["scopes_supported"] == ["openid"]
     assert told_to_sign_in(
         {**ENVIRONMENT, "ARCHIVE_SCOPES": "openid a-scope  another"}

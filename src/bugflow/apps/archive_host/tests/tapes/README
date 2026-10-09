@@ -1,5 +1,13 @@
-The remote archive protocol's tapes, from poslib's fixtures/remote at
-commit b987360c6265cd53d0678b435e50c6d1cc549b37. Each is a sequence of
-exchanges a keeper must answer as recorded. They are copied whole and
-not edited: to move to a later protocol, copy them again from the
-commit pyposlib is then pinned beside.
+These seven files are test data for the remote archive protocol.
+
+Each is a "tape": a recorded conversation between a client and an
+archive server. It lists requests in order and the answer a correct
+server must give to each. The test in
+../test_the_host_keeps_to_the_protocol.py plays each tape at the archive
+host and fails if any answer differs.
+
+They are copied, unchanged, from poslib, the library that defines the
+protocol: its fixtures/remote directory at commit
+b987360c6265cd53d0678b435e50c6d1cc549b37. Do not edit them here. When
+pyposlib is moved to a later version of the protocol, copy them again
+from the matching poslib commit and update the commit named above.

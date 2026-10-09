@@ -1,11 +1,12 @@
-"""The host assembled from its environment, over a real database.
+"""Tests that start the archive host the way uvicorn does, from environment
+variables, against a real database.
 
-The protocol test gives the host its adapters by hand. This one starts
-it as uvicorn does, so what is checked is the assembly: the settings
-read, the tables made, and a token's roles read from the claim the
-environment names.
+The protocol test builds the host by hand with in-memory parts. These tests
+check the part it skips: that the settings are read, that the tables are
+created at start-up, and that a caller's roles are read from the token
+claim the settings name.
 
-Skipped unless DATABASE_URL names a Postgres.
+Skipped unless DATABASE_URL names a Postgres server.
 """
 
 import time

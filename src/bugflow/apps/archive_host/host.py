@@ -1,41 +1,37 @@
-"""The archive host: a keeper of the remote archive protocol, over HTTP.
+"""The archive host: a web server that stores sealed archives.
 
-A ledger bound here has a base URL of its own, the host whose first
-label is the ledger's id, and the protocol's requests are made beneath
-it. One origin for each ledger, because what an archive holds is
-content somebody else wrote: served from an origin of its own, it can
-reach nothing a browser holds for another.
+It speaks the remote archive protocol, which poslib defines. A sealing tool
+on someone's machine sends it the events of a ledger and the files those
+events refer to; it checks them, stores them, and serves them back.
 
-The wire is the sealing library's: each request is handed to pyposlib's
-``handle``, which reads it as the protocol writes it and asks a keeper.
-The keeper it is given here is the archive context's use cases for the
-ledger and the caller, so who may read and append is decided there, and
-what is kept is verified there.
+Each ledger has its own host name: the ledger's id, a UUID, is the first
+part of the name. A request for ledger ``1a2b...`` is sent to
+``1a2b....archive.example``. One host name per ledger keeps a browser from
+mixing up cookies or scripts between ledgers, since stored files are other
+people's content.
 
-Every request to a ledger carries a bearer token, checked here before
-anything else is read. A refused token answers 401, a caller without
-access 403 and a ledger not bound 404, in that order, so nobody without
-access learns which ledgers are kept. An append's body is not read
-until its caller is known to be allowed the ledger, and is refused as
-size beyond ``ARCHIVE_MAX_UPLOAD_BYTES``. Under version 2 of the
-protocol a block is put on its own, at most one raw leaf, and the
-blocks a client asks after come as a list; neither body is read beyond
-a block's size, whatever an append is allowed. The versions served are
-``ARCHIVE_PROTOCOLS``, and ``ARCHIVE_RETIRING`` names the date after
-which one may stop being served.
+This module does not implement the protocol. pyposlib's ``remote.handle``
+reads each request and decides which operation it is. This module gives
+``handle`` an object whose methods are the archive's use cases, and adds
+what the protocol leaves to each server:
 
-A person's sealing tool has to get that token somewhere, so the host
-says how, as the protocol lets a keeper say: a 401 names an address, and
-at that address, with no token, is the issuer, the scopes to ask for and
-the public client to sign in as.
+- Who is calling. Every request for a ledger needs a bearer token. No valid
+  token answers 401, a caller without the right role 403, and a ledger that
+  is not registered 404, checked in that order so that a stranger cannot
+  find out which ledgers exist.
+- How much may be sent. An append is limited to
+  ``ARCHIVE_MAX_UPLOAD_BYTES``. A single block, or a list of block ids, is
+  limited to 1 MiB. A body is not read until the caller is known to be
+  allowed.
+- How to sign in. A 401 gives a URL, and that URL answers, with no token
+  needed, which identity provider to use, which client to sign in as and
+  which scopes to ask for.
 
-Search is answered from an index kept beside the keeper, which the host
-lists the modes of in describe.
-
-A host that names no ledger answers its root as the healthcheck and
+A request to a host name with no ledger id gets a health check at ``/`` and
 nothing else.
 
-Run by uvicorn with --factory, as :func:`from_environment`.
+Run it with ``uvicorn bugflow.apps.archive_host.host:from_environment
+--factory``.
 """
 
 import os
@@ -100,39 +96,41 @@ from bugflow.shared.infrastructure.s3_object_store import S3ObjectStore
 from bugflow.shared.infrastructure.sqlalchemy_journal import SqlAlchemyJournal
 from bugflow.shared.infrastructure.system_clock import SystemClock
 
-#: The largest append taken when the environment sets no other. An
-#: append is held whole in memory while it is verified.
+#: The largest append accepted unless ARCHIVE_MAX_UPLOAD_BYTES says
+#: otherwise. A whole append is held in memory while it is checked.
 DEFAULT_MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 
-#: The versions of the protocol served when the environment sets no
-#: other: both, until version 1 is retired.
+#: The protocol versions served unless ARCHIVE_PROTOCOLS says otherwise.
 DEFAULT_PROTOCOLS: tuple[int, ...] = remote.VERSIONS
 
-#: A ledger's id as a host's first label: a UUID as an event writes it.
+#: A ledger id: a lower-case UUID.
 _LEDGER = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
 
-#: Sent with every answer. What is read is what a scope sealed, so a
-#: browser is told to take the declared type and to run nothing in it.
+#: Headers sent with every answer. Stored files are other people's
+#: content, so a browser is told not to guess a file's type and not to
+#: run anything in it.
 _UNTRUSTED = {
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "sandbox",
 }
 
 
-#: The scopes a sealing tool is told to ask for when the environment
-#: names none: OpenID Connect's own, which every provider takes.
+#: The scopes sealing tools are told to ask for unless ARCHIVE_SCOPES
+#: says otherwise.
 SCOPES: tuple[str, ...] = ("openid",)
 
-#: Where the host says how to sign in, at its own origin (RFC 9728).
+#: The path that answers how to sign in (RFC 9728).
 SIGN_IN_PATH = "/.well-known/oauth-protected-resource"
 
 
 @dataclass(frozen=True)
 class SignIn:
-    """What the host tells a sealing tool about signing in: the issuer,
-    the public client to sign in as, and the scopes to ask for."""
+    """What the host tells a sealing tool about signing in: the identity
+    provider's address, the client id to sign in as, and the scopes to ask
+    for.
+    """
 
     issuer: str
     client_id: str
@@ -141,8 +139,7 @@ class SignIn:
 
 @dataclass(frozen=True)
 class ArchiveUseCases:
-    """The use cases the host serves, one for each of the protocol's
-    operations."""
+    """The archive's use cases, one for each operation of the protocol."""
 
     describe: DescribeArchiveUseCase
     event: FetchEventUseCase
@@ -150,13 +147,15 @@ class ArchiveUseCases:
     put: PutBlockUseCase
     append: AppendEventUseCase
     read: ReadArchivedUseCase
-    #: None for a host that does not search, which describes no search
-    #: member and refuses the operation as absent.
+    #: None for a host with no search. It then says nothing about search
+    #: in its description and answers a search request 404.
     search: SearchArchiveUseCase | None = None
 
 
 def _refusing[T](operation: Callable[[], T]) -> T:
-    """What the operation returns, its refusal carried as the wire's."""
+    """Run ``operation``. If the archive refuses, raise the error type that
+    pyposlib's ``handle`` turns into an HTTP answer.
+    """
     try:
         return operation()
     except ArchiveRefusedError as refused:
@@ -164,13 +163,13 @@ def _refusing[T](operation: Callable[[], T]) -> T:
 
 
 class _Kept:
-    """One ledger, for one caller, as the keeper the wire asks: the
-    operations, each answered by its use case. ``protocols`` is what the
-    wire reads to refuse a request in a version not served.
+    """One ledger as seen by one caller, in the shape pyposlib's ``handle``
+    expects: a method for each protocol operation. Each method calls the
+    matching use case.
 
-    What it last described is kept until an append or a put, so that
-    the wire's question before an append, how many events there are, is
-    not asked of the ledger a second time.
+    ``handle`` asks for the ledger's description before an append, and the
+    append answers with one too. The description is remembered until
+    something changes it, so the ledger is not read twice for one request.
     """
 
     def __init__(
@@ -189,15 +188,15 @@ class _Kept:
     def _description(self, kept: Any) -> dict[str, Any]:
         described = {
             "protocol": kept.protocols[0],
-            # The protocol's describe names a ledger by what its events
-            # say, so a ledger with none has no id yet.
+            # The protocol reports a ledger's id only once it has an event.
             "ledger_id": kept.ledger_id if kept.events else None,
             "head": kept.head,
             "events": kept.events,
             "root": kept.root,
             "erased": list(kept.erased),
         }
-        # A keeper of version 1 alone describes as that version did.
+        # Version 1 had no "protocols" or "retiring" fields, so a host
+        # serving version 1 only leaves them out.
         if tuple(kept.protocols) != (1,):
             described["protocols"] = list(kept.protocols)
             if kept.retiring:
@@ -321,7 +320,7 @@ class _Kept:
         ).hits
         answered: list[dict[str, Any]] = []
         for hit in hits:
-            # The wire's shape, as section 12 of the protocol has it.
+            # The JSON shape section 12 of the protocol gives a hit.
             wired: dict[str, Any] = {
                 "ref": hit.ref,
                 "range": {"lines": [hit.first_line, hit.last_line]},
@@ -334,7 +333,9 @@ class _Kept:
 
 
 def _ledger_of(host: str) -> str | None:
-    """The ledger a host names by its first label, or None."""
+    """The ledger id in a host name, or None if the name's first part is not a
+    UUID.
+    """
     label = host.split(":", 1)[0].split(".", 1)[0].lower()
     return label if _LEDGER.fullmatch(label) else None
 
@@ -344,8 +345,9 @@ def _answer(status: int, kind: str, body: bytes) -> Response:
 
 
 def _refusal(kind: str, message: str, status: int | None = None) -> Response:
-    """A refusal as the protocol writes one: the status its kind has,
-    and the kind and a message for a person."""
+    """An HTTP answer that refuses the request, in the protocol's form: a JSON
+    object with the kind of refusal and a message for a person.
+    """
     return _answer(
         status or remote.STATUS.get(kind, 422),
         remote.JSON,
@@ -354,16 +356,19 @@ def _refusal(kind: str, message: str, status: int | None = None) -> Response:
 
 
 def _origin(request: Request) -> str:
-    """The origin the request was made to. The edge ends TLS and says so,
-    and without an edge the request's own scheme is the one."""
+    """The scheme and host the client used, such as ``https://x.example``.
+    When a proxy in front of the host handled TLS, it says so in
+    ``X-Forwarded-Proto``.
+    """
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     return f"{scheme}://{request.headers.get('host', '')}"
 
 
 def _path(request: Request) -> str:
-    """The request's path as it was sent, its percent-encoding intact,
-    with its query: the wire decodes a read's path and a search's
-    parameters itself."""
+    """The request's path and query exactly as the client sent them, still
+    percent-encoded. ``handle`` does the decoding, and decoding here as
+    well would decode twice.
+    """
     raw = request.scope.get("raw_path")
     path = raw.decode("latin-1") if raw else quote(request.url.path)
     path = path.rstrip("/") or "/"
@@ -379,10 +384,13 @@ def create_archive_host(
     protocols: Sequence[int] = DEFAULT_PROTOCOLS,
     on_start: Callable[[], None] | None = None,
 ) -> FastAPI:
-    """The host over ``usecases``. ``protocols`` is what the wire refuses
-    by; the keeping side the use cases wrap is given the same, and lists
-    it in describe. ``on_start`` is run once, when the server starts and
-    before it takes a request."""
+    """Build the web application.
+
+    ``tokens`` checks bearer tokens. ``usecases`` are the archive's use
+    cases. ``protocols`` is which protocol versions to serve. ``on_start``,
+    if given, is called once when the server starts, before it takes any
+    request.
+    """
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -402,7 +410,9 @@ def create_archive_host(
             return None
 
     async def body_of(request: Request, limit: int) -> bytes | None:
-        """The request's body, or None for one larger than ``limit``."""
+        """Read the request body, or return None if it is larger than
+        ``limit``.
+        """
         declared = request.headers.get("content-length", "")
         if declared.isdigit() and int(declared) > limit:
             return None
@@ -414,22 +424,27 @@ def create_archive_host(
         return bytes(received)
 
     def limit_of(request: Request) -> tuple[int, str]:
-        """How large a body the request may have, and what to call it: an
-        append as much as is taken, a block or a list of CIDs one block."""
+        """The size limit for this request's body, and a word for it to use in
+        an error message. An append gets the configured limit; a block or a
+        list of block ids gets 1 MiB.
+        """
         if request.method == "POST" and _path(request) == "/events":
             return max_upload_bytes, "An append"
         return remote.BLOCK_LIMIT, "A block"
 
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT"])
     async def wire(request: Request) -> Response:
-        """One request of the remote archive protocol, to the ledger the
-        host names."""
+        """Handle one request: find the ledger from the host name, check the
+        token, read the body, and pass the request to pyposlib's
+        ``handle``.
+        """
         if (
             sign_in is not None
             and request.method == "GET"
             and request.url.path == SIGN_IN_PATH
         ):
-            # Asked with no token, of any host: it is how one is had.
+            # Answered without a token, on any host name: this is how a
+            # client learns to get a token.
             return _answer(
                 200,
                 remote.JSON,
@@ -445,14 +460,13 @@ def create_archive_host(
             )
         ledger_id = _ledger_of(request.headers.get("host", ""))
         if ledger_id is None:
-            # A deploy's probe asks a route's root whether it answers,
-            # and names no ledger when it does.
+            # A health check, for deployment tools.
             if request.method == "GET" and request.url.path == "/":
                 return _answer(200, remote.JSON, encoded({"ok": True}))
             return _refusal("absent", "This host names no ledger")
-        # On a thread, as every call below that waits is: checking a
-        # token may fetch the issuer's keys, and the wait would hold
-        # every other request here.
+        # Run on a thread. Checking a token may fetch the provider's
+        # keys over the network, and waiting for that here would stop
+        # the server answering anyone else.
         who = await run_in_threadpool(
             caller, request.headers.get("authorization", "")
         )
@@ -495,28 +509,42 @@ def from_environment(
     environ: Mapping[str, str] | None = None,
     key: Callable[[str], object] | None = None,
 ) -> FastAPI:
-    """The archive host as uvicorn runs it, with --factory.
+    """Build the archive host from environment variables. This is what uvicorn
+    calls.
 
-    It does not start without what it cannot work without:
+    Required, and the host refuses to start without them:
 
-    - ARCHIVE_ISSUER, ARCHIVE_AUDIENCE and ARCHIVE_CLIENTS, since with
-      any missing no token could be checked;
-    - ARCHIVE_ROLES_CLAIM, the claim of a token that carries a person's
-      roles, and ARCHIVE_READER_ROLE and ARCHIVE_WRITER_ROLE, the roles
-      that read and append, since with none named nobody is admitted;
-    - the bucket its blocks are kept in, since a keeper with nowhere to
-      keep them would record events whose bytes it does not hold;
-    - DATABASE_URL, where the ledgers' events and the journal are.
+    - ``ARCHIVE_ISSUER``: the identity provider's address.
+    - ``ARCHIVE_AUDIENCE``: the audience a token must be addressed to.
+    - ``ARCHIVE_CLIENTS``: client ids a token may come from, comma-
+      separated. The first is the one sealing tools are told to sign in as.
+    - ``ARCHIVE_ROLES_CLAIM``: the name of the token claim that lists a
+      person's roles.
+    - ``ARCHIVE_READER_ROLE`` and ``ARCHIVE_WRITER_ROLE``: the role that
+      may read every ledger, and the role that may also append.
+    - ``ARCHIVE_S3_ENDPOINT``, ``ARCHIVE_S3_BUCKET``,
+      ``ARCHIVE_S3_ACCESS_KEY`` and ``ARCHIVE_S3_SECRET_KEY``: the bucket
+      files are stored in.
+    - ``DATABASE_URL``: the Postgres database for events and the journal.
 
-    ARCHIVE_SCOPES is the scopes a sealing tool is told to ask for at
-    sign-in, separated by spaces, "openid" unless set: a provider that
-    puts roles or an audience in a token only when asked has its own
-    names for asking. ARCHIVE_PROTOCOLS, "1,2" unless set, is the
-    versions of the protocol served, and ARCHIVE_RETIRING, as
-    "1=2027-01-31", the date after which a version may stop being
-    served. BUILD_SHA, where set, is stamped on every fact recorded.
+    Optional:
 
-    When the server starts it creates the tables its database lacks.
+    - ``ARCHIVE_S3_REGION``: defaults to ``us-east-1``.
+    - ``ARCHIVE_SCOPES``: scopes sealing tools are told to ask for, space-
+      separated. Defaults to ``openid``.
+    - ``ARCHIVE_MAX_UPLOAD_BYTES``: the largest append accepted. Defaults
+      to 64 MiB.
+    - ``ARCHIVE_PROTOCOLS``: protocol versions to serve, such as ``1,2``.
+      Defaults to both.
+    - ``ARCHIVE_RETIRING``: the date after which a version may be dropped,
+      such as ``1=2027-01-31``. Clients are told, so they can warn.
+    - ``BUILD_SHA``: recorded with every journal entry, to show which build
+      wrote it.
+
+    When the server starts it creates any of its database tables that are
+    missing.
+
+    ``key`` replaces the lookup of the provider's signing keys, for tests.
     """
     environ = os.environ if environ is None else environ
     issuer = environ.get("ARCHIVE_ISSUER", "")
@@ -575,8 +603,7 @@ def from_environment(
         protocols,
         retiring,
     )
-    # The index beside the keeper, reading through the keeper's own
-    # reading operations.
+    # The search index. It reads files through the keeper.
     searching = PyposlibSearching(
         keeping,
         SqlAlchemyIndexedFiles(database_url),
@@ -618,7 +645,7 @@ def from_environment(
         int(
             environ.get("ARCHIVE_MAX_UPLOAD_BYTES") or DEFAULT_MAX_UPLOAD_BYTES
         ),
-        # The first client named is the one a sealing tool signs in as.
+        # Sealing tools are told to sign in as the first client listed.
         SignIn(
             issuer,
             clients[0],
@@ -630,8 +657,9 @@ def from_environment(
 
 
 def _protocols(setting: str) -> tuple[int, ...]:
-    """The versions ARCHIVE_PROTOCOLS names, "1,2" by default. A version
-    this keeper's library does not speak is refused at start."""
+    """Parse ``ARCHIVE_PROTOCOLS``, such as ``"1,2"``. Empty means every
+    version pyposlib supports. A version it does not support is an error.
+    """
     chosen = (
         tuple(sorted(int(part) for part in setting.split(",") if part.strip()))
         or DEFAULT_PROTOCOLS
@@ -646,7 +674,9 @@ def _protocols(setting: str) -> tuple[int, ...]:
 
 
 def _retiring(setting: str) -> dict[int, str]:
-    """The dates ARCHIVE_RETIRING names, as "1=2027-01-31", by version."""
+    """Parse ``ARCHIVE_RETIRING``, such as ``"1=2027-01-31"``, into a date for
+    each version.
+    """
     dates: dict[int, str] = {}
     for part in setting.split(","):
         if part.strip():
