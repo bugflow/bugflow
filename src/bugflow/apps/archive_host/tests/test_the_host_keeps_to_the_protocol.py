@@ -660,6 +660,19 @@ def test_it_does_not_start_without_a_way_to_check_or_to_keep(
         from_environment(environ, key=lambda _: None)
 
 
+def test_a_temporal_server_named_needs_its_task_queue_named_too() -> None:
+    """``TEMPORAL_ADDRESS`` turns on asking the worker to index after an
+    append. The host then needs ``TEMPORAL_TASK_QUEUE`` as well, and
+    refuses to start without it."""
+    environ = {**ENVIRONMENT, "TEMPORAL_ADDRESS": "temporal.invalid:7233"}
+
+    with pytest.raises(ValueError, match="TEMPORAL_TASK_QUEUE"):
+        from_environment(environ, key=lambda _: None)
+    from_environment(
+        {**environ, "TEMPORAL_TASK_QUEUE": "a-queue"}, key=lambda _: None
+    )
+
+
 def told_to_sign_in(environ: Mapping[str, str]) -> Any:
     return (
         TestClient(from_environment(environ, key=lambda _: None))

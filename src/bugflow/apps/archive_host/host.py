@@ -75,6 +75,10 @@ from bugflow.archive.infrastructure.sqlalchemy_search_index import (
     SqlAlchemyIndexedFiles,
     SqlAlchemyIndexPositions,
 )
+from bugflow.archive.infrastructure.temporal_indexing import (
+    TemporalAddress,
+    TemporalIndexingRequests,
+)
 from bugflow.archive.usecases.append_event import AppendEventUseCase
 from bugflow.archive.usecases.describe_archive import (
     DescribeArchiveUseCase,
@@ -540,6 +544,11 @@ def from_environment(
       such as ``1=2027-01-31``. Clients are told, so they can warn.
     - ``BUILD_SHA``: recorded with every journal entry, to show which build
       wrote it.
+    - ``TEMPORAL_ADDRESS``: where a Temporal server is. When set, the host
+      asks the worker to index new files straight after each append, and
+      ``TEMPORAL_TASK_QUEUE`` is then required too. ``TEMPORAL_NAMESPACE``
+      defaults to ``default``. When not set, new files become searchable
+      when the worker's own schedule next runs.
 
     When the server starts it creates any of its database tables that are
     missing.
@@ -609,6 +618,22 @@ def from_environment(
         SqlAlchemyIndexedFiles(database_url),
         SqlAlchemyIndexPositions(database_url),
     )
+    indexing = None
+    if environ.get("TEMPORAL_ADDRESS"):
+        task_queue = environ.get("TEMPORAL_TASK_QUEUE", "")
+        if not task_queue:
+            raise ValueError(
+                "TEMPORAL_TASK_QUEUE is required when TEMPORAL_ADDRESS is "
+                "set; the archive host does not start without the task "
+                "queue the worker listens on"
+            )
+        indexing = TemporalIndexingRequests(
+            TemporalAddress(
+                environ["TEMPORAL_ADDRESS"],
+                environ.get("TEMPORAL_NAMESPACE") or "default",
+                task_queue,
+            )
+        )
 
     def create_tables() -> None:
         sqlalchemy_journal.create_tables(database_url)
@@ -638,6 +663,7 @@ def from_environment(
                 ),
                 SystemClock(),
                 uuid.uuid4().hex,
+                indexing,
             ),
             read=ReadArchivedUseCase(bindings, access, keeping),
             search=SearchArchiveUseCase(bindings, access, searching),
