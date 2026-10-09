@@ -7,7 +7,16 @@ requires-python = ">=3.12"
 license-files = ["LICENSE"]
 dependencies = [
     "boto3>=1.43.97",
+    "pydantic>=2.9",
+    # The sealing libraries' own keeper, which verifies what a client
+    # seals into an archive kept here, so the rules a seal is held to
+    # are written once. Pinned to a commit until the library cuts a
+    # release.
+    "pyposlib",
 ]
+
+[tool.uv.sources]
+pyposlib = { git = "https://github.com/ClankaOperatingSystem/pyposlib.git", rev = "6b00d568036cd9fdec6ee0c2066790aedd23ed47" }
 
 [dependency-groups]
 dev = [
@@ -39,15 +48,40 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
+# pyposlib ships no type information; what crosses from it is given a
+# type by the adapter that calls it.
+[[tool.mypy.overrides]]
+module = "pyposlib.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["src"]
 
 # The rules of docs/ADRs/001-code-layout.md, held by lint-imports.
 [tool.importlinter]
 root_package = "bugflow"
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Inside shared, imports point inward"
 type = "layers"
 containers = ["bugflow.shared"]
 layers = ["infrastructure", "domain"]
+
+[[tool.importlinter.contracts]]
+name = "Inside a context, imports point inward"
+type = "layers"
+containers = ["bugflow.archive"]
+layers = ["infrastructure | usecases", "dtos", "domain"]
+
+[[tool.importlinter.contracts]]
+name = "Shared imports no context"
+type = "forbidden"
+source_modules = ["bugflow.shared"]
+forbidden_modules = ["bugflow.archive"]
+
+[[tool.importlinter.contracts]]
+name = "A use case does not import what runs it"
+type = "forbidden"
+source_modules = ["bugflow.archive.usecases"]
+forbidden_modules = ["fastapi", "starlette", "temporalio", "sqlalchemy", "psycopg", "boto3"]

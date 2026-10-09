@@ -1,0 +1,16 @@
+{
+ "description": "A block of 262145 bytes is one IPFS shards: a HAMT of 256 slots, with sub-shards where names collide in their first hash byte.",
+ "tree": [
+  {
+   "path": "t/f%04dxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "series": 1044,
+   "text": "z"
+  },
+  {
+   "path": "t/gyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "text": "z"
+  }
+ ],
+ "entry": "t",
+ "cid": "bafybeia7zuz632hsoksxggu3nremwwihzhnn6fdmuehy4zqbwhluojfgye"
+}
