@@ -34,11 +34,10 @@ def entry(id_: UUID, payload: dict[str, object] | None = None) -> JournalEntry:
     )
 
 
-def test_the_ids_are_those_already_in_journals_that_exist() -> None:
-    """The two ids here were computed by the software this code was taken
-    from. Existing journals contain ids made that way. If this test fails,
-    the way ids are made has changed, and an old fact recorded again would
-    get a new id and be stored twice.
+def test_the_way_ids_are_made_does_not_change() -> None:
+    """Pins two ids. A journal keeps one entry for each id, so if the way
+    ids are made changed, a fact recorded again would get a new id and be
+    stored twice.
     """
     assert event_id(RUN, "archive.sealed", "a-key") == UUID(
         "1962fe15-e238-5f2c-946e-02c4ca25c4e7"
