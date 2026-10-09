@@ -1,6 +1,8 @@
 """A journal for tests that can also answer the questions the work
 context asks of it."""
 
+from collections.abc import Sequence
+
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -16,7 +18,18 @@ from bugflow.work.domain.models.journal import (
 class QueryableJournal(InMemoryJournal):
     """The in-memory journal, with the queries declared in
     ``work/domain/services/journal.py`` and
-    ``work/domain/services/dispatch_record.py``."""
+    ``work/domain/services/dispatch_record.py``.
+
+    ``dispatch_facts`` names the kinds of fact that ``dispatched_run``
+    searches, as it does for the Postgres adapter."""
+
+    def __init__(
+        self,
+        build: str | None = None,
+        dispatch_facts: Sequence[str] = (AGENT_DISPATCHED,),
+    ) -> None:
+        super().__init__(build)
+        self._dispatch_facts = tuple(dispatch_facts)
 
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str
@@ -35,9 +48,11 @@ class QueryableJournal(InMemoryJournal):
     def dispatched_run(
         self, runner: str, remote_id: str
     ) -> DispatchedRun | None:
-        for e in self._dispatches():
+        for e in self.entries:
             if (
-                e.payload.get("runner") == runner
+                e.event_type in self._dispatch_facts
+                and e.payload.get("step") == "dispatched"
+                and e.payload.get("runner") == runner
                 and e.payload.get("remote_id") == remote_id
             ):
                 return DispatchedRun(
