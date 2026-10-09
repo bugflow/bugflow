@@ -9,6 +9,7 @@ dependencies = [
     "alembic>=1.14",
     "boto3>=1.43.97",
     "fastapi>=0.141.1",
+    "httpx2>=2.12.0",
     "psycopg[binary]>=3.3.5",
     "pydantic>=2.9",
     "pyjwt[crypto]>=2.10",
@@ -28,7 +29,6 @@ pyposlib = { git = "https://github.com/ClankaOperatingSystem/pyposlib.git", rev 
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
-    "httpx2>=2.12.0",
     "import-linter>=2.1",
     "mypy>=1.13",
     "pytest>=8.3",
