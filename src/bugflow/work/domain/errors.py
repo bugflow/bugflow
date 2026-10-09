@@ -29,6 +29,11 @@ class WorktreeUnavailableError(Exception):
     is not installed."""
 
 
+class WorktreeError(Exception):
+    """A directory cannot have its instruction files removed: it is not
+    a directory, or it is the top of a filesystem."""
+
+
 class WriteUpNotKeptError(Exception):
     """A write-up could not be stored. Nothing may be recorded that
     refers to it. Storing it can be tried again."""
