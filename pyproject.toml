@@ -9,6 +9,7 @@ dependencies = [
     "boto3>=1.43.97",
     "psycopg[binary]>=3.3.5",
     "pydantic>=2.9",
+    "pyjwt[crypto]>=2.10",
     # The sealing libraries' own keeper, which verifies what a client
     # seals into an archive kept here, so the rules a seal is held to
     # are written once. Pinned to a commit until the library cuts a
