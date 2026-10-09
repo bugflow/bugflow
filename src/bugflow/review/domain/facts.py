@@ -26,3 +26,9 @@ REVIEW_GRADED = "review.graded"
 #: Something was written to the pull request: a comment, a label or a
 #: commit status. The payload's ``action`` says which.
 ACTION_TAKEN = "action.taken"
+
+#: The words a finding quoted are no longer in the pull request.
+FINDING_REWRITTEN = "finding.rewritten"
+
+#: A warning was kept out of the pull request on purpose.
+FINDING_WITHHELD = "finding.withheld"
