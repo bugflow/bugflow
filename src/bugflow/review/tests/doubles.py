@@ -36,3 +36,13 @@ class InMemorySubmissions:
             return self.stored[reference.snapshot_id]
         except KeyError as exc:
             raise SubmissionNotFoundError(reference.snapshot_id) from exc
+
+
+class Governing:
+    """Says the same reviewers govern every repository."""
+
+    def __init__(self, *agent_ids: str) -> None:
+        self._agents = frozenset(agent_ids)
+
+    def governing_agents(self, forge: str, repo: str) -> frozenset[str]:
+        return self._agents

@@ -37,3 +37,7 @@ FINDING_WITHHELD = "finding.withheld"
 #: records this fact. This context only reads it, to learn which commit
 #: an evaluation read.
 PR_OBSERVED = "pr.observed"
+
+#: A person dismissed a policy's findings on a pull request. The forge
+#: context records this fact. This context only reads it.
+FINDING_DISMISSED = "finding.dismissed"
