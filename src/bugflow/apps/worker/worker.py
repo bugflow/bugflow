@@ -5,6 +5,9 @@ workflows and activities it is given work for. Today that is one job:
 keeping the archive's search index up to date (``archive_index.py``).
 
 Run it with ``python -m bugflow.apps.worker``.
+
+The worker reads the archive's tables and does not make them. The archive
+host runs the scripts that do, when it starts.
 """
 
 import asyncio
