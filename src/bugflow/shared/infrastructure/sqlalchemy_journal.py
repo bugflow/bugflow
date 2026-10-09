@@ -5,7 +5,8 @@ column may be added if existing writers can ignore it. No column is
 removed, changed in type, or made stricter.
 
 The database itself stops a row being changed: two triggers reject any
-UPDATE, DELETE or TRUNCATE on the table.
+UPDATE, DELETE or TRUNCATE on the table. The table and its triggers are
+made by the scripts in ``migrations``.
 """
 
 from collections.abc import Sequence
@@ -48,39 +49,6 @@ journal = sa.Table(
     sa.Index("journal_agent_id_idx", "agent_id", "corpus_version"),
     sa.Index("journal_build_idx", "build", "occurred_at"),
 )
-
-# These statements go to the database driver unprocessed, and the
-# driver needs a literal percent sign written twice.
-_APPEND_ONLY = (
-    """
-    CREATE OR REPLACE FUNCTION journal_reject_change() RETURNS trigger
-    LANGUAGE plpgsql AS $$
-    BEGIN
-        RAISE EXCEPTION 'journal is append-only: %% rejected', TG_OP;
-    END
-    $$
-    """,
-    "CREATE OR REPLACE TRIGGER journal_append_only "
-    "BEFORE UPDATE OR DELETE ON journal "
-    "FOR EACH ROW EXECUTE FUNCTION journal_reject_change()",
-    "CREATE OR REPLACE TRIGGER journal_no_truncate "
-    "BEFORE TRUNCATE ON journal "
-    "FOR EACH STATEMENT EXECUTE FUNCTION journal_reject_change()",
-)
-
-
-def create_tables(database_url: str) -> None:
-    """Create the journal table if the database does not have it, and make
-    sure its two triggers exist. An existing table is not altered.
-    """
-    engine = sa.create_engine(engine_url(database_url))
-    try:
-        metadata.create_all(engine)
-        with engine.begin() as connection:
-            for statement in _APPEND_ONLY:
-                connection.exec_driver_sql(statement)
-    finally:
-        engine.dispose()
 
 
 class SqlAlchemyJournal:

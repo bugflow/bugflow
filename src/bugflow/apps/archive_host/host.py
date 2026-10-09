@@ -56,7 +56,6 @@ from bugflow.archive.dtos.missing_blocks import MissingBlocksRequest
 from bugflow.archive.dtos.put_block import PutBlockRequest
 from bugflow.archive.dtos.read_archived import ReadArchivedRequest
 from bugflow.archive.dtos.search_archive import SearchArchiveRequest
-from bugflow.archive.infrastructure import schema
 from bugflow.archive.infrastructure.pyposlib_keeping import PyposlibKeeping
 from bugflow.archive.infrastructure.pyposlib_searching import PyposlibSearching
 from bugflow.archive.infrastructure.role_archive_access import (
@@ -91,7 +90,7 @@ from bugflow.archive.usecases.search_archive import SearchArchiveUseCase
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.services.bearer_token import BearerTokenService
 from bugflow.shared.domain.values.caller import Caller
-from bugflow.shared.infrastructure import sqlalchemy_journal
+from bugflow.shared.infrastructure import migrations
 from bugflow.shared.infrastructure.jwt_bearer_token import (
     JwtBearerToken,
     published_keys,
@@ -550,8 +549,9 @@ def from_environment(
       defaults to ``default``. When not set, new files become searchable
       when the worker's own schedule next runs.
 
-    When the server starts it creates any of its database tables that are
-    missing.
+    When the server starts it runs the scripts its database has not run yet
+    (``shared/infrastructure/migrations``), which create and change its
+    tables.
 
     ``key`` replaces the lookup of the provider's signing keys, for tests.
     """
@@ -635,9 +635,8 @@ def from_environment(
             )
         )
 
-    def create_tables() -> None:
-        sqlalchemy_journal.create_tables(database_url)
-        schema.create_tables(database_url)
+    def migrate() -> None:
+        migrations.upgrade(database_url)
 
     return create_archive_host(
         JwtBearerToken(
@@ -678,7 +677,7 @@ def from_environment(
             tuple(environ.get("ARCHIVE_SCOPES", "").split()) or SCOPES,
         ),
         protocols,
-        create_tables,
+        migrate,
     )
 
 

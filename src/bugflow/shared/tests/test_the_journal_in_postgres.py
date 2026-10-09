@@ -13,9 +13,9 @@ import pytest
 import sqlalchemy as sa
 
 from bugflow.shared.domain.models.journal_entry import JournalEntry, fact_id
+from bugflow.shared.infrastructure.migrations import upgrade
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     SqlAlchemyJournal,
-    create_tables,
     journal,
 )
 
@@ -135,13 +135,13 @@ def test_the_database_refuses_to_change_a_recorded_fact(
     assert len(rows(engine, made.event_id)) == 1
 
 
-def test_creating_the_table_again_leaves_it_as_it_is(
+def test_running_the_scripts_again_leaves_the_table_as_it_is(
     engine: sa.Engine, database_url: str
 ) -> None:
     made = entry("survives")
     SqlAlchemyJournal(database_url).append([made])
 
-    create_tables(database_url)
+    upgrade(database_url)
 
     assert len(rows(engine, made.event_id)) == 1
 

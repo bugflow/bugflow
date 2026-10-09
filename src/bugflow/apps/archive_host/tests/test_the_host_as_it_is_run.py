@@ -2,8 +2,8 @@
 variables, against a real database.
 
 The protocol test builds the host by hand with in-memory parts. These tests
-check the part it skips: that the settings are read, that the tables are
-created at start-up, and that a caller's roles are read from the token
+check the part it skips: that the settings are read, that the scripts are
+run at start-up, and that a caller's roles are read from the token
 claim the settings name.
 
 Skipped unless DATABASE_URL names a Postgres server.
@@ -67,7 +67,7 @@ def asked(client: TestClient, held: str) -> tuple[int, str]:
     return answered.status_code, answered.json()["refused"]
 
 
-def test_the_host_makes_its_tables_when_it_starts(database_url: str) -> None:
+def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
     app = from_environment(
         environment(database_url), key=lambda _: KEY.public_key()
     )
@@ -84,6 +84,7 @@ def test_the_host_makes_its_tables_when_it_starts(database_url: str) -> None:
             "archive_index_files",
             "archive_index_lines",
             "archive_index_positions",
+            "bugflow_schema_version",
         }
     finally:
         engine.dispose()
