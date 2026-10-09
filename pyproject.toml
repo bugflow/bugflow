@@ -10,6 +10,8 @@ dependencies = [
     "boto3>=1.43.97",
     "fastapi>=0.141.1",
     "httpx2>=2.12.0",
+    # Checking a runner's answer against the JSON schema its task gave.
+    "jsonschema>=4.26.0",
     # Trace spans for calls to a model. Only the API: with no SDK set
     # up by the application, the spans are not recorded.
     "opentelemetry-api>=1.30",
@@ -37,6 +39,7 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.8",
     "types-boto3>=1.43.97",
+    "types-jsonschema>=4.26.0.20260518",
 ]
 
 [build-system]
