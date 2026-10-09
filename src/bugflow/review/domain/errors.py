@@ -54,3 +54,53 @@ class GraderUnavailableError(Exception):
     ) -> None:
         super().__init__(message)
         self.calls = calls
+
+
+class ExchangeNotFoundError(Exception):
+    """No judge exchange is stored under the id."""
+
+
+class SubmissionNotFoundError(Exception):
+    """No submission is stored under the reference."""
+
+
+class WriteUpNotFoundError(Exception):
+    """No write-up is stored under the id."""
+
+
+class AgentUnavailableError(Exception):
+    """No run was started: the runner could not be reached or would not
+    start.
+
+    This is different from a run whose outcome is "declined". That run
+    did start, and the runner refused the work.
+    """
+
+
+class AgentTemporarilyUnavailableError(AgentUnavailableError):
+    """No run was started, but trying again later may work: for example
+    a quota or a rate limit was reached, or the host was busy.
+
+    ``retry_after`` is how many seconds to wait, if known.
+    """
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class WorktreeUnavailableError(Exception):
+    """A commit could not be laid out as a worktree: for example there
+    was no access to the repository, the commit does not exist, or git
+    is not installed."""
+
+
+class ReviewIncompleteError(Exception):
+    """A step of one reviewer's review failed, and trying it again will
+    not help."""
+
+
+class PublicationRejectedError(Exception):
+    """The forge refused a write, and the same write would be refused
+    again: for example the token may not set commit statuses, or the
+    pull request no longer exists."""
