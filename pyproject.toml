@@ -7,12 +7,14 @@ requires-python = ">=3.12"
 license-files = ["LICENSE"]
 dependencies = [
     "boto3>=1.43.97",
+    "psycopg[binary]>=3.3.5",
     "pydantic>=2.9",
     # The sealing libraries' own keeper, which verifies what a client
     # seals into an archive kept here, so the rules a seal is held to
     # are written once. Pinned to a commit until the library cuts a
     # release.
     "pyposlib",
+    "sqlalchemy>=2.0.52",
 ]
 
 [tool.uv.sources]
