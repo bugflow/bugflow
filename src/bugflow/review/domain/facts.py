@@ -49,3 +49,11 @@ REACTION_RECORDED = "reaction.recorded"
 #: A pull request closed. The payload says whether it merged and which
 #: findings were still standing.
 PR_CLOSED = "pr.closed"
+
+#: A stocktake ran for a layer. The payload gives the range it covered.
+#: The latest of these for a layer is the layer's mark.
+STOCKTAKE_TAKEN = "stocktake.taken"
+
+#: A pull request was merged. The forge context records this fact. This
+#: context only reads it, to learn what a stocktake's range holds.
+PR_MERGED = "pr.merged"
