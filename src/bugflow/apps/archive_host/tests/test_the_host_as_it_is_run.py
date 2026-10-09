@@ -86,6 +86,8 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "archive_index_positions",
             "bugflow_schema_version",
             "pull_request_snapshots",
+            "judge_exchanges",
+            "agent_write_ups",
         }
     finally:
         engine.dispose()

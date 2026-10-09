@@ -19,6 +19,10 @@ from bugflow.archive.infrastructure import (
     sqlalchemy_search_index,
 )
 from bugflow.forge.infrastructure import sqlalchemy_snapshots
+from bugflow.review.infrastructure import (
+    sqlalchemy_judge_archive,
+    sqlalchemy_write_up_archive,
+)
 from bugflow.shared.infrastructure import sqlalchemy_journal
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.migrations import VERSION_TABLE, upgrade
@@ -34,6 +38,8 @@ def defined() -> sa.MetaData:
         sqlalchemy_search_index.metadata,
         sqlalchemy_journal.metadata,
         sqlalchemy_snapshots.metadata,
+        sqlalchemy_judge_archive.metadata,
+        sqlalchemy_write_up_archive.metadata,
     ):
         for table in metadata.tables.values():
             table.to_metadata(together)
