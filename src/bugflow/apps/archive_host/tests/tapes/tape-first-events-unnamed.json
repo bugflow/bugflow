@@ -1,0 +1,212 @@
+{
+ "description": "A keeper told which ledger it keeps is sent the first events of a ledger begun before events carried a ledger_id. The first, which names no ledger, is refused alone, refused followed only by an event that names none, and refused followed to an event that names another ledger; it is appended when the events after it reach the one that names this ledger. The second is sent with the third, and the third alone.",
+ "url": "https://keeper.example/ledger",
+ "token": "tape-token",
+ "protocols": [
+  1
+ ],
+ "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+ "exchanges": [
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22.json",
+    "event": "{\"add\":{\"2026-01-01-first.md\":{\"mode\":292,\"sha256\":\"b640e840b19d378660b32fb51ae18d67dccb4a8596a29e7bd72c1b2ae5928f41\",\"size\":6}},\"previous\":null,\"schema\":1}\n",
+    "files": {},
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-6ecf974b776bfc70e5fc4b513cbb69c2941b58847cea09cf4bc9ea98e13267e6",
+    "body_sha256": "e28a297d30779c4f1d8cccecdb6befc0ccc2ac07d9389942690e75944a1e509d"
+   },
+   "response": {
+    "status": 422,
+    "body": "{\"refused\":\"identity\"}\n"
+   },
+   "refused": "identity"
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22.json",
+    "event": "{\"add\":{\"2026-01-01-first.md\":{\"mode\":292,\"sha256\":\"b640e840b19d378660b32fb51ae18d67dccb4a8596a29e7bd72c1b2ae5928f41\",\"size\":6}},\"previous\":null,\"schema\":1}\n",
+    "files": {},
+    "claims": {},
+    "following": [
+     {
+      "name": "00000002-95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02.json",
+      "event": "{\"add\":{\"2026-02-01-second.md\":{\"mode\":292,\"sha256\":\"480c2336b410f1ad5f8bf1b28944490255804b65350c527787e74ebdd511e3a4\",\"size\":7}},\"previous\":\"dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22\",\"schema\":1}\n"
+     }
+    ]
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-e1f61cef9a263a16033b588a36670f65b456e487adc9c8d47a4181efb7d7968f",
+    "body_sha256": "736340a5527f4b5be55720ee95295e70c1fb79497a7d0f15bee3b385801078e1"
+   },
+   "response": {
+    "status": 422,
+    "body": "{\"refused\":\"identity\"}\n"
+   },
+   "refused": "identity"
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22.json",
+    "event": "{\"add\":{\"2026-01-01-first.md\":{\"mode\":292,\"sha256\":\"b640e840b19d378660b32fb51ae18d67dccb4a8596a29e7bd72c1b2ae5928f41\",\"size\":6}},\"previous\":null,\"schema\":1}\n",
+    "files": {},
+    "claims": {},
+    "following": [
+     {
+      "name": "00000002-95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02.json",
+      "event": "{\"add\":{\"2026-02-01-second.md\":{\"mode\":292,\"sha256\":\"480c2336b410f1ad5f8bf1b28944490255804b65350c527787e74ebdd511e3a4\",\"size\":7}},\"previous\":\"dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22\",\"schema\":1}\n"
+     },
+     {
+      "name": "00000003-66133ab9abcb8029462904133c305f16f631015687793201226e4c53fa77887b.json",
+      "event": "{\"add\":{\"2026-03-01-third.md\":{\"mode\":292,\"sha256\":\"5eef8098ed6ec0a16249fc7c12422027fc9fd75b16130cc9382cf09102014796\",\"size\":6}},\"ledger_id\":\"1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d\",\"previous\":\"95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02\",\"schema\":1}\n"
+     }
+    ]
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-999488f7c9535244a6b3b249276e635a1e3885cfb00cde886accf71154ff3b66",
+    "body_sha256": "140f153b3355de74b6ab8d83b7d3ab8014bc472392356d116ba19b4ae2300e7b"
+   },
+   "response": {
+    "status": 422,
+    "body": "{\"refused\":\"identity\"}\n"
+   },
+   "refused": "identity"
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22.json",
+    "event": "{\"add\":{\"2026-01-01-first.md\":{\"mode\":292,\"sha256\":\"b640e840b19d378660b32fb51ae18d67dccb4a8596a29e7bd72c1b2ae5928f41\",\"size\":6}},\"previous\":null,\"schema\":1}\n",
+    "files": {},
+    "claims": {},
+    "following": [
+     {
+      "name": "00000002-95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02.json",
+      "event": "{\"add\":{\"2026-02-01-second.md\":{\"mode\":292,\"sha256\":\"480c2336b410f1ad5f8bf1b28944490255804b65350c527787e74ebdd511e3a4\",\"size\":7}},\"previous\":\"dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22\",\"schema\":1}\n"
+     },
+     {
+      "name": "00000003-f8fd8255bf14d7a48ae38eff8529808cd8cb729a8494094f9e72d8390eb99cc7.json",
+      "event": "{\"add\":{\"2026-03-01-third.md\":{\"mode\":292,\"sha256\":\"5eef8098ed6ec0a16249fc7c12422027fc9fd75b16130cc9382cf09102014796\",\"size\":6}},\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":\"95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02\",\"schema\":1}\n"
+     }
+    ]
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-d8242239c993f747f6cf4372a3fc4bb29b305956de715f77ccff40f48ea2d00c",
+    "body_sha256": "c6150aec34f0a1e1129d99e1bdb8575a4cf5403a6b7654d707fa75e04584a100"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":1,\"head\":\"dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":null}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 1,
+    "head": "dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": null
+   }
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000002-95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02.json",
+    "event": "{\"add\":{\"2026-02-01-second.md\":{\"mode\":292,\"sha256\":\"480c2336b410f1ad5f8bf1b28944490255804b65350c527787e74ebdd511e3a4\",\"size\":7}},\"previous\":\"dd6f7c8641095e829d223be436fe0172b739ebdc02607361defae6f8ccb49c22\",\"schema\":1}\n",
+    "files": {},
+    "claims": {},
+    "following": [
+     {
+      "name": "00000003-f8fd8255bf14d7a48ae38eff8529808cd8cb729a8494094f9e72d8390eb99cc7.json",
+      "event": "{\"add\":{\"2026-03-01-third.md\":{\"mode\":292,\"sha256\":\"5eef8098ed6ec0a16249fc7c12422027fc9fd75b16130cc9382cf09102014796\",\"size\":6}},\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":\"95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02\",\"schema\":1}\n"
+     }
+    ]
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-8736ffa0733a019e0a3851fba8da55525f1eca4767e4ce16608644987ec1dbc9",
+    "body_sha256": "abc13197af9490f7af53c407d9b6e1e1c353247bae0c38e8605093ca3c5714ee"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":2,\"head\":\"95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":null}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 2,
+    "head": "95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": null
+   }
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000003-f8fd8255bf14d7a48ae38eff8529808cd8cb729a8494094f9e72d8390eb99cc7.json",
+    "event": "{\"add\":{\"2026-03-01-third.md\":{\"mode\":292,\"sha256\":\"5eef8098ed6ec0a16249fc7c12422027fc9fd75b16130cc9382cf09102014796\",\"size\":6}},\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":\"95939c5332295d09034e947cb55199cc9918be457f09b749179c6f9d717edf02\",\"schema\":1}\n",
+    "files": {},
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-215e3cfb674e69fd034eca101afff503b5807a7084f0313014b608e360ec650e",
+    "body_sha256": "182d0489695f59257017276508a3d39700fd1ae0bccf20f67facc228fa43ccca"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":3,\"head\":\"f8fd8255bf14d7a48ae38eff8529808cd8cb729a8494094f9e72d8390eb99cc7\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":null}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 3,
+    "head": "f8fd8255bf14d7a48ae38eff8529808cd8cb729a8494094f9e72d8390eb99cc7",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": null
+   }
+  },
+  {
+   "call": {
+    "operation": "describe"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "{\"erased\":[],\"events\":3,\"head\":\"f8fd8255bf14d7a48ae38eff8529808cd8cb729a8494094f9e72d8390eb99cc7\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":null}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 3,
+    "head": "f8fd8255bf14d7a48ae38eff8529808cd8cb729a8494094f9e72d8390eb99cc7",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": null
+   }
+  }
+ ]
+}

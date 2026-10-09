@@ -1,0 +1,131 @@
+{
+ "description": "A keeper of version 2 alone: it lists that version only, refuses as version an append that carries a file inside, refuses as entry one whose blocks are not held, and takes the event once they are put.",
+ "url": "https://keeper.example/ledgers/0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+ "token": "tape-token",
+ "protocols": [
+  2
+ ],
+ "exchanges": [
+  {
+   "call": {
+    "operation": "describe"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "{\"erased\":[],\"events\":0,\"head\":null,\"ledger_id\":null,\"protocol\":2,\"protocols\":[2],\"root\":null}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 0,
+    "head": null,
+    "ledger_id": null,
+    "protocol": 2,
+    "protocols": [
+     2
+    ],
+    "root": null
+   }
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya.json",
+    "event": "{\"add\":{\"first/a.txt\":{\"cid\":\"bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary\",\"mode\":292,\"sha256\":\"a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e\",\"size\":5}},\"collections\":[],\"empty\":[],\"item\":\"first\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":null,\"root\":\"bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici\",\"schema\":3}",
+    "files": {
+     "bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary": "first"
+    },
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-4c0fbf96b389813374ac0732ad744768cff9421ed4b3bf065d9ea63bc7e75cca",
+    "body_sha256": "4ad1aecafe1054817a2479e58dc4e970cd17a4416c7debb6d314d7f3f96f0fc2"
+   },
+   "response": {
+    "status": 422,
+    "body": "{\"message\":\"Files travel inside an append only in version 1; this keeper serves [2]: put the blocks first\",\"refused\":\"version\"}\n"
+   },
+   "refused": "version"
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya.json",
+    "event": "{\"add\":{\"first/a.txt\":{\"cid\":\"bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary\",\"mode\":292,\"sha256\":\"a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e\",\"size\":5}},\"collections\":[],\"empty\":[],\"item\":\"first\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":null,\"root\":\"bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici\",\"schema\":3}",
+    "files": {},
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-97bb04b41b44f3837e5ab43a942d43e6195e3ca3d35f34f61258aae225a87ba7",
+    "body_sha256": "5855676e61ebadccf31be544187601c8a25024bb8d8accdf970deb304d4396c5"
+   },
+   "response": {
+    "status": 422,
+    "body": "{\"message\":\"Bytes not held for first/a.txt\",\"refused\":\"entry\"}\n"
+   },
+   "refused": "entry"
+  },
+  {
+   "call": {
+    "operation": "put",
+    "cid": "bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary",
+    "block": "first"
+   },
+   "request": {
+    "method": "PUT",
+    "path": "/blocks/bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary",
+    "authorization": "Bearer tape-token",
+    "content_type": "application/octet-stream",
+    "body_sha256": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
+   },
+   "response": {
+    "status": 201,
+    "body": "{}\n"
+   },
+   "result": {
+    "held": "new"
+   }
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya.json",
+    "event": "{\"add\":{\"first/a.txt\":{\"cid\":\"bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary\",\"mode\":292,\"sha256\":\"a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e\",\"size\":5}},\"collections\":[],\"empty\":[],\"item\":\"first\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":null,\"root\":\"bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici\",\"schema\":3}",
+    "files": {},
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-97bb04b41b44f3837e5ab43a942d43e6195e3ca3d35f34f61258aae225a87ba7",
+    "body_sha256": "5855676e61ebadccf31be544187601c8a25024bb8d8accdf970deb304d4396c5"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":1,\"head\":\"baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":2,\"protocols\":[2],\"root\":\"bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici\"}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 1,
+    "head": "baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 2,
+    "protocols": [
+     2
+    ],
+    "root": "bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici"
+   }
+  }
+ ]
+}

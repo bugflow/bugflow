@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 license-files = ["LICENSE"]
 dependencies = [
     "boto3>=1.43.97",
+    "fastapi>=0.141.1",
     "psycopg[binary]>=3.3.5",
     "pydantic>=2.9",
     "pyjwt[crypto]>=2.10",
@@ -16,6 +17,7 @@ dependencies = [
     # release.
     "pyposlib",
     "sqlalchemy>=2.0.52",
+    "uvicorn>=0.52.4",
 ]
 
 [tool.uv.sources]
@@ -23,6 +25,8 @@ pyposlib = { git = "https://github.com/ClankaOperatingSystem/pyposlib.git", rev 
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
+    "httpx2>=2.12.0",
     "import-linter>=2.1",
     "mypy>=1.13",
     "pytest>=8.3",
@@ -88,3 +92,9 @@ name = "A use case does not import what runs it"
 type = "forbidden"
 source_modules = ["bugflow.archive.usecases"]
 forbidden_modules = ["fastapi", "starlette", "temporalio", "sqlalchemy", "psycopg", "boto3"]
+
+[[tool.importlinter.contracts]]
+name = "Nothing imports an application"
+type = "forbidden"
+source_modules = ["bugflow.shared", "bugflow.archive"]
+forbidden_modules = ["bugflow.apps"]

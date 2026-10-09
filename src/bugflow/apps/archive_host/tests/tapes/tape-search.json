@@ -1,0 +1,177 @@
+{
+ "description": "A keeper that searches: it says so in describe, and once an event and its file are kept, a literal search finds the line, by its item's link and range, and the passage is what read gives there; a search within the item, with a limit, finds nothing of words not in it; a mode the keeper does not serve is refused as mode, and a within the ledger does not enrol as absent.",
+ "url": "https://keeper.example/ledgers/0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+ "token": "tape-token",
+ "protocols": [
+  1
+ ],
+ "search": [
+  "literal"
+ ],
+ "exchanges": [
+  {
+   "call": {
+    "operation": "describe"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "{\"erased\":[],\"events\":0,\"head\":null,\"ledger_id\":null,\"protocol\":1,\"root\":null,\"search\":{\"modes\":[\"literal\"]}}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 0,
+    "head": null,
+    "ledger_id": null,
+    "protocol": 1,
+    "root": null,
+    "search": {
+     "modes": [
+      "literal"
+     ]
+    }
+   }
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya.json",
+    "event": "{\"add\":{\"first/a.txt\":{\"cid\":\"bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary\",\"mode\":292,\"sha256\":\"a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e\",\"size\":5}},\"collections\":[],\"empty\":[],\"item\":\"first\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":null,\"root\":\"bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici\",\"schema\":3}",
+    "files": {
+     "bafkreifhsn5wjogkuwhqg4q3w25m6xdyzmrv727a44frxbgntfkbiynary": "first"
+    },
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-4c0fbf96b389813374ac0732ad744768cff9421ed4b3bf065d9ea63bc7e75cca",
+    "body_sha256": "4ad1aecafe1054817a2479e58dc4e970cd17a4416c7debb6d314d7f3f96f0fc2"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":1,\"head\":\"baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":\"bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici\",\"search\":{\"modes\":[\"literal\"]}}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 1,
+    "head": "baguqeerajwrmdmyz2ewzdtipg5f2pr7prers2zwzz7wp7zkfbs23ac5xq4ya",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": "bafybeiddmlljvw765tmgilhvupwh7iqxkga2jnaupfh7r4ghuimt5yiici",
+    "search": {
+     "modes": [
+      "literal"
+     ]
+    }
+   }
+  },
+  {
+   "call": {
+    "operation": "search",
+    "q": "irst"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/search?q=irst",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "{\"hits\":[{\"passage\":\"first\",\"range\":{\"lines\":[1,1]},\"ref\":\"ipfs://bafybeigw7gh2nptt533jaj3e5g6s6lubglu4z5vfoaljnqhxuuc4xm6gdq/a.txt\"}]}\n"
+   },
+   "result": {
+    "hits": [
+     {
+      "passage": "first",
+      "range": {
+       "lines": [
+        1,
+        1
+       ]
+      },
+      "ref": "ipfs://bafybeigw7gh2nptt533jaj3e5g6s6lubglu4z5vfoaljnqhxuuc4xm6gdq/a.txt"
+     }
+    ]
+   }
+  },
+  {
+   "call": {
+    "operation": "read",
+    "cid": "bafybeigw7gh2nptt533jaj3e5g6s6lubglu4z5vfoaljnqhxuuc4xm6gdq",
+    "path": "a.txt"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/ipfs/bafybeigw7gh2nptt533jaj3e5g6s6lubglu4z5vfoaljnqhxuuc4xm6gdq/a.txt",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "first"
+   },
+   "result": {
+    "bytes": "first"
+   }
+  },
+  {
+   "call": {
+    "operation": "search",
+    "q": "second line",
+    "limit": 1,
+    "within": "bafybeigw7gh2nptt533jaj3e5g6s6lubglu4z5vfoaljnqhxuuc4xm6gdq"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/search?q=second%20line&limit=1&within=bafybeigw7gh2nptt533jaj3e5g6s6lubglu4z5vfoaljnqhxuuc4xm6gdq",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "{\"hits\":[]}\n"
+   },
+   "result": {
+    "hits": []
+   }
+  },
+  {
+   "call": {
+    "operation": "search",
+    "q": "f.rst",
+    "mode": "regex"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/search?q=f.rst&mode=regex",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 422,
+    "body": "{\"message\":\"The keeper searches in [\\\"literal\\\"]\",\"refused\":\"mode\"}\n"
+   },
+   "refused": "mode"
+  },
+  {
+   "call": {
+    "operation": "search",
+    "q": "irst",
+    "within": "bafkreifdwygomo7nwrunblacdo227rwbn65qtyg3cvw73c7zzqdh2tycz4"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/search?q=irst&within=bafkreifdwygomo7nwrunblacdo227rwbn65qtyg3cvw73c7zzqdh2tycz4",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 404,
+    "body": "{\"refused\":\"absent\"}\n"
+   },
+   "refused": "absent"
+  }
+ ]
+}

@@ -1,0 +1,159 @@
+{
+ "description": "A schema 2 ledger replayed to a keeper: its old events bare, the conversion event refused until every file the ledger enrols comes with it, then the root the ledger recorded and a file read beneath it.",
+ "url": "https://keeper.example/ledgers/0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+ "token": "tape-token",
+ "protocols": [
+  1
+ ],
+ "exchanges": [
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000001-650143ee2789bee3f24cac6ce4675d6e35d35be29788d8e6c3b6755726a7fae9.json",
+    "event": "{\"add\":{\"a/x.txt\":{\"cid\":\"bafkreibnoelefnzgwbcacyt4vh52ymxvzbjq7mmqhtcnwarfq4lzegsiqe\",\"mode\":292,\"sha256\":\"2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881\",\"size\":1}},\"collections\":[],\"item\":\"a\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":null,\"root\":\"bafybeifeje3xu6nxykajeienwpnr6l7ndmq32sxu6xczyqvpnv66y2p4y4\",\"schema\":2}\n",
+    "files": {},
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-84c35d2e7113cac6a4cd3ee53728bc0bab1eedf55da8cafdf422620f49fac94e",
+    "body_sha256": "e5f0df4039a4c25b65726719a8f3dd5af1a749df0583d23c81cd8322090edb60"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":1,\"head\":\"650143ee2789bee3f24cac6ce4675d6e35d35be29788d8e6c3b6755726a7fae9\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":\"bafybeifeje3xu6nxykajeienwpnr6l7ndmq32sxu6xczyqvpnv66y2p4y4\"}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 1,
+    "head": "650143ee2789bee3f24cac6ce4675d6e35d35be29788d8e6c3b6755726a7fae9",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": "bafybeifeje3xu6nxykajeienwpnr6l7ndmq32sxu6xczyqvpnv66y2p4y4"
+   }
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000002-f834f0e13b410e3bd4f5905afa4f24b32b0a67d22a18616a8ca221e50c2ee121.json",
+    "event": "{\"add\":{\"b/y.txt\":{\"cid\":\"bafkreifb7tsdmocu76eiz72lrz4hlvqayjuchecbfkgppgzx2cyrcsfq7i\",\"mode\":292,\"sha256\":\"a1fce4363854ff888cff4b8e7875d600c2682390412a8cf79b37d0b11148b0fa\",\"size\":1}},\"collections\":[],\"item\":\"b\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":\"650143ee2789bee3f24cac6ce4675d6e35d35be29788d8e6c3b6755726a7fae9\",\"root\":\"bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm\",\"schema\":2}\n",
+    "files": {},
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-6a95f857d3fc4185f249407a064ee80ed61e76d1f6ae23196a6b21ac612fa87d",
+    "body_sha256": "beb768bb775e3b3494eb4afb1b723940afc6f8af8a8ce30df22a2de20dd24b57"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":2,\"head\":\"f834f0e13b410e3bd4f5905afa4f24b32b0a67d22a18616a8ca221e50c2ee121\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":\"bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm\"}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 2,
+    "head": "f834f0e13b410e3bd4f5905afa4f24b32b0a67d22a18616a8ca221e50c2ee121",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": "bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm"
+   }
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000003-baguqeeraasdvd5wjv76xqyvqsc3ohhmrqdbbnx34s2orywbok5oq64z5lpdq.json",
+    "event": "{\"empty\":[],\"from\":\"f834f0e13b410e3bd4f5905afa4f24b32b0a67d22a18616a8ca221e50c2ee121\",\"kind\":\"conversion\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":{\"/\":\"baguqeerao3wwgrnzkzwb35l4muvgtytki4n3nurpccw5atvda7onk4nygn2q\"},\"root\":\"bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm\",\"schema\":3}",
+    "files": {},
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-d91dad951a12ad36b1063983feed6a207a00a52a985d61dc8a5f01aab23e6cc2",
+    "body_sha256": "26957f694a3c3f923605ea26e67f4b53711f16c2ac87216f0d12808129b8a48d"
+   },
+   "response": {
+    "status": 422,
+    "body": "{\"refused\":\"entry\"}\n"
+   },
+   "refused": "entry"
+  },
+  {
+   "call": {
+    "operation": "append",
+    "name": "00000003-baguqeeraasdvd5wjv76xqyvqsc3ohhmrqdbbnx34s2orywbok5oq64z5lpdq.json",
+    "event": "{\"empty\":[],\"from\":\"f834f0e13b410e3bd4f5905afa4f24b32b0a67d22a18616a8ca221e50c2ee121\",\"kind\":\"conversion\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"previous\":{\"/\":\"baguqeerao3wwgrnzkzwb35l4muvgtytki4n3nurpccw5atvda7onk4nygn2q\"},\"root\":\"bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm\",\"schema\":3}",
+    "files": {
+     "bafkreibnoelefnzgwbcacyt4vh52ymxvzbjq7mmqhtcnwarfq4lzegsiqe": "x",
+     "bafkreifb7tsdmocu76eiz72lrz4hlvqayjuchecbfkgppgzx2cyrcsfq7i": "y"
+    },
+    "claims": {}
+   },
+   "request": {
+    "method": "POST",
+    "path": "/events",
+    "authorization": "Bearer tape-token",
+    "content_type": "multipart/form-data; boundary=pos-3e36f5abe9c4f885dbcceb19a7495e3579606b8a4b63cb5faf6a4a5bb57d11bb",
+    "body_sha256": "64b2b2254b09dd5eaea0807306311aa8e471f086f82f8c943034951349e82e0b"
+   },
+   "response": {
+    "status": 201,
+    "body": "{\"erased\":[],\"events\":3,\"head\":\"baguqeeraasdvd5wjv76xqyvqsc3ohhmrqdbbnx34s2orywbok5oq64z5lpdq\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":\"bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm\"}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 3,
+    "head": "baguqeeraasdvd5wjv76xqyvqsc3ohhmrqdbbnx34s2orywbok5oq64z5lpdq",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": "bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm"
+   }
+  },
+  {
+   "call": {
+    "operation": "describe"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "{\"erased\":[],\"events\":3,\"head\":\"baguqeeraasdvd5wjv76xqyvqsc3ohhmrqdbbnx34s2orywbok5oq64z5lpdq\",\"ledger_id\":\"0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1\",\"protocol\":1,\"root\":\"bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm\"}\n"
+   },
+   "result": {
+    "erased": [],
+    "events": 3,
+    "head": "baguqeeraasdvd5wjv76xqyvqsc3ohhmrqdbbnx34s2orywbok5oq64z5lpdq",
+    "ledger_id": "0f1e2d3c-4b5a-4968-8778-a6b5c4d3e2f1",
+    "protocol": 1,
+    "root": "bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm"
+   }
+  },
+  {
+   "call": {
+    "operation": "read",
+    "cid": "bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm",
+    "path": "b/y.txt"
+   },
+   "request": {
+    "method": "GET",
+    "path": "/ipfs/bafybeibklwdbuo6m5fbcyxzv2vuhvz2u76s4icyzj6mckm5kn3ks5xzzcm/b/y.txt",
+    "authorization": "Bearer tape-token"
+   },
+   "response": {
+    "status": 200,
+    "body": "y"
+   },
+   "result": {
+    "bytes": "y"
+   }
+  }
+ ]
+}
