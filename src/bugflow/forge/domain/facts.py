@@ -22,6 +22,12 @@ FINDING_DISMISSED = "finding.dismissed"
 WEBHOOK_RECONCILED = "webhook.reconciled"
 
 
+#: A judge was asked to assess a pull request against one policy. The
+#: review context records this fact. This context only reads it, to tell
+#: whether a pull request has already been reviewed.
+JUDGE_INVOKED = "judge.invoked"
+
+
 def delivery_id(forge: str, delivery_id: str) -> UUID:
     """The id of a "delivery received" fact, made from the forge and the
     forge's own id for the delivery.
