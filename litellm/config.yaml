@@ -1,0 +1,19 @@
+# The model roles. The worker asks this proxy for a role and never for
+# a vendor's model. Which model fills a role, and the key it is called
+# with, are a deployment's settings, read from the environment.
+model_list:
+  - model_name: small
+    litellm_params:
+      model: os.environ/ROLE_SMALL_MODEL
+      api_key: os.environ/ROLE_SMALL_API_KEY
+  - model_name: medium
+    litellm_params:
+      model: os.environ/ROLE_MEDIUM_MODEL
+      api_key: os.environ/ROLE_MEDIUM_API_KEY
+  - model_name: large
+    litellm_params:
+      model: os.environ/ROLE_LARGE_MODEL
+      api_key: os.environ/ROLE_LARGE_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

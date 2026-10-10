@@ -1,0 +1,179 @@
+# One server: the programs of this repository and what they run on.
+#
+# SOLUTION is read from the .env beside this file. It names the compose
+# project, the edge network and the aliases the host's proxy routes to.
+# It is the only variable this file interpolates. Every other setting
+# reaches a service through its own file under env/, rendered from the
+# templates in deployments/env/.
+#
+# No service publishes a port on the host. The host's proxy joins the
+# edge network and reaches a service by its alias.
+name: ${SOLUTION}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: ../../env/postgres.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../scripts/init-temporal-db.sh:/docker-entrypoint-initdb.d/10-temporal.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: ../../env/temporal.env
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  temporal-ui:
+    # The workflow console. It authenticates nobody and shows every
+    # workflow this server has run, so the host's proxy must route to it
+    # only behind a login.
+    image: temporalio/ui:2.31.2
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    networks:
+      default: {}
+      edge:
+        aliases: ["${SOLUTION}-temporal-ui"]
+
+  litellm:
+    # The proxy the worker calls models through.
+    image: ghcr.io/berriai/litellm:v1.100.1
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file: ../../env/litellm.env
+    volumes:
+      - ../../litellm/config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    # Brings the database up to date and exits. The programs below start
+    # after it has.
+    build: ../..
+    command: ["bugflow", "migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: ../../env/migrate.env
+
+  worker:
+    # It stops itself when a different policy deployment is put in
+    # force, and reads that deployment when it is started again.
+    build: ../..
+    command: ["bugflow", "worker"]
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: ../../env/worker.env
+
+  ingress:
+    # Receives a forge's webhooks, and checks each delivery's signature
+    # itself. It stops itself as the worker does.
+    build: ../..
+    command: ["uvicorn", "bugflow.apps.ingress.ingress:app_from_environment", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: ../../env/ingress.env
+    networks:
+      default: {}
+      edge:
+        aliases: ["${SOLUTION}-ingress"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    # Takes a policy deployment from a policy repository's pipeline. It
+    # checks every caller's token itself, so the host's proxy routes to
+    # it with no login in front. It does not start until its settings
+    # name an identity provider.
+    build: ../..
+    command: ["uvicorn", "bugflow.apps.api.api:api_from_environment", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: ../../env/api.env
+    networks:
+      default: {}
+      edge:
+        aliases: ["${SOLUTION}-api"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/healthcheck')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  poller:
+    # Stands in for a forge's webhooks where the forge cannot reach the
+    # ingress. Started only when asked for, with --profile polling.
+    build: ../..
+    command: ["bugflow", "poll"]
+    restart: unless-stopped
+    profiles: ["polling"]
+    depends_on:
+      ingress:
+        condition: service_healthy
+    env_file: ../../env/poller.env
+
+  webhooks:
+    # Registers this server's webhook on each watched repository and
+    # exits. Run when asked for, with --profile webhooks. It reads the
+    # worker's settings.
+    build: ../..
+    command: ["bugflow", "webhooks"]
+    restart: "no"
+    profiles: ["webhooks"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file: ../../env/worker.env
+
+volumes:
+  pgdata:
+
+networks:
+  # Made by the host before this composition is brought up, and joined
+  # by the host's proxy.
+  edge:
+    external: true
+    name: ${SOLUTION}-edge
