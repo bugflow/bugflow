@@ -1,12 +1,14 @@
 """The ``bugflow`` command.
 
-It has three subcommands::
+It has five subcommands::
 
     bugflow deploy-policies DIRECTORY --repository OWNER/NAME
         --commit SHA --api URL [--check]
     bugflow install-policies DIRECTORY --repository OWNER/NAME
         --commit SHA [--check]
     bugflow migrate [--check]
+    bugflow poll [--once]
+    bugflow webhooks
 
 ``deploy-policies`` is what a policy repository's pipeline runs. It
 reads the reviewers, policies and doctrine under DIRECTORY and sends
@@ -46,6 +48,23 @@ and prints the scripts that would be run, one a line.
 Exit status: 0 if the database is up to date, or was brought up to
 date. 1 if ``--check`` found scripts to run. 2 if ``DATABASE_URL`` is
 not set.
+
+``poll`` stands in for a forge's webhook where the forge cannot reach
+the ingress: it lists the watched repositories' pull requests and posts
+each change to the ingress as a signed delivery, every
+``POLL_INTERVAL_SECONDS`` until stopped, or with ``--once`` one time.
+Its settings are described in ``bugflow.apps.poller.poller``.
+
+Exit status: 0 when stopped, or after a single poll with no failures.
+1 if a single poll had failures. 2 if a setting is missing or wrong.
+
+``webhooks`` registers this server's webhook on each repository
+``WATCHED_REPOSITORIES`` names, pointing at ``INGRESS_URL`` and signing
+with ``WEBHOOK_SECRET``, and changes nothing where the forge already
+agrees. It records what it did in the database ``DATABASE_URL`` names.
+
+Exit status: 0 if every repository agrees with the declaration. 1 if any
+could not be reconciled. 2 if a setting is missing or wrong.
 """
 
 import argparse
@@ -56,12 +75,22 @@ from pathlib import Path
 
 import httpx2
 
+from bugflow.apps.command.webhooks import HookSettings, run_webhooks
+from bugflow.apps.poller.poller import (
+    PollerSettings,
+    poller_from_settings,
+    run_poller,
+)
 from bugflow.apps.shared.deploying import (
     checks_from,
     deploying_over,
     run_install_policies,
 )
-from bugflow.apps.shared.journals import build_sha
+from bugflow.apps.shared.journals import build_sha, stamped_journal
+from bugflow.forge.infrastructure.github import GitHubForge
+from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
+    SqlAlchemyJournalQueries,
+)
 from bugflow.method.domain.errors import (
     PoliciesRefusedError,
     PolicyDeploymentError,
@@ -78,6 +107,7 @@ from bugflow.method.infrastructure.http_policy_server import (
 from bugflow.method.infrastructure.policy_directory import PolicyDirectory
 from bugflow.method.usecases.send_policies import SendPoliciesUseCase
 from bugflow.shared.infrastructure import migrations
+from bugflow.shared.infrastructure.system_clock import SystemClock
 
 #: The settings a pipeline signs in with.
 SETTINGS = (
@@ -161,6 +191,22 @@ def _parser() -> argparse.ArgumentParser:
         help="run nothing; print the scripts that would be run and "
         "exit 1 if there are any",
     )
+    poll = commands.add_parser(
+        "poll",
+        help="list the pull requests of the repositories POLL_REPOSITORIES "
+        "names and post each change to the ingress at INGRESS_URL, in "
+        "place of a webhook the forge cannot deliver",
+    )
+    poll.add_argument(
+        "--once",
+        action="store_true",
+        help="poll one time and exit 1 if any delivery failed",
+    )
+    commands.add_parser(
+        "webhooks",
+        help="register this server's webhook on each repository "
+        "WATCHED_REPOSITORIES names, pointing at INGRESS_URL",
+    )
     return parser
 
 
@@ -195,6 +241,10 @@ def run(
         return _migrate(args.check, environ)
     if args.command == "install-policies":
         return _install_policies(args, environ)
+    if args.command == "poll":
+        return _poll(args.once, environ)
+    if args.command == "webhooks":
+        return _webhooks(environ, transport)
     if not args.directory.is_dir():
         print(f"error: {args.directory} is not a directory", file=sys.stderr)
         return 2
@@ -262,6 +312,41 @@ def _install_policies(
         deploying_over(database_url, build_sha(environ), checks),
         checks,
         check_only=args.check,
+    )
+
+
+def _poll(once: bool, environ: Mapping[str, str]) -> int:
+    try:
+        settings = PollerSettings.from_environment(environ)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return run_poller(poller_from_settings(settings), settings, once=once)
+
+
+def _webhooks(
+    environ: Mapping[str, str], transport: httpx2.BaseTransport | None
+) -> int:
+    database_url = environ.get("DATABASE_URL")
+    if not database_url:
+        print(
+            "error: DATABASE_URL not set; it names the database what was "
+            "registered is recorded in",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        settings = HookSettings.from_environment(environ)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return run_webhooks(
+        settings,
+        GitHubForge(settings.token, transport),
+        stamped_journal(database_url, build_sha(environ)),
+        SqlAlchemyJournalQueries(database_url),
+        SystemClock(),
+        sys.stdout,
     )
 
 
