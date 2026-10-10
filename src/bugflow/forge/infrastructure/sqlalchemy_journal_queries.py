@@ -14,11 +14,10 @@ from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.serde import from_columns
-from bugflow.shared.infrastructure.sqlalchemy_journal import journal
-
-# The columns a ``JournalEntry`` is built from. The table has one more,
-# ``recorded_at``, which the database fills in.
-_ENTRY = [column for column in journal.c if column.name != "recorded_at"]
+from bugflow.shared.infrastructure.sqlalchemy_journal import (
+    ENTRY_COLUMNS,
+    journal,
+)
 
 
 class SqlAlchemyJournalQueries:
@@ -34,7 +33,7 @@ class SqlAlchemyJournalQueries:
         self, ref: PullRequestRef, event_type: str
     ) -> list[JournalEntry]:
         query = (
-            sa.select(*_ENTRY)
+            sa.select(*ENTRY_COLUMNS)
             .where(
                 journal.c.forge == ref.forge,
                 journal.c.repo == f"{ref.owner}/{ref.repo}",

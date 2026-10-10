@@ -20,7 +20,7 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0006"
+LAST = "0007"
 
 
 @pytest.fixture
@@ -67,6 +67,26 @@ def test_a_table_that_is_already_there_keeps_its_rows(empty: str) -> None:
         upgrade(empty)
 
         assert len(rows(engine, made.event_id)) == 1
+        assert last_run(empty) == [LAST]
+    finally:
+        engine.dispose()
+
+
+def test_columns_that_are_already_there_are_left_alone(empty: str) -> None:
+    """A database whose journal was made with every column the adapter
+    defines runs the script that adds some of them and loses nothing."""
+    engine = sa.create_engine(engine_url(empty))
+    try:
+        metadata.create_all(engine)
+        made = entry("named")
+        SqlAlchemyJournal(
+            empty, policy_repository="example-org/policies"
+        ).append([made])
+
+        upgrade(empty)
+
+        (row,) = rows(engine, made.event_id)
+        assert row["policy_repository"] == "example-org/policies"
         assert last_run(empty) == [LAST]
     finally:
         engine.dispose()
