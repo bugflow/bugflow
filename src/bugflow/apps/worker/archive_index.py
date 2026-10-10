@@ -33,6 +33,7 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
 
 with workflow.unsafe.imports_passed_through():
+    from bugflow.apps.worker.parts import WorkerParts
     from bugflow.archive.domain.errors import ArchiveRefusedError
     from bugflow.archive.domain.repositories.bindings import BindingRepository
     from bugflow.archive.dtos.index_archive import (
@@ -205,6 +206,30 @@ def activities_from_environment(
                 SqlAlchemyIndexPositions(database_url),
             ),
         ),
+    )
+
+
+def parts(environ: Mapping[str, str]) -> WorkerParts:
+    """Build the part of a worker that keeps the index up to date: the
+    workflow, its two activities and its schedule.
+
+    The part is empty, but for a line saying so, if the settings
+    ``activities_from_environment`` reads are not all given.
+    """
+    indexing = activities_from_environment(environ)
+    if indexing is None:
+        return WorkerParts(
+            lines=(
+                "indexes no archive: DATABASE_URL, ARCHIVE_S3_ENDPOINT, "
+                "ARCHIVE_S3_BUCKET, WORKER_ARCHIVE_S3_ACCESS_KEY and "
+                "WORKER_ARCHIVE_S3_SECRET_KEY are not all set",
+            )
+        )
+    return WorkerParts(
+        workflows=(ArchiveIndexWorkflow,),
+        activities=tuple(indexing.all()),
+        schedules=(ensure_schedule,),
+        lines=("indexes the archives it is bound to",),
     )
 
 
