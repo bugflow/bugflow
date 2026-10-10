@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 license-files = ["LICENSE"]
 dependencies = [
     "alembic>=1.14",
+    # The client for the platform a managed agent's sessions run on.
+    "anthropic>=1.13.0",
     "boto3>=1.43.97",
     "fastapi>=0.141.1",
     "httpx2>=2.12.0",
