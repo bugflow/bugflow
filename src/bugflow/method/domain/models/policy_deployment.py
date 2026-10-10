@@ -14,6 +14,7 @@ text whatever they were called.
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import PurePosixPath
 
 from bugflow.method.domain.errors import PolicyDeploymentError
@@ -91,3 +92,13 @@ class PolicyDeployment:
             if one.path == path:
                 return one.text
         return None
+
+
+@dataclass(frozen=True, kw_only=True)
+class PutInForce:
+    """One time a deployment was put in force: its names, and when."""
+
+    repository: str
+    commit: str
+    content_hash: str
+    at: datetime

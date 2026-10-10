@@ -96,6 +96,9 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "repository_dispatched_processes",
             "repository_layer_boundaries",
             "cadence_boundaries",
+            "policy_deployments",
+            "policy_deployment_files",
+            "policy_deployments_in_force",
         }
     finally:
         engine.dispose()
