@@ -1,6 +1,6 @@
 """The ``bugflow`` command.
 
-It has five subcommands::
+It has six subcommands::
 
     bugflow deploy-policies DIRECTORY --repository OWNER/NAME
         --commit SHA --api URL [--check]
@@ -9,6 +9,7 @@ It has five subcommands::
     bugflow migrate [--check]
     bugflow poll [--once]
     bugflow webhooks
+    bugflow worker
 
 ``deploy-policies`` is what a policy repository's pipeline runs. It
 reads the reviewers, policies and doctrine under DIRECTORY and sends
@@ -65,9 +66,21 @@ agrees. It records what it did in the database ``DATABASE_URL`` names.
 
 Exit status: 0 if every repository agrees with the declaration. 1 if any
 could not be reconciled. 2 if a setting is missing or wrong.
+
+``worker`` runs the worker until it is stopped: it connects to the
+Temporal server ``TEMPORAL_ADDRESS`` names, listens on the task queue
+``TEMPORAL_TASK_QUEUE`` names, keeps the archive's search index up to
+date and reviews pull requests under the policy deployment in force.
+Its settings are described in ``bugflow.apps.worker.worker`` and
+``bugflow.apps.worker.review``.
+
+Exit status: 0 when stopped. 2 if a setting is missing or wrong, if
+the worker has nothing to do, if it refuses to start, or if Temporal
+cannot be reached.
 """
 
 import argparse
+import asyncio
 import os
 import sys
 from collections.abc import Mapping, Sequence
@@ -87,6 +100,8 @@ from bugflow.apps.shared.deploying import (
     run_install_policies,
 )
 from bugflow.apps.shared.journals import build_sha, stamped_journal
+from bugflow.apps.shared.temporal import TemporalUnavailableError
+from bugflow.apps.worker import worker
 from bugflow.forge.infrastructure.github import GitHubForge
 from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
@@ -95,6 +110,7 @@ from bugflow.method.domain.errors import (
     PoliciesRefusedError,
     PolicyDeploymentError,
     PolicyServerError,
+    ReviewAgentError,
 )
 from bugflow.method.dtos.send_policies import (
     SendPoliciesRequest,
@@ -207,6 +223,12 @@ def _parser() -> argparse.ArgumentParser:
         help="register this server's webhook on each repository "
         "WATCHED_REPOSITORIES names, pointing at INGRESS_URL",
     )
+    commands.add_parser(
+        "worker",
+        help="run the worker on the task queue TEMPORAL_TASK_QUEUE names: "
+        "it keeps the archive's search index up to date and reviews pull "
+        "requests under the policy deployment in force",
+    )
     return parser
 
 
@@ -245,6 +267,8 @@ def run(
         return _poll(args.once, environ)
     if args.command == "webhooks":
         return _webhooks(environ, transport)
+    if args.command == "worker":
+        return _worker(environ)
     if not args.directory.is_dir():
         print(f"error: {args.directory} is not a directory", file=sys.stderr)
         return 2
@@ -348,6 +372,15 @@ def _webhooks(
         SystemClock(),
         sys.stdout,
     )
+
+
+def _worker(environ: Mapping[str, str]) -> int:
+    try:
+        asyncio.run(worker.run(environ))
+    except (ValueError, ReviewAgentError, TemporalUnavailableError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return 0
 
 
 def _migrate(check: bool, environ: Mapping[str, str]) -> int:
