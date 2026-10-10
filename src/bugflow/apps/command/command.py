@@ -1,15 +1,16 @@
 """The ``bugflow`` command.
 
-It has one subcommand::
+It has two subcommands::
 
     bugflow deploy-policies DIRECTORY --repository OWNER/NAME
         --commit SHA --api URL [--check]
+    bugflow migrate [--check]
 
-This is what a policy repository's pipeline runs. It reads the
-reviewers, policies and doctrine under DIRECTORY and sends them to the
-server at URL, which puts them in force. With ``--check`` the server
-parses them and stores nothing, which is what a pipeline runs on a pull
-request.
+``deploy-policies`` is what a policy repository's pipeline runs. It
+reads the reviewers, policies and doctrine under DIRECTORY and sends
+them to the server at URL, which puts them in force. With ``--check``
+the server parses them and stores nothing, which is what a pipeline
+runs on a pull request.
 
 The pipeline signs in to the identity provider as a client with no
 person behind it. Four settings in its environment say how:
@@ -23,6 +24,14 @@ person behind it. Four settings in its environment say how:
 Exit status: 0 if the server accepted the call. 1 if the files are not a
 deployment or the server refused them. 2 if the call could not be made
 or was not allowed.
+
+``migrate`` brings the database named by ``DATABASE_URL`` up to date by
+running the scripts it has not run. With ``--check`` it runs nothing
+and prints the scripts that would be run, one a line.
+
+Exit status: 0 if the database is up to date, or was brought up to
+date. 1 if ``--check`` found scripts to run. 2 if ``DATABASE_URL`` is
+not set.
 """
 
 import argparse
@@ -48,6 +57,7 @@ from bugflow.method.infrastructure.http_policy_server import (
 )
 from bugflow.method.infrastructure.policy_directory import PolicyDirectory
 from bugflow.method.usecases.send_policies import SendPoliciesUseCase
+from bugflow.shared.infrastructure import migrations
 
 #: The settings a pipeline signs in with.
 SETTINGS = (
@@ -93,6 +103,17 @@ def _parser() -> argparse.ArgumentParser:
         help="have the server parse the files and say what is wrong "
         "with them, storing nothing",
     )
+    migrate = commands.add_parser(
+        "migrate",
+        help="bring the database named by DATABASE_URL up to date by "
+        "running the scripts it has not run",
+    )
+    migrate.add_argument(
+        "--check",
+        action="store_true",
+        help="run nothing; print the scripts that would be run and "
+        "exit 1 if there are any",
+    )
     return parser
 
 
@@ -123,6 +144,8 @@ def run(
     ``transport`` replaces the network, for tests.
     """
     args = _parser().parse_args(argv)
+    if args.command == "migrate":
+        return _migrate(args.check, environ)
     if not args.directory.is_dir():
         print(f"error: {args.directory} is not a directory", file=sys.stderr)
         return 2
@@ -165,6 +188,24 @@ def run(
         print(f"error: {exc}", file=sys.stderr)
         return 2
     print(_said(answered))
+    return 0
+
+
+def _migrate(check: bool, environ: Mapping[str, str]) -> int:
+    database_url = environ.get("DATABASE_URL")
+    if not database_url:
+        print(
+            "error: DATABASE_URL not set; it names the database to bring "
+            "up to date",
+            file=sys.stderr,
+        )
+        return 2
+    if check:
+        not_run = migrations.pending(database_url)
+        for name in not_run:
+            print(name)
+        return 1 if not_run else 0
+    migrations.upgrade(database_url)
     return 0
 
 
