@@ -1,9 +1,11 @@
 """The ``bugflow`` command.
 
-It has two subcommands::
+It has three subcommands::
 
     bugflow deploy-policies DIRECTORY --repository OWNER/NAME
         --commit SHA --api URL [--check]
+    bugflow install-policies DIRECTORY --repository OWNER/NAME
+        --commit SHA [--check]
     bugflow migrate [--check]
 
 ``deploy-policies`` is what a policy repository's pipeline runs. It
@@ -11,6 +13,18 @@ reads the reviewers, policies and doctrine under DIRECTORY and sends
 them to the server at URL, which puts them in force. With ``--check``
 the server parses them and stores nothing, which is what a pipeline
 runs on a pull request.
+
+``install-policies`` is the same act on the host, for a server no
+pipeline reaches yet and for the first deployment of one. It stores
+what DIRECTORY holds in the database named by ``DATABASE_URL`` and
+puts it in force, writing the declarations the deployment carries.
+``BUILD_SHA`` and ``POLICY_CHECKS`` are read as the API reads them.
+With ``--check`` it parses the files and stores nothing.
+
+Exit status: 0 if the database holds the deployment afterwards, or
+with ``--check`` if the files parse. 1 if the files are not a
+deployment, do not parse, or the commit is held with other content. 2
+if ``DATABASE_URL`` is not set or DIRECTORY is not a directory.
 
 The pipeline signs in to the identity provider as a client with no
 person behind it. Four settings in its environment say how:
@@ -42,6 +56,12 @@ from pathlib import Path
 
 import httpx2
 
+from bugflow.apps.shared.deploying import (
+    checks_from,
+    deploying_over,
+    run_install_policies,
+)
+from bugflow.apps.shared.journals import build_sha
 from bugflow.method.domain.errors import (
     PoliciesRefusedError,
     PolicyDeploymentError,
@@ -103,6 +123,33 @@ def _parser() -> argparse.ArgumentParser:
         help="have the server parse the files and say what is wrong "
         "with them, storing nothing",
     )
+    install_policies = commands.add_parser(
+        "install-policies",
+        help="store the reviewers, policies and doctrine a directory "
+        "holds as a deployment in the database DATABASE_URL names, and "
+        "put it in force",
+    )
+    install_policies.add_argument(
+        "directory",
+        type=Path,
+        help="the directory holding one directory per reviewer",
+    )
+    install_policies.add_argument(
+        "--repository",
+        required=True,
+        help="the policy repository the files are from, as owner/name",
+    )
+    install_policies.add_argument(
+        "--commit",
+        required=True,
+        help="the commit of that repository the files are from",
+    )
+    install_policies.add_argument(
+        "--check",
+        action="store_true",
+        help="parse the files and say what is wrong with them, storing "
+        "nothing",
+    )
     migrate = commands.add_parser(
         "migrate",
         help="bring the database named by DATABASE_URL up to date by "
@@ -146,6 +193,8 @@ def run(
     args = _parser().parse_args(argv)
     if args.command == "migrate":
         return _migrate(args.check, environ)
+    if args.command == "install-policies":
+        return _install_policies(args, environ)
     if not args.directory.is_dir():
         print(f"error: {args.directory} is not a directory", file=sys.stderr)
         return 2
@@ -189,6 +238,31 @@ def run(
         return 2
     print(_said(answered))
     return 0
+
+
+def _install_policies(
+    args: argparse.Namespace, environ: Mapping[str, str]
+) -> int:
+    if not args.directory.is_dir():
+        print(f"error: {args.directory} is not a directory", file=sys.stderr)
+        return 2
+    database_url = environ.get("DATABASE_URL")
+    if not database_url:
+        print(
+            "error: DATABASE_URL not set; it names the database the "
+            "deployment is stored in",
+            file=sys.stderr,
+        )
+        return 2
+    checks = checks_from(environ)
+    return run_install_policies(
+        args.directory,
+        args.repository,
+        args.commit,
+        deploying_over(database_url, build_sha(environ), checks),
+        checks,
+        check_only=args.check,
+    )
 
 
 def _migrate(check: bool, environ: Mapping[str, str]) -> int:
