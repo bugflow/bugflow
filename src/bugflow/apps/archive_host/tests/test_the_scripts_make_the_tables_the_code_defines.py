@@ -20,7 +20,14 @@ from bugflow.archive.infrastructure import (
 )
 from bugflow.forge.infrastructure import sqlalchemy_snapshots
 from bugflow.review.infrastructure import (
+    sqlalchemy_cadence_boundaries,
+    sqlalchemy_enforcement,
+    sqlalchemy_governance,
     sqlalchemy_judge_archive,
+    sqlalchemy_layer_boundaries,
+    sqlalchemy_review_declaration,
+    sqlalchemy_spend_bindings,
+    sqlalchemy_withholding,
     sqlalchemy_write_up_archive,
 )
 from bugflow.shared.infrastructure import sqlalchemy_journal
@@ -40,6 +47,13 @@ def defined() -> sa.MetaData:
         sqlalchemy_snapshots.metadata,
         sqlalchemy_judge_archive.metadata,
         sqlalchemy_write_up_archive.metadata,
+        sqlalchemy_governance.metadata,
+        sqlalchemy_enforcement.metadata,
+        sqlalchemy_withholding.metadata,
+        sqlalchemy_spend_bindings.metadata,
+        sqlalchemy_review_declaration.metadata,
+        sqlalchemy_layer_boundaries.metadata,
+        sqlalchemy_cadence_boundaries.metadata,
     ):
         for table in metadata.tables.values():
             table.to_metadata(together)

@@ -88,6 +88,14 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "pull_request_snapshots",
             "judge_exchanges",
             "agent_write_ups",
+            "review_governance",
+            "repository_enforcement",
+            "repository_withholding",
+            "spend_bindings",
+            "repository_judged_policies",
+            "repository_dispatched_processes",
+            "repository_layer_boundaries",
+            "cadence_boundaries",
         }
     finally:
         engine.dispose()
