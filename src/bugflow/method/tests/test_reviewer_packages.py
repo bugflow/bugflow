@@ -1,11 +1,11 @@
-"""Tests of reading installed reviewers from their directories."""
+"""Tests of reading reviewers from their directories."""
 
 from pathlib import Path
 
 import pytest
 
-from bugflow.review.domain.errors import ReviewAgentError
-from bugflow.review.infrastructure.reviewer_packages import (
+from bugflow.method.domain.errors import ReviewAgentError
+from bugflow.method.infrastructure.reviewer_packages import (
     CheckedPolicy,
     DomainSpecificReviewAgent,
     installed,
@@ -90,7 +90,19 @@ def test_a_reviewer_says_which_policy_a_check_answers() -> None:
 
 def test_a_check_this_server_does_not_have_is_refused() -> None:
     with pytest.raises(ValueError, match="'spelling' is not a check"):
-        parse_agent(Path("a/reviewer.md"), with_checks("spelling S-02 R-1"))
+        parse_agent(
+            Path("a/reviewer.md"),
+            with_checks("spelling S-02 R-1"),
+            checks=("em-dash",),
+        )
+
+
+def test_a_caller_that_names_no_check_leaves_the_name_unchecked() -> None:
+    agent = parse_agent(
+        Path("a/reviewer.md"), with_checks("spelling S-02 R-1")
+    )
+
+    assert agent.checks[0].check == "spelling"
 
 
 def test_a_check_for_a_policy_the_reviewer_does_not_have_is_refused() -> None:
