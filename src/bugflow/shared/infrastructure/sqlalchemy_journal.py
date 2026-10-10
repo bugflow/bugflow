@@ -43,29 +43,73 @@ journal = sa.Table(
     sa.Column("payload", JSONB, nullable=False),
     sa.Column("agent_id", sa.Text),
     sa.Column("build", sa.Text),
+    sa.Column("policy_repository", sa.Text),
+    sa.Column("policy_commit", sa.Text),
+    sa.Column("policy_content", sa.Text),
     sa.Index("journal_repo_pr_occurred", "repo", "pr_number", "occurred_at"),
     sa.Index("journal_type_occurred", "event_type", "occurred_at"),
     sa.Index("journal_run", "workflow_id", "run_id"),
     sa.Index("journal_agent_id_idx", "agent_id", "corpus_version"),
     sa.Index("journal_build_idx", "build", "occurred_at"),
+    sa.Index(
+        "journal_policy_deployment_idx",
+        "policy_repository",
+        "policy_commit",
+        "occurred_at",
+    ),
+)
+
+#: The columns that are not fields of a ``JournalEntry``: the time the
+#: database stored the row, and the policy deployment the writing
+#: process started with.
+_NOT_OF_AN_ENTRY = frozenset(
+    {"recorded_at", "policy_repository", "policy_commit", "policy_content"}
+)
+
+#: The columns a ``JournalEntry`` is built from, for an adapter that
+#: reads entries back.
+ENTRY_COLUMNS = tuple(
+    column for column in journal.c if column.name not in _NOT_OF_AN_ENTRY
 )
 
 
 class SqlAlchemyJournal:
-    def __init__(self, database_url: str, build: str | None = None) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        build: str | None = None,
+        policy_repository: str | None = None,
+        policy_commit: str | None = None,
+        policy_content: str | None = None,
+    ) -> None:
+        """``build`` is stored in the ``build`` column of every row this
+        adapter writes.
+
+        ``policy_repository``, ``policy_commit`` and ``policy_content``
+        name the policy deployment the writing process started with:
+        the names its sender gave it, and the hash of its files. They
+        are stored on every row too. All three are None for a process
+        that started with no deployment in force, or that does not
+        review.
+
+        The application passes each of them in.
+        """
         self._engine = sa.create_engine(
             engine_url(database_url), pool_pre_ping=True
         )
-        #: Stored in the ``build`` column of every row this adapter
-        #: writes. The application passes it in.
-        self._build = build
+        self._stamps = {
+            "build": build,
+            "policy_repository": policy_repository,
+            "policy_commit": policy_commit,
+            "policy_content": policy_content,
+        }
 
     def append(self, entries: Sequence[JournalEntry]) -> None:
         if not entries:
             return
         # Always store this adapter's build, even if the entry carries
         # one: the build is about the process doing the writing.
-        rows = [asdict(entry) | {"build": self._build} for entry in entries]
+        rows = [asdict(entry) | self._stamps for entry in entries]
         statement = (
             insert(journal)
             .values(rows)

@@ -21,7 +21,12 @@ from uuid import UUID
 from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
 )
+from bugflow.method.infrastructure.deployment_watch import DeployedFrom
+from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
+    SqlAlchemyJournalQueries as ReviewJournalQueries,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.sqlalchemy_journal import SqlAlchemyJournal
 
@@ -45,10 +50,27 @@ def build_sha(environ: Mapping[str, str]) -> str | None:
     return value
 
 
-def stamped_journal(database_url: str, build: str | None) -> SqlAlchemyJournal:
+def stamped_journal(
+    database_url: str,
+    build: str | None,
+    deployed_from: DeployedFrom | None = None,
+) -> SqlAlchemyJournal:
     """Return the Postgres journal, stamping ``build`` on every row it
-    writes. ``build`` is what ``build_sha`` read."""
-    return SqlAlchemyJournal(database_url, build=build)
+    writes. ``build`` is what ``build_sha`` read.
+
+    ``deployed_from`` is the policy deployment the caller's reviewers
+    were built from. Given, every row also names that deployment's
+    repository, commit and content hash. A caller that does not review,
+    or that started with no deployment in force, leaves it out and the
+    three columns are empty.
+    """
+    return SqlAlchemyJournal(
+        database_url,
+        build=build,
+        policy_repository=deployed_from.repository if deployed_from else None,
+        policy_commit=deployed_from.commit if deployed_from else None,
+        policy_content=deployed_from.content_hash if deployed_from else None,
+    )
 
 
 class DeliveryJournal:
@@ -79,4 +101,54 @@ def delivery_journal(database_url: str, build: str | None) -> DeliveryJournal:
     return DeliveryJournal(
         stamped_journal(database_url, build),
         SqlAlchemyJournalQueries(database_url),
+    )
+
+
+class ReviewJournal:
+    """The journal as the review use cases take it: the stamped journal
+    for recording, and the review context's queries for what they read
+    back. One object, because a use case takes one."""
+
+    def __init__(
+        self, recording: SqlAlchemyJournal, queries: ReviewJournalQueries
+    ) -> None:
+        self._recording = recording
+        self._queries = queries
+
+    def append(self, entries: Sequence[JournalEntry]) -> None:
+        self._recording.append(entries)
+
+    def has_event(self, event_id: UUID) -> bool:
+        return self._recording.has_event(event_id)
+
+    def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
+        return self._queries.entries_for_run(correlation)
+
+    def latest_acted_run(
+        self, ref: PullRequestRef, excluding: Correlation
+    ) -> Correlation | None:
+        return self._queries.latest_acted_run(ref, excluding)
+
+    def events_for_pull_request(
+        self, ref: PullRequestRef, event_type: str
+    ) -> list[JournalEntry]:
+        return self._queries.events_for_pull_request(ref, event_type)
+
+    def events_for_repository(
+        self, forge: str, repo: str, event_type: str
+    ) -> list[JournalEntry]:
+        return self._queries.events_for_repository(forge, repo, event_type)
+
+
+def review_journal(
+    database_url: str,
+    build: str | None,
+    deployed_from: DeployedFrom | None = None,
+) -> ReviewJournal:
+    """Return the journal the review use cases take, over Postgres,
+    stamping ``build`` and the deployment in ``deployed_from`` on every
+    row it writes."""
+    return ReviewJournal(
+        stamped_journal(database_url, build, deployed_from),
+        ReviewJournalQueries(database_url),
     )
