@@ -19,6 +19,7 @@ from bugflow.archive.infrastructure import (
     sqlalchemy_search_index,
 )
 from bugflow.forge.infrastructure import sqlalchemy_snapshots
+from bugflow.method.infrastructure import sqlalchemy_policy_deployments
 from bugflow.review.infrastructure import (
     sqlalchemy_cadence_boundaries,
     sqlalchemy_enforcement,
@@ -54,6 +55,7 @@ def defined() -> sa.MetaData:
         sqlalchemy_review_declaration.metadata,
         sqlalchemy_layer_boundaries.metadata,
         sqlalchemy_cadence_boundaries.metadata,
+        sqlalchemy_policy_deployments.metadata,
     ):
         for table in metadata.tables.values():
             table.to_metadata(together)

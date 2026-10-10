@@ -2,7 +2,20 @@
 
 
 class PolicyDeploymentError(ValueError):
-    """What was sent is not a deployment."""
+    """What was sent is not a deployment, or one of its files does not
+    parse. The message names every problem found."""
+
+
+class PolicyDeploymentConflictError(Exception):
+    """A commit already held was sent again with different content."""
+
+    def __init__(self, repository: str, commit: str) -> None:
+        super().__init__(
+            f"{repository} at {commit} is already held with other content; "
+            "a commit names one deployment"
+        )
+        self.repository = repository
+        self.commit = commit
 
 
 class PoliciesRefusedError(Exception):
