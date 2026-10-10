@@ -86,28 +86,28 @@ layers = ["infrastructure", "domain"]
 [[tool.importlinter.contracts]]
 name = "Inside a context, imports point inward"
 type = "layers"
-containers = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review"]
+containers = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review", "bugflow.method"]
 layers = ["(infrastructure) | (usecases)", "(dtos)", "domain"]
 
 [[tool.importlinter.contracts]]
 name = "Shared imports no context"
 type = "forbidden"
 source_modules = ["bugflow.shared"]
-forbidden_modules = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review"]
+forbidden_modules = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review", "bugflow.method"]
 
 [[tool.importlinter.contracts]]
 name = "A use case does not import what runs it"
 type = "forbidden"
-source_modules = ["bugflow.archive.usecases", "bugflow.forge.usecases", "bugflow.work.usecases", "bugflow.review.usecases"]
+source_modules = ["bugflow.archive.usecases", "bugflow.forge.usecases", "bugflow.work.usecases", "bugflow.review.usecases", "bugflow.method.usecases"]
 forbidden_modules = ["fastapi", "starlette", "temporalio", "sqlalchemy", "psycopg", "boto3"]
 
 [[tool.importlinter.contracts]]
 name = "Nothing imports an application"
 type = "forbidden"
-source_modules = ["bugflow.shared", "bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review"]
+source_modules = ["bugflow.shared", "bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review", "bugflow.method"]
 forbidden_modules = ["bugflow.apps"]
 
 [[tool.importlinter.contracts]]
 name = "A context imports no other context"
 type = "independence"
-modules = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review"]
+modules = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review", "bugflow.method"]
