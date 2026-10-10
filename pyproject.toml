@@ -24,6 +24,7 @@ dependencies = [
     # release.
     "pyposlib",
     "sqlalchemy>=2.0.52",
+    "standardwebhooks>=1.1.0",
     "temporalio>=1.32.0",
     "uvicorn>=0.52.4",
 ]
