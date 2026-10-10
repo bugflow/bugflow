@@ -14,6 +14,8 @@ from pathlib import Path
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 
 from bugflow.shared.infrastructure.database import engine_url
 
@@ -25,6 +27,31 @@ VERSION_TABLE = "bugflow_schema_version"
 _LOCK = 4_812_163_577_031
 
 
+def _config() -> Config:
+    config = Config()
+    config.set_main_option("script_location", str(Path(__file__).parent))
+    return config
+
+
+def pending(database_url: str) -> list[str]:
+    """Return the names of the scripts the database has not run yet, in
+    the order ``upgrade`` would run them. Empty when it is up to date.
+    """
+    scripts = ScriptDirectory.from_config(_config())
+    engine = sa.create_engine(engine_url(database_url))
+    try:
+        with engine.connect() as connection:
+            context = MigrationContext.configure(
+                connection, opts={"version_table": VERSION_TABLE}
+            )
+            ran = context.get_current_heads()
+    finally:
+        engine.dispose()
+    # Alembic walks from the newest script down to the one last run.
+    not_run = scripts.iterate_revisions("head", ran[0] if ran else "base")
+    return [Path(script.path).stem for script in reversed(list(not_run))]
+
+
 def upgrade(database_url: str) -> None:
     """Run every script the database has not run yet.
 
@@ -32,8 +59,7 @@ def upgrade(database_url: str) -> None:
     the scripts while the others wait, and then find nothing left to
     run.
     """
-    config = Config()
-    config.set_main_option("script_location", str(Path(__file__).parent))
+    config = _config()
     engine = sa.create_engine(engine_url(database_url))
     try:
         with engine.connect() as connection:
