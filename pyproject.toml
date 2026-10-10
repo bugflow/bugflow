@@ -31,6 +31,9 @@ dependencies = [
 [tool.uv.sources]
 pyposlib = { git = "https://github.com/ClankaOperatingSystem/pyposlib.git", rev = "6b00d568036cd9fdec6ee0c2066790aedd23ed47" }
 
+[project.scripts]
+bugflow = "bugflow.apps.command.command:main"
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
