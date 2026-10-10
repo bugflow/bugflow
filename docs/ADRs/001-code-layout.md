@@ -6,8 +6,9 @@ Proposed, 2026-10-09.
 
 ## Decision
 
-The repository has two directories: `docs/` and `src/`. Others are
-added when they are needed, by amending this record.
+The repository has three directories: `docs/`, `src/` and
+`deployments/`. Others are added when they are needed, by amending this
+record.
 
 A Python module's path is:
 
@@ -80,6 +81,21 @@ A context's tests are in `{context}/tests/`, and an application's in
 ### Documents
 
 Decision records are `docs/ADRs/NNN-title.md`.
+
+### Deployments
+
+A third directory, `deployments/`, holds what brings the programs up
+on a host. `deployments/{environment}/docker-compose.yml` is one
+environment's composition, and the `.env` beside it names the client,
+the solution and the environment. `deployments/env/*.env.j2` are the
+templates of the programs' settings, which a deployer renders into
+`env/`. `deployments/scripts/` holds what the compositions mount and
+what prepares a local run. `deployments/tests/` holds the tests that
+read those files. `Dockerfile` and `litellm/`, at the root of the
+repository, are built and mounted by the compositions.
+`deployments/example/` is the composition this repository is tested
+against. It names no organisation, and a deployer copies it. Nothing
+under `src/` reads anything under `deployments/`.
 
 ## Rules
 
