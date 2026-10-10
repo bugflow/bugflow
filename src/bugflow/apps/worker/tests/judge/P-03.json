@@ -1,0 +1,64 @@
+{
+  "messages": [
+    {
+      "content": "<doctrine>\n**EX-6. Marketing register.** No \"robust\", \"seamless\".\n**EX-16. Padding.** \"In order to\" is \"to\".\n</doctrine>\n\nYou assess each commit's summary line against clause EX-3 of the doctrine above.",
+      "role": "system"
+    },
+    {
+      "content": "<pull_request>\n<commits>\n<commit sha=\"aaaaaaa\">\nAdd the poller\n\nWhy.\n</commit>\n<commit sha=\"bbbbbbb\">\nAdded the tests\n</commit>\n</commits>\n</pull_request>",
+      "role": "user"
+    }
+  ],
+  "model": "medium",
+  "response_format": {
+    "json_schema": {
+      "name": "judge_report",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "violations": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "clause": {
+                  "enum": [
+                    "EX-3"
+                  ],
+                  "type": "string"
+                },
+                "explanation": {
+                  "type": "string"
+                },
+                "quote": {
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "fail",
+                    "warn"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "clause",
+                "quote",
+                "explanation",
+                "severity"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "violations"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    "type": "json_schema"
+  },
+  "temperature": 0
+}
