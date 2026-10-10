@@ -1,5 +1,7 @@
 """The errors this context raises."""
 
+from bugflow.shared.domain.errors import SchemaError
+
 
 class PolicyDeploymentError(ValueError):
     """What was sent is not a deployment, or one of its files does not
@@ -30,3 +32,16 @@ class PolicyServerError(Exception):
     allowed to send it. The message says which, for the person or
     pipeline that sent it.
     """
+
+
+class ReviewAgentError(Exception):
+    """A reviewer's directory does not describe a reviewer, or a
+    reviewer that was asked for is not installed."""
+
+
+class PaceLayerTopologyError(SchemaError):
+    """The topology was declared, and what it declared was not one."""
+
+
+class DoctrineNotFoundError(Exception):
+    """The doctrine directory holds no Markdown file."""

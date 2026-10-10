@@ -1,4 +1,4 @@
-"""Read installed reviewers from the directories that hold them.
+"""Read reviewers from the directories that hold them.
 
 A reviewer is a directory. It holds a manifest named ``reviewer.md``,
 and may hold a ``policies`` directory and a ``doctrine`` directory.
@@ -18,20 +18,22 @@ instructions in prose. The header is lines of the form ``key: value``::
 ``agent_id``, ``summary``, ``runner`` and ``governs`` are required.
 
 ``checks`` says which of the reviewer's policies a check of this server
-answers. Each entry is three words: the check's name, the policy's id,
-and the id of the doctrine clause the findings cite. Entries are
-separated by commas. The check must be one this server has, and the
-policy must be one of the reviewer's.
+answers: a policy answered by code and not by a model. Each entry is
+three words: the check's name, the policy's id, and the id of the
+doctrine clause the findings cite. Entries are separated by commas. The
+policy must be one of the reviewer's. The checks a server has are the
+application's to know, so a caller that has them passes their names
+and a check not among them is refused; a caller that passes none
+leaves the names unchecked.
 
 Nothing here builds a prompt or runs anything.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from bugflow.review.domain.errors import ReviewAgentError
-from bugflow.review.domain.values.checked_policy import CHECKS
+from bugflow.method.domain.errors import ReviewAgentError
 
 _REQUIRED = ("agent_id", "summary", "runner", "governs")
 _SEPARATOR = "\n---\n"
@@ -43,7 +45,7 @@ MANIFEST = "reviewer.md"
 class CheckedPolicy:
     """One policy of a reviewer that a check answers."""
 
-    #: The check's name, one of ``CHECKS``.
+    #: The check's name.
     check: str
     policy_id: str
     #: The id of the doctrine clause the check's findings cite.
@@ -87,7 +89,10 @@ def _flag(name: str, field: str, value: str) -> bool:
 
 
 def _checks(
-    name: str, value: str, policies: tuple[str, ...]
+    name: str,
+    value: str,
+    policies: tuple[str, ...],
+    known: Collection[str] | None,
 ) -> tuple[CheckedPolicy, ...]:
     """Read the ``checks`` field of a header."""
     checks: list[CheckedPolicy] = []
@@ -101,10 +106,10 @@ def _checks(
                 "a policy id and a clause id"
             )
         check, policy_id, clause = words
-        if check not in CHECKS:
+        if known is not None and check not in known:
             raise ValueError(
                 f"{name}: {check!r} is not a check this server has; "
-                f"it has {', '.join(CHECKS)}"
+                f"it has {', '.join(sorted(known))}"
             )
         if policy_id not in policies:
             raise ValueError(
@@ -117,13 +122,17 @@ def _checks(
     return tuple(checks)
 
 
-def parse_agent(path: Path, text: str) -> DomainSpecificReviewAgent:
+def parse_agent(
+    path: Path, text: str, checks: Collection[str] | None = None
+) -> DomainSpecificReviewAgent:
     """Read one manifest. ``path`` is the manifest's path, and ``text``
-    its content.
+    its content. ``checks`` names the checks this server has, if the
+    caller knows them.
 
     Raises ``ValueError``, naming the file, if the manifest has no line
     of three dashes, a header line that is not ``key: value``, a
-    required field missing, or a field that cannot be read.
+    required field missing, a field that cannot be read, or a check
+    not among ``checks``.
     """
     name = path.name
     header, separator, description = text.partition(_SEPARATOR)
@@ -153,13 +162,15 @@ def parse_agent(path: Path, text: str) -> DomainSpecificReviewAgent:
         policies=policies,
         directory=path.parent,
         description=description.strip("\n"),
-        checks=_checks(name, fields.get("checks", ""), policies),
+        checks=_checks(name, fields.get("checks", ""), policies, checks),
     )
 
 
-def load_agents(directory: Path) -> dict[str, DomainSpecificReviewAgent]:
+def load_agents(
+    directory: Path, checks: Collection[str] | None = None
+) -> dict[str, DomainSpecificReviewAgent]:
     """Read every reviewer under ``directory``, and return them by agent
-    id.
+    id. ``checks`` is passed to ``parse_agent``.
 
     A directory inside it with no manifest is not a reviewer and is
     passed over. If ``directory`` holds no reviewer, or does not exist,
@@ -169,7 +180,7 @@ def load_agents(directory: Path) -> dict[str, DomainSpecificReviewAgent]:
     """
     agents: dict[str, DomainSpecificReviewAgent] = {}
     for manifest in sorted(directory.glob(f"*/{MANIFEST}")):
-        agent = parse_agent(manifest, manifest.read_text())
+        agent = parse_agent(manifest, manifest.read_text(), checks)
         if agent.agent_id in agents:
             raise ReviewAgentError(f"two agents claim {agent.agent_id}")
         agents[agent.agent_id] = agent
