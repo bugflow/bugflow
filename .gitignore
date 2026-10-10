@@ -5,3 +5,8 @@ dist/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+# What `make env` writes: the values of a local run and the settings
+# rendered from them. Anchored to the root, so that a deployment's own
+# `.env` and the templates under `deployments/env/` are tracked.
+/.env
+/env/
