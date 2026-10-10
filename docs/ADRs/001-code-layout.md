@@ -25,6 +25,12 @@ Two names beside the contexts are not contexts:
   worker, a command. An application wires contexts to the technology
   that runs them.
 
+`apps/shared/` holds code that several programs compose and that
+crosses contexts: stamping the journal with the build, the reviewers
+in force, deploying policies with the declarations they carry. It is
+not a program and not a context. A program may import it; no context
+may, as no context imports an application; and it imports no program.
+
 ### Layers
 
 A context has up to four layers:

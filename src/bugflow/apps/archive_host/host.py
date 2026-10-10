@@ -48,6 +48,7 @@ from pyposlib import remote
 from pyposlib.archive_integrity import Refused, encoded
 from starlette.concurrency import run_in_threadpool
 
+from bugflow.apps.shared.journals import build_sha, stamped_journal
 from bugflow.archive.domain.errors import ArchiveRefusedError
 from bugflow.archive.dtos.append_event import AppendEventRequest
 from bugflow.archive.dtos.describe_archive import DescribeArchiveRequest
@@ -96,7 +97,6 @@ from bugflow.shared.infrastructure.jwt_bearer_token import (
     published_keys,
 )
 from bugflow.shared.infrastructure.s3_object_store import S3ObjectStore
-from bugflow.shared.infrastructure.sqlalchemy_journal import SqlAlchemyJournal
 from bugflow.shared.infrastructure.system_clock import SystemClock
 
 #: The largest append accepted unless ARCHIVE_MAX_UPLOAD_BYTES says
@@ -541,8 +541,9 @@ def from_environment(
       Defaults to both.
     - ``ARCHIVE_RETIRING``: the date after which a version may be dropped,
       such as ``1=2027-01-31``. Clients are told, so they can warn.
-    - ``BUILD_SHA``: recorded with every journal entry, to show which build
-      wrote it.
+    - ``BUILD_SHA``: the full git sha of the build, recorded with every
+      journal entry to show which build wrote it. A value that is not a
+      full sha stops the host.
     - ``TEMPORAL_ADDRESS``: where a Temporal server is. When set, the host
       asks the worker to index new files straight after each append, and
       ``TEMPORAL_TASK_QUEUE`` is then required too. ``TEMPORAL_NAMESPACE``
@@ -657,9 +658,7 @@ def from_environment(
                 bindings,
                 access,
                 keeping,
-                SqlAlchemyJournal(
-                    database_url, build=environ.get("BUILD_SHA") or None
-                ),
+                stamped_journal(database_url, build_sha(environ)),
                 SystemClock(),
                 uuid.uuid4().hex,
                 indexing,
