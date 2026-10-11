@@ -59,8 +59,14 @@ def refuse_without_a_boundary(
     raise ValueError(
         "no boundary declared for "
         + "; ".join(missing)
-        + ". A period with no boundary is one whose start nobody stated: "
-        "declare one for each repository on each layer"
+        + ". A period with no boundary is one whose start nobody stated. "
+        "Declare one for each repository on each layer with `bugflow "
+        "declare REPOSITORY --layer LAYER --boundary BOUNDARY`. For a "
+        "layer an event fires, the boundary is the window a burst of "
+        "deliveries settles in, in seconds, such as 60s. For a layer a "
+        "clock fires, it is where the period begins: a time, a day and a "
+        "time, a day of the month and a time, or a date and a time, such "
+        "as SUN 23:30"
     )
 
 
