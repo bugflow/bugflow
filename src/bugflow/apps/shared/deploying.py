@@ -123,6 +123,19 @@ def apply_declarations(
     return True
 
 
+def declared_by_deployment(deployments: PolicyDeploymentRepository) -> bool:
+    """Return whether the deployment in force carries a declarations
+    file.
+
+    When it does, what each repository is judged on and dispatches
+    comes from the policy repository, and the next deployment writes
+    it again. A command that changed it on the host would be undone
+    then, so ``bugflow declare`` refuses to.
+    """
+    in_force = deployments.in_force()
+    return in_force is not None and in_force.text_of(DECLARATIONS) is not None
+
+
 class DeployPoliciesAndDeclare:
     """Runs ``DeployPoliciesUseCase``, then writes the deployment's
     declarations.
