@@ -207,6 +207,123 @@ review workflow, and waits. Nothing is published to a pull request.
 The first deployment put in force stops both, and they start again
 reviewing under it.
 
+## Before the first review
+
+A policy deployment says how to review. It does not say which
+repositories are reviewed, what is published to them, or what a review
+may spend. An operator declares those in the database, once for each
+repository, after the first deployment is in force.
+
+The commands below run on the host, in the `migrate` service's
+container, which has the database's address:
+
+    docker compose -f deployments/{environment}/docker-compose.yml \
+        run --rm migrate bugflow declared
+
+Each prints what the database holds afterwards. `OWNER/NAME` is a
+repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
+
+1. Say where each period begins.
+
+       bugflow declare OWNER/NAME --layer pull-request --boundary 60s
+
+   Once a deployment is in force, the worker does not start until
+   every repository in `bugflow_watched_repositories` has a boundary on
+   every layer the deployment's `pace-layers.toml` holds. It says which
+   are missing and stops, and Compose starts it again. Run the command
+   once for each repository and each layer.
+
+   For a layer an event fires, the boundary is the window a burst of
+   deliveries settles in, in seconds: with `60s`, five pushes inside a
+   minute are one review. For a layer a clock fires, it is where the
+   period begins: `23:30`, `"SUN 23:30"`, `"1 23:30"` for a day of the
+   month, or `"2026-09-01 09:00"`. A fortnight, a quarter and a year
+   take only the last form.
+
+2. Say what the repository is judged on, unless the deployment does.
+
+       bugflow declare OWNER/NAME --policy P-01 --policy P-02
+
+   A repository that has declared no policy is judged on nothing.
+   `--process` names the processes of the layers a clock fires that
+   run for the repository, as `pace-layers.toml` names them. A
+   repository that has declared none has no reviewer run on a clock. A
+   pull request's reviewers do not depend on it. Each flag names the
+   whole set, and `--no-policies` and `--no-processes` empty one.
+
+   If the deployment carries `declarations.toml`, the deployment has
+   already written both sets for every repository the file names, and
+   all four flags are refused: change the file and deploy again.
+
+3. Say what is published.
+
+       bugflow declare OWNER/NAME --profile advise
+
+   - `observe`: findings are recorded and nothing reaches the forge.
+     This is what a repository has until it is bound to another.
+   - `advise`: the comment, the label and the commit statuses are
+     written to the pull request. No status fails.
+   - `gate`: the same, and a governing reviewer's commit status fails
+     when its verdict is a failure.
+
+   A worker with no forge token does not start while a repository is
+   bound to `advise` or `gate`.
+
+4. Say what may be spent.
+
+       bugflow allow OWNER/NAME --usd 2 --no-turn-limit
+
+   An allowance is bound to a repository, a layer and a reviewer. Leave
+   one out and it covers any. Every allowance that covers a run applies
+   to it, and the run gets the lowest figure of each resource. `--per`
+   names the cadence the allowance is counted per. Without it the
+   allowance is per `event`, which is one run.
+
+   A reviewer dispatched to a runner spends nothing until something
+   allows it. On a pull request it is dispatched only if an allowance
+   per `event` covers it: one bound to the repository or to every
+   repository, to that reviewer or to any, and to no layer. An
+   allowance that names a layer does not cover a pull request's
+   reviewer. A reviewer on a layer a clock fires is covered by an
+   allowance that names that layer or none.
+
+   The judge is not held back the same way. It judges a pull request
+   with no allowance at all. An allowance per `event` with a money
+   limit, bound to the repository or to every repository and to no
+   layer and no reviewer, is the most one evaluation may spend. Once
+   the evaluation has spent it, the policies not yet judged are
+   reported as unavailable.
+
+   An allowance per a cadence a clock fires, such as `--per weekly`,
+   refuses a dispatch once the scope has spent it in the current
+   period. It is counted from a boundary: the repository's own if the
+   allowance names one repository and one layer of that cadence,
+   and otherwise this server's, which `bugflow cadence weekly
+   --boundary "MON 00:00"` declares. With no boundary to count from, it
+   refuses every dispatch it covers.
+
+   An example with invented figures:
+
+       bugflow allow example/repository --usd 2 --no-turn-limit
+       bugflow allow example/repository --agent security --usd 1 --turns 40
+
+   The judge stops when one evaluation of a pull request of
+   `example/repository` has spent $2. The reviewer `security` is
+   covered by both allowances, so each of its runs gets $1 and 40
+   turns. Any other dispatched reviewer is covered by the first alone,
+   and gets $2 and no limit on turns.
+
+   `bugflow revoke OWNER/NAME --per event` removes an allowance. That
+   is not the same as allowing zero, which refuses everything.
+
+5. Read it back.
+
+       bugflow declared
+       bugflow declared OWNER/NAME
+
+   The first prints every declaration and every allowance. The second
+   prints what bears on one repository.
+
 ## How webhooks are registered
 
 For repositories on github.com, run on the host:
