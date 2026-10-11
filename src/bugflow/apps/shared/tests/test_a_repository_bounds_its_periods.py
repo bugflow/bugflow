@@ -76,6 +76,18 @@ def test_a_pair_with_no_boundary_stops_the_program() -> None:
         refuse_without_a_boundary(LAYERS, ["github:o/r"], declared())
 
 
+def test_the_refusal_names_the_command_and_both_kinds_of_boundary() -> None:
+    with pytest.raises(ValueError) as refused:
+        refuse_without_a_boundary(LAYERS, ["github:o/r"], declared())
+    said = str(refused.value)
+    assert (
+        "`bugflow declare REPOSITORY --layer LAYER --boundary BOUNDARY`"
+        in said
+    )
+    assert "such as 60s" in said
+    assert "such as SUN 23:30" in said
+
+
 def test_every_pair_declared_lets_the_program_start() -> None:
     boundaries = declared(
         LayerBoundary(
