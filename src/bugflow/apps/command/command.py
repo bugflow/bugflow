@@ -113,6 +113,11 @@ agrees. It records what it did in the database ``DATABASE_URL`` names.
 Exit status: 0 if every repository agrees with the declaration. 1 if any
 could not be reconciled. 2 if a setting is missing or wrong.
 
+``migrate``, ``poll``, ``webhooks`` and ``worker`` write their log
+lines as JSON and export traces as ``bugflow.apps.shared.telemetry``
+describes, when ``LOG_FORMAT`` and ``OTEL_EXPORTER_OTLP_ENDPOINT`` say
+so.
+
 ``worker`` runs the worker until it is stopped: it connects to the
 Temporal server ``TEMPORAL_ADDRESS`` names, listens on the task queue
 ``TEMPORAL_TASK_QUEUE`` names, keeps the archive's search index up to
@@ -155,6 +160,7 @@ from bugflow.apps.shared.deploying import (
     run_install_policies,
 )
 from bugflow.apps.shared.journals import build_sha, stamped_journal
+from bugflow.apps.shared.telemetry import configure_telemetry
 from bugflow.apps.shared.temporal import TemporalUnavailableError
 from bugflow.apps.worker import worker
 from bugflow.apps.worker.reviewers import periods_timezone
@@ -185,6 +191,16 @@ from bugflow.shared.infrastructure.system_clock import SystemClock
 #: The subcommands that write and read what a repository is reviewed
 #: under.
 DECLARING = ("allow", "cadence", "declare", "declared", "revoke")
+
+#: The subcommands a deployment runs as a service, and the name each
+#: exports its telemetry under. The others are run by a person or a
+#: pipeline, whose output stays as it is.
+SERVICES = {
+    "migrate": "migrate",
+    "poll": "poller",
+    "webhooks": "webhooks",
+    "worker": "worker",
+}
 
 #: The settings a pipeline signs in with.
 SETTINGS = (
@@ -505,6 +521,8 @@ def run(
     ``transport`` replaces the network, for tests.
     """
     args = _parser().parse_args(argv)
+    if args.command in SERVICES:
+        configure_telemetry(SERVICES[args.command], environ)
     if args.command == "migrate":
         return _migrate(args.check, environ)
     if args.command == "install-policies":

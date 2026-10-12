@@ -37,12 +37,17 @@ from bugflow.apps.shared.journals import (
     stamped_journal,
 )
 from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.apps.shared.telemetry import (
+    client_interceptors,
+    configure_telemetry,
+    instrument_app,
+)
 from bugflow.apps.shared.temporal import (
     TemporalEvaluationStarter,
     TemporalSettings,
     WorkerWorkflows,
-    connect,
 )
+from bugflow.apps.shared.temporal import connect as connect_temporal
 from bugflow.apps.worker import evaluate_pull_request, pull_request
 from bugflow.forge.domain.errors import EvaluationStartError
 from bugflow.forge.domain.models.delivery import Delivery
@@ -314,7 +319,7 @@ REQUIRED = ("WEBHOOK_SECRET", "DATABASE_URL")
 def app_from_environment(
     environ: Mapping[str, str] | None = None,
     parts: IngressParts | None = None,
-    connect: Connect = connect,
+    connect: Connect | None = None,
 ) -> FastAPI:
     """The ingress as uvicorn runs it, with ``--factory``.
 
@@ -342,8 +347,14 @@ def app_from_environment(
     receives deliveries, hands them to the worker, and stops to read the
     first deployment put in force.
 
-    ``parts`` is what another server built on this package adds.
-    ``connect`` replaces the connection to Temporal, for tests.
+    - ``OTEL_EXPORTER_OTLP_ENDPOINT`` and ``LOG_FORMAT``, as
+      ``bugflow.apps.shared.telemetry`` reads them.
+
+    ``parts`` is what another server built on this package adds. A
+    server that passes them sets up its own telemetry, which this
+    package's ingress does only when given none. ``connect`` replaces
+    the connection to Temporal, which otherwise carries a delivery's
+    trace into the workflow it starts.
     """
     environ = os.environ if environ is None else environ
     missing = [name for name in REQUIRED if not environ.get(name)]
@@ -356,11 +367,23 @@ def app_from_environment(
     database_url = environ["DATABASE_URL"]
     build = build_sha(environ)
     checks = checks_from(environ)
-    added = parts or IngressParts()
+    if parts is None:
+        configure_telemetry("ingress", environ)
+        added = IngressParts(
+            instrument=lambda app: instrument_app(app, environ)
+        )
+    else:
+        added = parts
+    interceptors = client_interceptors(environ)
+
+    async def traced(settings: TemporalSettings) -> Client:
+        return await connect_temporal(settings, interceptors)
+
+    connecting = connect or traced
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        client = await connect(settings)
+        client = await connecting(settings)
         loop = asyncio.get_running_loop()
         deployments = SqlAlchemyPolicyDeployments(database_url)
         # The pace layers of the deployment in force, read once: a

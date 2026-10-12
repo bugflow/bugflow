@@ -30,6 +30,7 @@ from bugflow.apps.shared.deploying import (
     deploying_over,
 )
 from bugflow.apps.shared.journals import build_sha
+from bugflow.apps.shared.telemetry import configure_telemetry, instrument_app
 from bugflow.method.domain.errors import (
     PolicyDeploymentConflictError,
     PolicyDeploymentError,
@@ -191,6 +192,8 @@ def api_from_environment(
     - ``POLICY_CHECKS``: the checks this server performs, comma-separated.
       Unset, they are the ones the package has; empty, a manifest naming
       a check is refused.
+    - ``OTEL_EXPORTER_OTLP_ENDPOINT`` and ``LOG_FORMAT``, as
+      ``bugflow.apps.shared.telemetry`` reads them.
 
     The database is not brought up to date here; ``bugflow migrate``
     does that.
@@ -204,13 +207,14 @@ def api_from_environment(
             f"{', '.join(missing)} not set; the API does not start "
             "without them"
         )
+    configure_telemetry("api", environ)
     issuer = environ["API_ISSUER"]
     clients = [
         client.strip()
         for client in environ["API_CLIENTS"].split(",")
         if client.strip()
     ]
-    return create_api(
+    app = create_api(
         JwtBearerToken(
             issuer,
             environ["API_AUDIENCE"],
@@ -227,3 +231,5 @@ def api_from_environment(
             ),
         ),
     )
+    instrument_app(app, environ)
+    return app

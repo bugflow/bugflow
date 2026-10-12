@@ -27,12 +27,17 @@ dependencies = [
     "pyposlib",
     "sqlalchemy>=2.0.52",
     "standardwebhooks>=1.1.0",
+    # Exporting traces over OTLP and writing log lines as JSON, when a
+    # deployment names a collector. Pinned to a commit until the library
+    # cuts a release.
+    "telemetry-juice[fastapi,httpx2,psycopg,sqlalchemy,temporal]",
     "temporalio>=1.32.0",
     "uvicorn>=0.52.4",
 ]
 
 [tool.uv.sources]
 pyposlib = { git = "https://github.com/ClankaOperatingSystem/pyposlib.git", rev = "6b00d568036cd9fdec6ee0c2066790aedd23ed47" }
+telemetry-juice = { git = "https://github.com/monkeypants/telemetry-juice.git", rev = "6316baf07cf0ae2d05ea6c6171afc02aeba6cadf" }
 
 [project.scripts]
 bugflow = "bugflow.apps.command.command:main"
