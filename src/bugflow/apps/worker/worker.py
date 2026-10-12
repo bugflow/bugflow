@@ -27,6 +27,7 @@ from temporalio.worker.workflow_sandbox import (
     SandboxRestrictions,
 )
 
+from bugflow.apps.shared.telemetry import client_interceptors
 from bugflow.apps.shared.temporal import TemporalSettings, connect
 from bugflow.apps.worker import archive_index, review
 from bugflow.apps.worker.evaluate_pull_request import (
@@ -151,7 +152,9 @@ async def run(
     ``JudgeRates`` reads. A queue with nothing to serve is not polled.
 
     Required settings: ``TEMPORAL_ADDRESS`` and ``TEMPORAL_TASK_QUEUE``.
-    ``TEMPORAL_NAMESPACE`` defaults to ``default``.
+    ``TEMPORAL_NAMESPACE`` defaults to ``default``. With
+    ``OTEL_EXPORTER_OTLP_ENDPOINT`` set, the client carries Temporal's
+    tracing interceptor beside ``parts.interceptors``.
 
     Raises ``ValueError`` if a required setting is missing, if the
     parts hold nothing to serve and nothing to watch, or if one of
@@ -175,7 +178,9 @@ async def run(
         )
     settings = TemporalSettings.from_environment(environ)
     rates = JudgeRates.from_environment(environ)
-    client = await connect(settings, parts.interceptors)
+    client = await connect(
+        settings, parts.interceptors + client_interceptors(environ)
+    )
     stop = stop or asyncio.Event()
     loop = asyncio.get_running_loop()
     for signal_number in (signal.SIGINT, signal.SIGTERM):
