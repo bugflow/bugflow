@@ -25,10 +25,10 @@ ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
 #: The setting that, as ``contract``, writes log lines as JSON.
 LOG_FORMAT = "LOG_FORMAT"
 
-#: Requests that are never traced: a container's healthcheck, which is
-#: most of a quiet server's traffic. Matched as a regular expression
-#: against the URL.
-EXCLUDED_URLS = "healthz"
+#: Requests that are never traced: the ingress's and the API's
+#: healthchecks, which are most of a quiet server's traffic. Regular
+#: expressions, comma-separated, each searched for in the URL.
+EXCLUDED_URLS = "healthz,healthcheck"
 
 
 def enabled(environ: Mapping[str, str]) -> bool:

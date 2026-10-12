@@ -3,12 +3,14 @@ them nothing changes."""
 
 import json
 import logging
+import re
 from collections.abc import Iterator
 
 import pytest
 from temporalio.contrib.opentelemetry import TracingInterceptor
 
 from bugflow.apps.shared.telemetry import (
+    EXCLUDED_URLS,
     client_interceptors,
     configure_logging,
     configure_telemetry,
@@ -70,3 +72,17 @@ def test_another_format_leaves_logging_as_it_is(root: logging.Logger) -> None:
 
     assert configure_logging({"LOG_FORMAT": "text"}) is False
     assert root.handlers == before
+
+
+@pytest.mark.parametrize("path", ["/healthz", "/api/healthcheck"])
+def test_a_healthcheck_is_not_traced(path: str) -> None:
+    patterns = EXCLUDED_URLS.split(",")
+    assert any(re.search(p, f"http://api:8000{path}") for p in patterns)
+
+
+def test_a_call_of_substance_is_traced() -> None:
+    patterns = EXCLUDED_URLS.split(",")
+    assert not any(
+        re.search(p, "http://api:8000/api/policy-deployments")
+        for p in patterns
+    )
