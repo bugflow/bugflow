@@ -30,7 +30,7 @@ dependencies = [
     # Exporting traces over OTLP and writing log lines as JSON, when a
     # deployment names a collector. Pinned to a commit until the library
     # cuts a release.
-    "telemetry-juice[fastapi,httpx2,psycopg,sqlalchemy,temporal]",
+    "telemetry-juice[fastapi,httpx2,psycopg,temporal]",
     "temporalio>=1.32.0",
     "uvicorn>=0.52.4",
 ]
