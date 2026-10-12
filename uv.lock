@@ -208,7 +208,7 @@ dependencies = [
     { name = "pyposlib" },
     { name = "sqlalchemy" },
     { name = "standardwebhooks" },
-    { name = "telemetry-juice", extra = ["fastapi", "httpx2", "psycopg", "sqlalchemy", "temporal"] },
+    { name = "telemetry-juice", extra = ["fastapi", "httpx2", "psycopg", "temporal"] },
     { name = "temporalio" },
     { name = "uvicorn" },
 ]
@@ -241,7 +241,7 @@ requires-dist = [
     { name = "pyposlib", git = "https://github.com/ClankaOperatingSystem/pyposlib.git?rev=6b00d568036cd9fdec6ee0c2066790aedd23ed47" },
     { name = "sqlalchemy", specifier = ">=2.0.52" },
     { name = "standardwebhooks", specifier = ">=1.1.0" },
-    { name = "telemetry-juice", extras = ["fastapi", "httpx2", "psycopg", "sqlalchemy", "temporal"], git = "https://github.com/monkeypants/telemetry-juice.git?rev=6316baf07cf0ae2d05ea6c6171afc02aeba6cadf" },
+    { name = "telemetry-juice", extras = ["fastapi", "httpx2", "psycopg", "temporal"], git = "https://github.com/monkeypants/telemetry-juice.git?rev=6316baf07cf0ae2d05ea6c6171afc02aeba6cadf" },
     { name = "temporalio", specifier = ">=1.32.0" },
     { name = "uvicorn", specifier = ">=0.52.4" },
 ]
@@ -1309,22 +1309,6 @@ wheels = [
 ]
 
 [[package]]
-name = "opentelemetry-instrumentation-sqlalchemy"
-version = "0.66b1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-instrumentation" },
-    { name = "opentelemetry-semantic-conventions" },
-    { name = "packaging" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/3e/d69fb08dacc4c248daedf7357732ddca7a0aaff7072a55e311d3da3ea51c/opentelemetry_instrumentation_sqlalchemy-0.66b1.tar.gz", hash = "sha256:a10043953fcba71911bf29a024f8cc337260c1ef0b4fc844b96cae0de0947baa", size = 18181, upload-time = "2026-10-06T17:36:38.111Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/05/f8cff0c68a7f9ab8fab01904be5a49c5214435109c2a6b6d173a974c10d9/opentelemetry_instrumentation_sqlalchemy-0.66b1-py3-none-any.whl", hash = "sha256:aa30b10d880d7e91cf94b23a92ac85cec09ffddd8f0d40256d7c510e3dd33971", size = 14425, upload-time = "2026-10-06T17:35:53.436Z" },
-]
-
-[[package]]
 name = "opentelemetry-proto"
 version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2021,9 +2005,6 @@ httpx2 = [
 ]
 psycopg = [
     { name = "opentelemetry-instrumentation-psycopg" },
-]
-sqlalchemy = [
-    { name = "opentelemetry-instrumentation-sqlalchemy" },
 ]
 temporal = [
     { name = "temporalio" },

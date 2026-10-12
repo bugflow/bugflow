@@ -7,11 +7,12 @@ as JSON carrying ``level`` and ``msg``, and ``trace_id`` and ``span_id``
 inside a trace, when ``LOG_FORMAT`` is ``contract``. With neither set,
 nothing here changes what a program does.
 
-What is traced: the database, through psycopg and SQLAlchemy; the
-ingress's and the API's requests; every outbound call made with httpx2,
-which covers the forge and the model proxy; and each workflow and
-activity, through Temporal's tracing interceptor on the client, which
-carries a delivery's trace into the workflow it starts.
+What is traced: the database, through psycopg, which every query
+reaches whether SQLAlchemy sent it or not; the ingress's and the API's
+requests; every outbound call made with httpx2, which covers the forge
+and the model proxy; and each workflow and activity, through Temporal's
+tracing interceptor on the client, which carries a delivery's trace
+into the workflow it starts.
 """
 
 import logging
@@ -65,10 +66,7 @@ def configure_telemetry(service: str, environ: Mapping[str, str]) -> bool:
     if not enabled(environ):
         return False
     from telemetry_juice import TelemetryConfig, configure
-    from telemetry_juice.integrations.clients import (
-        instrument_psycopg,
-        instrument_sqlalchemy,
-    )
+    from telemetry_juice.integrations.clients import instrument_psycopg
     from telemetry_juice.integrations.httpx2 import instrument_httpx2
 
     configure(
@@ -80,7 +78,6 @@ def configure_telemetry(service: str, environ: Mapping[str, str]) -> bool:
         )
     )
     instrument_psycopg()
-    instrument_sqlalchemy()
     instrument_httpx2()
     return True
 
