@@ -222,10 +222,17 @@ def watched_repositories(environ: Mapping[str, str]) -> tuple[str, ...]:
 
 def judged_texts(reviewers: ReviewersInForce) -> Mapping[str, PolicyText]:
     """Return the policies the judge has a text for, by policy id:
-    those of the reviewer the judge answers for. Empty if the
-    deployment holds no such reviewer."""
+    those of the reviewer the judge answers for that a model answers.
+    A policy a check answers has a text for a person and is not among
+    them. Empty if the deployment holds no such reviewer."""
     agent_id = judging_agent(reviewers)
-    return reviewers.policies[agent_id] if agent_id is not None else {}
+    if agent_id is None:
+        return {}
+    return {
+        policy_id: policy
+        for policy_id, policy in reviewers.policies[agent_id].items()
+        if not policy.checked
+    }
 
 
 def checked_policies(

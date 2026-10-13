@@ -3,7 +3,8 @@
 Each judged policy is judged in a request of its own, with its own
 instructions, its own evidence and its own report schema. A policy's file
 says which evidence the model is shown: the title and description, those
-with the commits and file paths, the commits alone, or the patches too.
+with the commits and file paths, the commits alone, the patches too, or
+each changed document as its patch shows it after the change.
 
 How much of the diff a policy that reads patches is shown is its snapshot
 fidelity: every patch in one request, one request per file, or each patch cut
@@ -47,7 +48,7 @@ from pydantic import BaseModel, ValidationError
 from bugflow.apps.shared.policies import ReviewersInForce
 from bugflow.method.domain.models.corpus import JUDGE_RUNNER
 from bugflow.method.domain.models.policy_text import (
-    EVIDENCE_KINDS,
+    JUDGED_SUBJECTS,
     PolicyText,
 )
 from bugflow.method.infrastructure.policy_files import unwrap
@@ -188,6 +189,8 @@ EVIDENCE_TAGS = (
     "commit",
     "files",
     "file",
+    "documents",
+    "document",
 )
 
 
@@ -383,9 +386,81 @@ def _honesty_text(snapshot: Submission) -> str:
     )
 
 
+# The names a document has: a file a policy reading documents is shown.
+DOCUMENT_SUFFIXES = (".org", ".md")
+
+# The document text a request may carry, in all. Past it a document is
+# omitted, and its path stays.
+DOCUMENT_BUDGET = PATCH_BUDGET
+
+
+def _after_the_change(patch: str) -> str:
+    """The lines a patch leaves in the file: each hunk's kept and added
+    lines, in order, with a line between hunks saying that lines are
+    left out. The removed lines and the hunk headers are not shown."""
+    parts: list[str] = []
+    for line in patch.splitlines():
+        if line.startswith("@@"):
+            if parts:
+                parts.append("[...]")
+        elif line.startswith("+"):
+            parts.append(line[1:])
+        elif line.startswith(" ") or not line:
+            parts.append(line[1:] if line else line)
+        elif line.startswith("\\"):
+            continue
+    return "\n".join(parts)
+
+
+def _documents(snapshot: Submission) -> list[tuple[str, str | None]]:
+    """Each document the pull request changes, with what the patch shows
+    of it after the change, or None where the forge left the patch
+    out."""
+    return [
+        (f.path, None if f.patch is None else _after_the_change(f.patch))
+        for f in snapshot.files
+        if f.path.endswith(DOCUMENT_SUFFIXES)
+    ]
+
+
+def render_document_evidence(snapshot: Submission) -> str:
+    """Each changed document, as the patch shows it after the change.
+
+    The snapshot holds patches and not files, so a document is shown
+    as its changed parts, each hunk in place, and the tag says so. A
+    pull request that changes no document is said to change none.
+    """
+    rendered: list[str] = []
+    budget = DOCUMENT_BUDGET
+    for path, text in _documents(snapshot):
+        opening = (
+            f'<document path="{_attribute(path)}" '
+            'shown="the changed parts, after the change; [...] marks '
+            'lines left out"'
+        )
+        if text is None:
+            rendered.append(f'{opening} text="omitted by the forge"/>')
+        elif len(text) > budget:
+            rendered.append(f'{opening} text="omitted for size"/>')
+        else:
+            budget -= len(text)
+            rendered.append(f"{opening}>\n{_text(text)}\n</document>")
+    if not rendered:
+        rendered.append(
+            "<document>this pull request changes no document</document>"
+        )
+    return "<documents>\n" + "\n".join(rendered) + "\n</documents>"
+
+
+def _document_text(snapshot: Submission) -> str:
+    return "\n".join(
+        text for _, text in _documents(snapshot) if text is not None
+    )
+
+
 # Which renderer shows the model its evidence, and which text a quote must
-# come from, by the name a policy file's evidence line gives, one of
-# EVIDENCE_KINDS. This is the part of a policy that cannot be written in
+# come from, by the subject a policy file's evidence line names, one of
+# JUDGED_SUBJECTS. This is the part of a policy that cannot be written in
 # its file, because it is code.
 EVIDENCE: dict[
     str,
@@ -395,14 +470,19 @@ EVIDENCE: dict[
         Callable[[Submission, str, str | None], str] | None,
     ],
 ] = {
-    "description": (render_evidence, _title_and_description, None),
-    "scope": (render_scope_evidence, _scope_text, None),
-    "commits": (render_commit_evidence, _commit_summaries, None),
-    "patches": (
+    "pull-request/description": (
+        render_evidence,
+        _title_and_description,
+        None,
+    ),
+    "pull-request/scope": (render_scope_evidence, _scope_text, None),
+    "pull-request/commits": (render_commit_evidence, _commit_summaries, None),
+    "pull-request/patches": (
         render_honesty_evidence,
         _honesty_text,
         render_honesty_evidence,
     ),
+    "document/file": (render_document_evidence, _document_text, None),
 }
 
 
@@ -413,7 +493,7 @@ def _wired(text: PolicyText) -> JudgedPolicy:
     except KeyError:
         raise ValueError(
             f"{text.policy_id}: evidence {text.evidence!r} is not one of "
-            f"{', '.join(EVIDENCE_KINDS)}"
+            f"{', '.join(JUDGED_SUBJECTS)}"
         ) from None
     return JudgedPolicy(
         policy_id=text.policy_id,
