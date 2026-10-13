@@ -19,7 +19,7 @@ instructions in prose. The header is lines of the form ``key: value``::
 
 ``agent_id`` and ``summary`` are required. ``runner`` is ``judge`` when
 absent, and ``governs`` is ``yes``. A key this server does not read,
-such as a product's ``subjects``, is kept out of the way.
+such as a gnome's ``subjects``, is kept out of the way.
 ``docs/policy-package.md`` specifies the file.
 
 ``checks`` says which of the reviewer's policies a check of this server

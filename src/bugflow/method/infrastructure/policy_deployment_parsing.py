@@ -243,7 +243,7 @@ def _unanswerable(
     """The policies this server holds and cannot answer, each with why:
     a checked policy that no manifest gives a check, and a judged
     policy whose subject is not among ``subjects``, when they are
-    known. A product may hold such a policy for another consumer; a
+    known. A gnome may hold such a policy for another consumer; a
     declaration naming one is refused.
     """
     checked = {

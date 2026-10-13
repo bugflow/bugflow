@@ -58,7 +58,7 @@ def test_a_manifest_missing_a_required_field_is_refused() -> None:
 def test_a_reviewer_is_the_judges_and_governs_unless_it_says_otherwise() -> (
     None
 ):
-    """A product's manifest need not say how a server runs it."""
+    """A gnome's manifest need not say how a server runs it."""
     text = MANIFEST.replace("runner: checkout\n", "").replace(
         "governs: yes\n", ""
     )
