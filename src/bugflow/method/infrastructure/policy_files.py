@@ -17,7 +17,11 @@ A file is a header, a line of three dashes, the instructions, a line
     === calibration
     What measuring it has shown.
 
-A clause line is its id, then the doctrine's name for it. The body's
+A clause line is its id, then the doctrine's name for it. ``evidence``
+names a subject, ``pull-request/description`` or ``document/file``, or a
+pull request's part alone, as above. ``implemented: check`` marks a
+policy that code answers and no model: its instructions are for a
+person. ``docs/policy-package.md`` specifies the file. The body's
 lines are wrapped so that a policy can be read and its changes diffed;
 a line that does not open a list item continues the line above it, the
 way Markdown joins them, so what the model is given is the paragraph
@@ -31,8 +35,9 @@ from pathlib import Path
 
 from bugflow.method.domain.models.policy_text import (
     CEILINGS,
-    EVIDENCE_KINDS,
+    IMPLEMENTATIONS,
     PolicyText,
+    subject_of,
 )
 
 # Header lines that are one value each, and must all be given.
@@ -47,7 +52,7 @@ _REQUIRED = (
     "quotes_code",
 )
 # Header lines a policy may give, one value each.
-_OPTIONAL = ("ceiling",)
+_OPTIONAL = ("ceiling", "implemented")
 _CALIBRATION = "\n=== calibration\n"
 
 
@@ -78,10 +83,17 @@ def _ceiling(name: str, value: str) -> str:
 
 
 def _evidence(name: str, value: str) -> str:
-    if value not in EVIDENCE_KINDS:
+    try:
+        return subject_of(value)
+    except ValueError as exc:
+        raise ValueError(f"{name}: {exc}") from None
+
+
+def _implemented(name: str, value: str) -> str:
+    if value not in IMPLEMENTATIONS:
         raise ValueError(
-            f"{name}: evidence {value!r} is not one of "
-            f"{', '.join(EVIDENCE_KINDS)}"
+            f"{name}: implemented is {value!r}, not "
+            f"{' or '.join(IMPLEMENTATIONS)}"
         )
     return value
 
@@ -158,6 +170,7 @@ def parse_policy(name: str, text: str) -> PolicyText:
         graded=_flag(name, "graded", fields["graded"]),
         quotes_code=_flag(name, "quotes_code", fields["quotes_code"]),
         ceiling=_ceiling(name, fields.get("ceiling", "fail")),
+        implemented=_implemented(name, fields.get("implemented", "judge")),
         clauses=clauses,
         instructions=unwrap(instructions.strip("\n")),
         calibration=unwrap(calibration.strip("\n")),

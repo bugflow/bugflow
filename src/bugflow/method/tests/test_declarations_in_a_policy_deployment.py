@@ -13,7 +13,7 @@ from bugflow.method.infrastructure.policy_deployment_parsing import (
     RepositoryDeclaration,
     parse_deployment,
 )
-from bugflow.method.tests.policy_files import MANIFEST, READ
+from bugflow.method.tests.policy_files import MANIFEST, POLICY, READ
 
 REPOSITORY = "example-org/pull-request-policies"
 
@@ -32,8 +32,21 @@ policies = ["P-01"]
 """
 
 
-def deployment(declarations: str | None = DECLARATIONS) -> PolicyDeployment:
-    files = READ | {"prose/reviewer.md": CHECKING}
+#: A policy a check answers, with no check on the manifest, and one
+#: reading a scope, which a pull request judge does not render.
+CHECKED = POLICY.replace("policy_id: P-01", "policy_id: P-03").replace(
+    "model_class: small", "model_class: none\nimplemented: check"
+)
+SCOPED = POLICY.replace("policy_id: P-01", "policy_id: P-04").replace(
+    "evidence: description", "evidence: scope/canon"
+)
+
+
+def deployment(
+    declarations: str | None = DECLARATIONS,
+    more: dict[str, str] | None = None,
+) -> PolicyDeployment:
+    files = READ | {"prose/reviewer.md": CHECKING} | (more or {})
     if declarations is not None:
         files["declarations.toml"] = declarations
     return PolicyDeployment(
@@ -117,3 +130,56 @@ def test_a_file_that_is_wrong_is_refused(text: str, problem: str) -> None:
     with pytest.raises(PolicyDeploymentError) as refused:
         parse_deployment(deployment(text))
     assert problem in str(refused.value)
+
+
+HOLDING_BOTH = {
+    "prose/reviewer.md": CHECKING.replace(
+        "policies: P-01, P-02", "policies: P-01, P-02, P-03, P-04"
+    ),
+    "prose/policies/P-03-checked.md": CHECKED,
+    "prose/policies/P-04-scoped.md": SCOPED,
+}
+
+
+def test_a_policy_this_server_cannot_answer_may_be_held_and_not_declared() -> (
+    None
+):
+    """A product may hold a policy for another consumer: a check a
+    garden's lint runs, or a subject a pull request judge does not
+    render. The server parses it, and judges by the rest."""
+    parsed = parse_deployment(
+        deployment(more=HOLDING_BOTH),
+        checks=("em-dash",),
+        subjects=("pull-request/description",),
+    )
+    assert sorted(parsed.policies["prose"]) == ["P-01", "P-03", "P-04"]
+
+
+@pytest.mark.parametrize(
+    ("policy_id", "problem"),
+    [
+        ("P-03", "P-03 is answered by a check, and no manifest gives it one"),
+        ("P-04", "P-04 reads scope/canon, which this server does not render"),
+    ],
+)
+def test_declaring_a_policy_this_server_cannot_answer_is_refused(
+    policy_id: str, problem: str
+) -> None:
+    declarations = DECLARATIONS.replace(
+        'policies = ["P-01", "P-02"]', f'policies = ["P-01", "{policy_id}"]'
+    )
+    with pytest.raises(PolicyDeploymentError, match=problem):
+        parse_deployment(
+            deployment(declarations, HOLDING_BOTH),
+            checks=("em-dash",),
+            subjects=("pull-request/description",),
+        )
+
+
+def test_a_server_that_does_not_know_its_subjects_refuses_no_subject() -> None:
+    declarations = DECLARATIONS.replace(
+        'policies = ["P-01", "P-02"]', 'policies = ["P-01", "P-04"]'
+    )
+    parsed = parse_deployment(deployment(declarations, HOLDING_BOTH))
+    assert parsed.declared is not None
+    assert parsed.declared[0].policies == ("P-01", "P-04")

@@ -49,10 +49,40 @@ def test_a_reviewer_with_no_policies_has_none() -> None:
 
 
 def test_a_manifest_missing_a_required_field_is_refused() -> None:
-    text = MANIFEST.replace("runner: checkout\n", "")
+    text = MANIFEST.replace("summary: Whether a change can be misused\n", "")
 
-    with pytest.raises(ValueError, match="missing runner"):
+    with pytest.raises(ValueError, match="missing summary"):
         parse_agent(Path("a/reviewer.md"), text)
+
+
+def test_a_reviewer_is_the_judges_and_governs_unless_it_says_otherwise() -> (
+    None
+):
+    """A product's manifest need not say how a server runs it."""
+    text = MANIFEST.replace("runner: checkout\n", "").replace(
+        "governs: yes\n", ""
+    )
+
+    agent = parse_agent(Path("a/manifest.md"), text)
+
+    assert (agent.runner, agent.governs) == ("judge", True)
+
+
+def test_a_key_the_server_does_not_read_is_kept_out_of_the_way() -> None:
+    text = MANIFEST.replace("---\n", "subjects: document/file\n---\n", 1)
+
+    assert parse_agent(Path("a/manifest.md"), text).agent_id == "safety"
+
+
+def test_a_manifest_may_be_named_manifest_or_reviewer(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "manifest.md").write_text(MANIFEST)
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "reviewer.md").write_text(
+        MANIFEST.replace("agent_id: safety", "agent_id: older")
+    )
+
+    assert sorted(load_agents(tmp_path)) == ["older", "safety"]
 
 
 def test_a_manifest_with_no_line_of_dashes_is_refused() -> None:

@@ -24,6 +24,7 @@ from bugflow.method.infrastructure.pace_layer_file import parse_topology
 from bugflow.method.infrastructure.policy_files import parse_policy, source_of
 from bugflow.method.infrastructure.reviewer_packages import (
     MANIFEST,
+    MANIFESTS,
     DomainSpecificReviewAgent,
     parse_agent,
 )
@@ -86,7 +87,7 @@ def _kind(path: str) -> tuple[str, str] | None:
     the reviewers belong to no agent and are handled apart.
     """
     parts = PurePosixPath(path).parts
-    if len(parts) == 2 and parts[1] == MANIFEST:
+    if len(parts) == 2 and parts[1] in MANIFESTS:
         return parts[0], "manifest"
     if len(parts) == 3 and parts[2].endswith(".md"):
         if parts[1] == "policies":
@@ -97,17 +98,22 @@ def _kind(path: str) -> tuple[str, str] | None:
 
 
 def parse_deployment(
-    deployment: PolicyDeployment, checks: Collection[str] | None = None
+    deployment: PolicyDeployment,
+    checks: Collection[str] | None = None,
+    subjects: Collection[str] | None = None,
 ) -> ParsedDeployment:
     """Parse every file of the deployment. ``checks`` names the checks
-    this server has, if the caller knows them.
+    this server has, and ``subjects`` the subjects it renders, if the
+    caller knows them.
 
     Raises ``PolicyDeploymentError`` listing every problem found: a
     path the server does not read, a manifest or policy or topology
-    that does not parse, two agents with one id, two policies with one
-    id in one agent, policy or doctrine files in a directory that has
-    no manifest, and a declaration naming a policy or process the
-    deployment does not hold.
+    that does not parse, two agents with one id, two manifests in one
+    directory, two policies with one id in one agent, policy or
+    doctrine files in a directory that has no manifest, and a
+    declaration naming a policy or process the deployment does not
+    hold, a checked policy no manifest gives a check, or a policy whose
+    subject this server does not render.
     """
     problems: list[str] = []
     by_directory: dict[str, DomainSpecificReviewAgent] = {}
@@ -133,6 +139,9 @@ def parse_deployment(
                 agent = parse_agent(Path(one.path), one.text, checks)
             except ValueError as exc:
                 problems.append(f"{kind[0]}/{exc}")
+                continue
+            if kind[0] in by_directory:
+                problems.append(f"{one.path}: a second manifest in {kind[0]}/")
                 continue
             if agent.agent_id in agents:
                 problems.append(
@@ -178,8 +187,8 @@ def parse_deployment(
         if declarations is None
         else _declared(
             declarations,
-            # A policy a check answers has no file. Its id is known
-            # from the manifest that names it.
+            # A policy a check answers need have no file. Its id is
+            # known from the manifest that names it.
             known_policies={
                 policy_id
                 for of_agent in policies.values()
@@ -196,6 +205,7 @@ def parse_deployment(
                 for process in layer.processes
             },
             problems=problems,
+            unanswerable=_unanswerable(agents, policies, subjects),
         )
     )
     if problems:
@@ -225,14 +235,49 @@ def parse_deployment(
     )
 
 
+def _unanswerable(
+    agents: Mapping[str, DomainSpecificReviewAgent],
+    policies: Mapping[str, Mapping[str, PolicyText]],
+    subjects: Collection[str] | None,
+) -> dict[str, str]:
+    """The policies this server holds and cannot answer, each with why:
+    a checked policy that no manifest gives a check, and a judged
+    policy whose subject is not among ``subjects``, when they are
+    known. A product may hold such a policy for another consumer; a
+    declaration naming one is refused.
+    """
+    checked = {
+        one.policy_id for agent in agents.values() for one in agent.checks
+    }
+    reasons: dict[str, str] = {}
+    for of_agent in policies.values():
+        for policy_id, policy in of_agent.items():
+            if policy_id in checked:
+                continue
+            if policy.checked:
+                reasons[policy_id] = (
+                    f"{policy_id} is answered by a check, and no manifest "
+                    "gives it one this server has"
+                )
+            elif subjects is not None and policy.evidence not in subjects:
+                reasons[policy_id] = (
+                    f"{policy_id} reads {policy.evidence}, which this "
+                    "server does not render"
+                )
+    return reasons
+
+
 def _declared(
     text: str,
     known_policies: set[str],
     known_processes: set[str],
     problems: list[str],
+    unanswerable: Mapping[str, str] | None = None,
 ) -> tuple[RepositoryDeclaration, ...]:
     """Parse the declarations file, adding each problem found to
-    ``problems``.
+    ``problems``. ``unanswerable`` gives, for a policy the deployment
+    holds and this server cannot answer, the reason a declaration
+    naming it is refused.
 
     The file has one table for each repository::
 
@@ -295,6 +340,9 @@ def _declared(
                     f"{where}: {', '.join(missing)} is not a {kind} this "
                     "deployment holds"
                 )
+            for one in value:
+                if unanswerable and one in unanswerable:
+                    problems.append(f"{where}: {unanswerable[one]}")
             named[key] = tuple(dict.fromkeys(value))
         found.append(
             RepositoryDeclaration(
@@ -310,10 +358,16 @@ def _declared(
 class ParsedPolicyDeploymentCheck:
     """Implements ``PolicyDeploymentCheckService`` by parsing every file
     of the deployment with ``parse_deployment``. ``checks`` names the
-    checks this server has, if the application knows them."""
+    checks this server has, and ``subjects`` the subjects it renders,
+    if the application knows them."""
 
-    def __init__(self, checks: Collection[str] | None = None) -> None:
+    def __init__(
+        self,
+        checks: Collection[str] | None = None,
+        subjects: Collection[str] | None = None,
+    ) -> None:
         self._checks = checks
+        self._subjects = subjects
 
     def check(self, deployment: PolicyDeployment) -> None:
-        parse_deployment(deployment, self._checks)
+        parse_deployment(deployment, self._checks, self._subjects)
