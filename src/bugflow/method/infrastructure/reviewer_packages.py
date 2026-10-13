@@ -1,7 +1,9 @@
 """Read reviewers from the directories that hold them.
 
-A reviewer is a directory. It holds a manifest named ``reviewer.md``,
-and may hold a ``policies`` directory and a ``doctrine`` directory.
+A reviewer is a directory. It holds a manifest named ``manifest.md``,
+or ``reviewer.md`` in a repository made before the manifest had that
+name, and may hold a ``policies`` directory and a ``doctrine``
+directory.
 
 A manifest is a header, a line of three dashes, and then the reviewer's
 instructions in prose. The header is lines of the form ``key: value``::
@@ -15,7 +17,10 @@ instructions in prose. The header is lines of the form ``key: value``::
     ---
     The reviewer's instructions.
 
-``agent_id``, ``summary``, ``runner`` and ``governs`` are required.
+``agent_id`` and ``summary`` are required. ``runner`` is ``judge`` when
+absent, and ``governs`` is ``yes``. A key this server does not read,
+such as a product's ``subjects``, is kept out of the way.
+``docs/policy-package.md`` specifies the file.
 
 ``checks`` says which of the reviewer's policies a check of this server
 answers: a policy answered by code and not by a model. Each entry is
@@ -35,9 +40,13 @@ from pathlib import Path
 
 from bugflow.method.domain.errors import ReviewAgentError
 
-_REQUIRED = ("agent_id", "summary", "runner", "governs")
+_REQUIRED = ("agent_id", "summary")
 _SEPARATOR = "\n---\n"
-#: The name of a reviewer's manifest file.
+#: The names a reviewer's manifest file may have: the first is the
+#: name, the second the name it had.
+MANIFESTS = ("manifest.md", "reviewer.md")
+#: The name a reviewer's manifest file had, which a repository made
+#: before the manifest was named may keep.
 MANIFEST = "reviewer.md"
 
 
@@ -157,8 +166,8 @@ def parse_agent(
     return DomainSpecificReviewAgent(
         agent_id=fields["agent_id"],
         summary=fields["summary"],
-        runner=fields["runner"],
-        governs=_flag(name, "governs", fields["governs"]),
+        runner=fields.get("runner", "judge"),
+        governs=_flag(name, "governs", fields.get("governs", "yes")),
         policies=policies,
         directory=path.parent,
         description=description.strip("\n"),
@@ -179,7 +188,10 @@ def load_agents(
     Raises ``ReviewAgentError`` if two reviewers have the same agent id.
     """
     agents: dict[str, DomainSpecificReviewAgent] = {}
-    for manifest in sorted(directory.glob(f"*/{MANIFEST}")):
+    manifests = sorted(
+        path for name in MANIFESTS for path in directory.glob(f"*/{name}")
+    )
+    for manifest in manifests:
         agent = parse_agent(manifest, manifest.read_text(), checks)
         if agent.agent_id in agents:
             raise ReviewAgentError(f"two agents claim {agent.agent_id}")

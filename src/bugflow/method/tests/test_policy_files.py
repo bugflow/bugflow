@@ -83,7 +83,12 @@ def test_an_unwrapped_body_is_left_alone() -> None:
         ("\n=== calibration\n", "\n", "no === calibration"),
         ("subject: description", "subject: a\nsubject: b", "two subject"),
         ("graded: yes", "graded: yes\nceiling: info", "ceiling is 'info'"),
-        ("evidence: description", "evidence: telepathy", "not one of"),
+        ("evidence: description", "evidence: telepathy", "not a subject"),
+        (
+            "graded: yes",
+            "graded: yes\nimplemented: sometimes",
+            "implemented is",
+        ),
     ],
 )
 def test_a_malformed_policy_names_its_file(
@@ -139,6 +144,30 @@ def test_the_policy_source_is_every_file_down_to_its_calibration(
     source = policy_source(tmp_path)
     assert source == asked
     assert notes not in source
+
+
+def test_evidence_names_a_subject_or_a_pull_requests_part(
+    tmp_path: Path,
+) -> None:
+    """A part alone names the pull request subject of that part, as the
+    files written before subjects had names do."""
+    assert load_policy(written(tmp_path, WHOLE)).evidence == (
+        "pull-request/description"
+    )
+    whole = WHOLE.replace("evidence: description", "evidence: document/file")
+    assert load_policy(written(tmp_path, whole)).evidence == "document/file"
+
+
+def test_a_policy_is_judged_unless_it_says_a_check_answers_it(
+    tmp_path: Path,
+) -> None:
+    judged = load_policy(written(tmp_path, WHOLE))
+    assert (judged.implemented, judged.checked) == ("judge", False)
+    checked = WHOLE.replace(
+        "model_class: medium", "model_class: none\nimplemented: check"
+    )
+    policy = load_policy(written(tmp_path, checked))
+    assert (policy.implemented, policy.checked) == ("check", True)
 
 
 def test_a_policy_may_fail_unless_its_ceiling_says_otherwise(

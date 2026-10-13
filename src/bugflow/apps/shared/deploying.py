@@ -20,6 +20,7 @@ from bugflow.method.domain.errors import (
     PolicyDeploymentError,
 )
 from bugflow.method.domain.models.policy_deployment import PolicyDeployment
+from bugflow.method.domain.models.policy_text import JUDGED_SUBJECTS
 from bugflow.method.domain.repositories.policy_deployment import (
     PolicyDeploymentRepository,
 )
@@ -74,9 +75,10 @@ def checks_from(environ: Mapping[str, str]) -> tuple[str, ...]:
 
 def deployment_check(checks: Collection[str]) -> ParsedPolicyDeploymentCheck:
     """Return the check a deployment passes before it is stored: the
-    parse, told which checks this server has, so a manifest naming
-    another is refused."""
-    return ParsedPolicyDeploymentCheck(checks)
+    parse, told which checks this server has and which subjects it
+    renders, so a manifest naming another check, or a declaration
+    naming a policy this server cannot answer, is refused."""
+    return ParsedPolicyDeploymentCheck(checks, JUDGED_SUBJECTS)
 
 
 def apply_declarations(
@@ -97,7 +99,7 @@ def apply_declarations(
     not in the file has both emptied, so it is reviewed for nothing.
     Writing the same file twice changes nothing.
     """
-    declared = parse_deployment(deployment, checks).declared
+    declared = parse_deployment(deployment, checks, JUDGED_SUBJECTS).declared
     if declared is None:
         return False
     named = {(one.forge, one.repo) for one in declared}

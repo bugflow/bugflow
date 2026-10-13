@@ -37,9 +37,21 @@ def test_a_valid_deployment_parses_into_its_four_parts() -> None:
     assert list(parsed.agents) == ["prose"]
     assert parsed.agents["prose"].runner == "judge"
     assert list(parsed.policies["prose"]) == ["P-01"]
-    assert parsed.policies["prose"]["P-01"].evidence == "description"
+    assert parsed.policies["prose"]["P-01"].evidence == (
+        "pull-request/description"
+    )
     assert parsed.doctrine["prose"].text == DOCTRINE
     assert list(parsed.layers) == ["pull-request"]
+
+
+def test_a_manifest_named_manifest_is_read_as_one_named_reviewer() -> None:
+    files = {
+        path.replace("reviewer.md", "manifest.md"): text
+        for path, text in READ.items()
+    }
+    parsed = parse_deployment(deployment(files))
+    assert list(parsed.agents) == ["prose"]
+    assert list(parsed.policies["prose"]) == ["P-01"]
 
 
 def test_a_deployment_with_no_files_parses_to_nothing() -> None:
@@ -97,6 +109,10 @@ def test_a_check_the_server_names_is_accepted_and_another_refused() -> None:
             "a second agent with the id prose",
         ),
         (
+            {"prose/reviewer.md": MANIFEST, "prose/manifest.md": MANIFEST},
+            "prose/reviewer.md: a second manifest in prose/",
+        ),
+        (
             {"prose/policies/P-01-example.md": POLICY},
             "prose/policies/P-01-example.md: prose/reviewer.md is missing",
         ),
@@ -126,7 +142,7 @@ def test_a_check_the_server_names_is_accepted_and_another_refused() -> None:
                     "evidence: description", "evidence: telepathy"
                 ),
             },
-            "evidence 'telepathy' is not one of",
+            "evidence 'telepathy' is not a subject",
         ),
         (
             {"pace-layers.toml": TOPOLOGY.replace('"event"', '"hourly"')},
