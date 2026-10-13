@@ -17,6 +17,8 @@ dependencies = [
     # Trace spans for calls to a model. Only the API: with no SDK set
     # up by the application, the spans are not recorded.
     "opentelemetry-api>=1.30",
+    # Leaving a query out of the traces, where it runs on a timer.
+    "opentelemetry-instrumentation>=0.51b0",
     "psycopg[binary]>=3.3.5",
     "pydantic>=2.9",
     "pyjwt[crypto]>=2.10",
