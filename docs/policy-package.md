@@ -7,21 +7,21 @@ specification; the parsers in `src/bugflow/method/infrastructure/` and
 repository's own tests check its files against it.
 
 A policy package is a directory. The files in it are of two kinds: a
-product, which is one doctrine with its policies and cases and is the
-same wherever it is used; and a binding, which says what the product
-applies to on one server. A repository may hold one product, several, or
-a binding and the products it pins.
+gnome, which is one doctrine with its policies and cases and is the same
+wherever it is used; and a binding, which says what the gnome applies to
+on one server. A repository may hold one gnome, several, or a binding
+and the gnomes it pins.
 
 ## Layout
 
     pace-layers.toml            binding: the processes and when they run
     declarations.toml           binding: what each repository is reviewed for
-    <reviewer>/manifest.md      product: the reviewer's id, subjects, policies, checks
-    <reviewer>/doctrine/*.md    product: the doctrine, read in filename order
-    <reviewer>/policies/*.md    product: one policy each
-    <reviewer>/cases/<ID>/*.md  product: the cases of policy <ID>; not sent
-    <reviewer>/bin/, lib/       product: checks a garden's lint runs; not sent
-    <reviewer>/skills/          product: skills a garden installs; not sent
+    <reviewer>/manifest.md      gnome: the reviewer's id, subjects, policies, checks
+    <reviewer>/doctrine/*.md    gnome: the doctrine, read in filename order
+    <reviewer>/policies/*.md    gnome: one policy each
+    <reviewer>/cases/<ID>/*.md  gnome: the cases of policy <ID>; not sent
+    <reviewer>/bin/, lib/       gnome: checks a garden's lint runs; not sent
+    <reviewer>/skills/          gnome: skills a garden installs; not sent
 
 A server reads the two binding files and, of each reviewer, the manifest,
 the doctrine and the policies. A deployment holding a file of any other
@@ -64,7 +64,7 @@ server does not read:
   label. Optional; absent, `yes`.
 
 A header line of any other key is a problem in `reviewer.md` and ignored
-in `manifest.md`, so that a product may say more about itself than a
+in `manifest.md`, so that a gnome may say more about itself than a
 server reads.
 
 ## A policy file
@@ -116,7 +116,7 @@ under.
 
 A subject names the evidence a policy reads, as `KIND/PART`. A server
 renders the subjects it has code for, and a declaration naming a policy
-whose subject it does not render is refused; so a product may hold a
+whose subject it does not render is refused; so a gnome may hold a
 policy for one consumer that another skips.
 
 | Subject | What the model is shown | What a quote must come from |
@@ -141,7 +141,7 @@ policy may cite only the clauses its header lists.
 
 ## A case
 
-Cases are a product's tests of its judge. A server does not read them; a
+Cases are a gnome's tests of its judge. A server does not read them; a
 calibration does. A case is a header, a line of three dashes, and the
 evidence in its subject's form:
 

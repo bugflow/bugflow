@@ -144,7 +144,7 @@ HOLDING_BOTH = {
 def test_a_policy_this_server_cannot_answer_may_be_held_and_not_declared() -> (
     None
 ):
-    """A product may hold a policy for another consumer: a check a
+    """A gnome may hold a policy for another consumer: a check a
     garden's lint runs, or a subject a pull request judge does not
     render. The server parses it, and judges by the rest."""
     parsed = parse_deployment(
