@@ -1,5 +1,5 @@
 """Example policies for tests of the judge, with invented names: one for
-each kind of evidence a policy may name, and one capped at a warning.
+each subject a policy may name, and one capped at a warning.
 None of them is a policy any deployment holds."""
 
 from collections.abc import Mapping
@@ -125,6 +125,24 @@ made.
 Not measured.
 """
 
+#: Reads each changed document as its patch leaves it.
+DOCUMENTS = """\
+policy_id: P-06
+subject: document
+summary: A document states the present
+model_class: medium
+evidence: document/file
+quotable_name: document
+graded: yes
+quotes_code: no
+clause: EX-7 a document states the present
+---
+You assess each changed document against clause EX-7 of the doctrine
+above.
+=== calibration
+Not measured.
+"""
+
 #: The example policies' files, by name, in filename order.
 FILES = {
     "P-01-voice.md": PLAINLY,
@@ -132,6 +150,7 @@ FILES = {
     "P-03-mood.md": MOOD,
     "P-04-honesty.md": HONESTY,
     "P-05-why.md": CAPPED,
+    "P-06-documents.md": DOCUMENTS,
 }
 
 #: The parsed policies, by id, as a deployment holds them.

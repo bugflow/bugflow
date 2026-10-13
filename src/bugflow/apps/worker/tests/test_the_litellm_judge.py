@@ -37,7 +37,7 @@ from bugflow.apps.worker.tests.policies import (
     a_judge,
 )
 from bugflow.method.domain.models.policy_text import (
-    EVIDENCE_KINDS,
+    JUDGED_SUBJECTS,
     PolicyText,
 )
 from bugflow.review.domain.errors import (
@@ -815,10 +815,10 @@ def test_a_judge_given_no_policy_text_judges_nothing() -> None:
         LiteLLMJudge(URL, KEY, policies=("P-01",), served={})
 
 
-def test_the_judge_renders_every_kind_of_evidence_a_policy_may_name() -> None:
-    assert set(EVIDENCE) == set(EVIDENCE_KINDS)
+def test_the_judge_renders_every_subject_a_policy_may_name() -> None:
+    assert set(EVIDENCE) == set(JUDGED_SUBJECTS)
     assert {policy.evidence for policy in TEXTS.values()} == set(
-        EVIDENCE_KINDS
+        JUDGED_SUBJECTS
     )
 
 
