@@ -11,6 +11,8 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from opentelemetry.instrumentation.utils import suppress_instrumentation
+
 from bugflow.method.domain.models.policy_deployment import PutInForce
 from bugflow.method.domain.repositories.policy_deployment import (
     PolicyDeploymentRepository,
@@ -48,6 +50,18 @@ def changed_since(
     )
 
 
+def untraced_check(
+    deployments: PolicyDeploymentRepository,
+) -> PutInForce | None:
+    """The deployment last put in force, read with no trace of the query.
+
+    A check runs every few seconds outside any request or workflow, so
+    each traced query would be a trace of its own.
+    """
+    with suppress_instrumentation():
+        return deployments.last_put_in_force()
+
+
 async def wait_for_new_deployment(
     started_with: DeployedFrom | None,
     deployments: PolicyDeploymentRepository,
@@ -75,7 +89,7 @@ async def wait_for_new_deployment(
         else:
             return None
         try:
-            latest = await asyncio.to_thread(deployments.last_put_in_force)
+            latest = await asyncio.to_thread(untraced_check, deployments)
         except Exception as exc:
             warn(f"warning: could not check for a new deployment: {exc}")
             continue

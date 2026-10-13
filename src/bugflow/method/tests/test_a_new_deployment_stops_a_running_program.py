@@ -4,6 +4,7 @@ is put in force, so that its next start reads the new one."""
 import asyncio
 
 import pytest
+from opentelemetry.instrumentation.utils import is_instrumentation_enabled
 
 from bugflow.method.domain.models.policy_deployment import (
     DeployedFile,
@@ -113,6 +114,26 @@ def test_a_failed_check_is_reported_and_tried_again() -> None:
     latest, warned = asyncio.run(scenario())
     assert latest is not None and latest.commit == "c2"
     assert len(warned) == 1 and "database is away" in warned[0]
+
+
+def test_a_check_is_not_traced() -> None:
+    traced: list[bool] = []
+
+    class Observed(InMemoryPolicyDeployments):
+        def last_put_in_force(self) -> PutInForce | None:
+            traced.append(is_instrumentation_enabled())
+            return super().last_put_in_force()
+
+    async def scenario() -> None:
+        held = Observed()
+        held.deploy(deployment("c2"))
+        await asyncio.wait_for(
+            wait_for_new_deployment(started_with("c1"), held, interval=0.01),
+            timeout=2,
+        )
+
+    asyncio.run(scenario())
+    assert traced == [False]
 
 
 def test_the_program_is_stopped_once_and_told_why() -> None:
