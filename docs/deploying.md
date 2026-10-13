@@ -185,8 +185,9 @@ the programs.
 ## How policies reach a server
 
 A server reviews under a policy deployment: the reviewers, policies
-and doctrine of one commit of a policy repository. It holds none until
-it is sent one.
+and doctrine of one commit of a policy repository, laid out as
+[the policy package](policy-package.md) says. It holds none until it
+is sent one.
 
 A policy repository's pipeline sends one through the API:
 
