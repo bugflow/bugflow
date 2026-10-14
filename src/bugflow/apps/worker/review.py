@@ -57,13 +57,16 @@ from bugflow.apps.worker.forge_by_reference import forge_from_environment
 from bugflow.apps.worker.litellm_judge import (
     MODEL_CLASS_VARIABLES,
     LiteLLMJudge,
-    judge_from_environment,
     judged_texts,
-    judging_agent,
 )
 from bugflow.apps.worker.parts import WorkerParts
 from bugflow.apps.worker.pull_request import PullRequestWorkflow
 from bugflow.apps.worker.review_agent import managed_agent_from_environment
+from bugflow.apps.worker.reviewer_judges import (
+    ReviewerJudges,
+    judged_doctrine,
+    judges_from_environment,
+)
 from bugflow.apps.worker.reviewers import (
     Boundaries,
     ReviewerSettings,
@@ -90,7 +93,7 @@ from bugflow.method.domain.models.pace_layer import EVENT
 from bugflow.method.infrastructure.deployment_watch import (
     stop_on_new_deployment,
 )
-from bugflow.method.infrastructure.no_doctrine import NoDoctrine
+from bugflow.method.infrastructure.fixed_doctrine import FixedDoctrine
 from bugflow.method.infrastructure.reviewer_packages import (
     DomainSpecificReviewAgent,
 )
@@ -371,13 +374,12 @@ def activities_from_environment(
     )
     forge = forge or forge_from_environment(environ)
     objects = object_store_from_environment(environ)
-    judging = judging_agent(reviewers)
     return ReviewActivities(
         forge=forge,
         # The same forges answer for a closed conversation.
         conversation=forge,
-        doctrine=reviewers.doctrine_of(judging) if judging else NoDoctrine(),
-        judge=judge or judge_from_environment(environ, reviewers, objects),
+        doctrine=FixedDoctrine(judged_doctrine(reviewers)),
+        judge=judge or judges_from_environment(environ, reviewers, objects),
         journal=review_journal(
             database_url, build_sha(environ), reviewers.deployed_from
         ),
@@ -493,11 +495,12 @@ def check_judging_models(
     manifest is how a deployment says it means to run without it. A
     policy that is skipped and not declared is named through ``warn``.
 
-    Does nothing for a judge that is not the proxy's.
+    Does nothing for a judge that is not the proxy's, nor one judge for
+    each reviewer whose judges are the proxy's.
 
     Raises ``ValueError`` to stop the worker.
     """
-    if not isinstance(judge, LiteLLMJudge):
+    if not isinstance(judge, (LiteLLMJudge, ReviewerJudges)):
         return
     try:
         judge.check_model_classes()
