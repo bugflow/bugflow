@@ -63,15 +63,23 @@ def call(call_id: str, status: str = "ok") -> CallRecord:
 
 class TwoPolicyJudge:
     """A judge with two policies. It raises one finding for each, unless
-    told to refuse one or to be busy for one."""
+    told to refuse one or to be busy for one. ``owners`` names the
+    reviewer it puts on each policy's finding, as a judge of several
+    reviewers does."""
 
     model_id = "a-model"
     fingerprint = "two-policies"
     policies = ("P-01", "Q-01")
 
-    def __init__(self, refuse: str = "", busy: str = "") -> None:
+    def __init__(
+        self,
+        refuse: str = "",
+        busy: str = "",
+        owners: dict[str, str] | None = None,
+    ) -> None:
         self.refuse = refuse
         self.busy = busy
+        self.owners = owners or {}
         self.asked: list[str] = []
 
     def assess(
@@ -95,6 +103,7 @@ class TwoPolicyJudge:
                     subject="pull request",
                     message=f"breaks {CLAUSES[policy_id]}",
                     judged_by="a-model",
+                    agent_id=self.owners.get(policy_id),
                 ),
             ),
             model="a-model",
@@ -264,6 +273,24 @@ def test_a_finding_is_recorded_under_the_reviewer_it_belongs_to() -> None:
     (invoked,) = judged.entries(JUDGE_INVOKED)
     assert invoked.corpus_version == corpus.version
     assert invoked.agent_id is None
+
+
+def test_a_finding_the_judge_names_a_reviewer_on_is_recorded_under_it() -> (
+    None
+):
+    corpus = Corpus(
+        doctrine=DOCTRINE,
+        judge="j1",
+        installed={"canon": "canon-2", "prose": "prose-3"},
+        reporting_agent="canon",
+    )
+    judge = TwoPolicyJudge(owners={"P-01": "prose"})
+    judged = Judged(judge, corpus=corpus, policy_id="P-01")
+
+    (finding,) = judged.response.findings
+    assert (finding.agent_id, finding.corpus_version) == ("prose", "prose-3")
+    (raised,) = judged.entries(FINDING_RAISED)
+    assert (raised.agent_id, raised.corpus_version) == ("prose", "prose-3")
 
 
 def test_with_no_reviewer_a_finding_has_the_evaluations_version() -> None:

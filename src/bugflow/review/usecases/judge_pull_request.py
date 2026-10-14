@@ -132,13 +132,20 @@ class JudgePullRequestUseCase:
             ]
 
         # A finding is recorded under the reviewer whose policy it is,
-        # and that reviewer's corpus version. The "judge invoked" fact
-        # is recorded under the evaluation's own corpus version, which
-        # is what shows later that this commit has been judged.
-        agent_id = request.corpus.reporting_agent
-        version = request.corpus.version_for(agent_id)
+        # and that reviewer's corpus version: the reviewer the judge
+        # names on it, or else the corpus's reporting reviewer. The
+        # "judge invoked" fact is recorded under the evaluation's own
+        # corpus version, which is what shows later that this commit
+        # has been judged.
+        reporting = request.corpus.reporting_agent
         findings = [
-            replace(f, corpus_version=version, agent_id=agent_id or None)
+            replace(
+                f,
+                corpus_version=request.corpus.version_for(
+                    f.agent_id or reporting
+                ),
+                agent_id=f.agent_id or reporting or None,
+            )
             for judgement in judgements
             for f in judgement.findings
         ]

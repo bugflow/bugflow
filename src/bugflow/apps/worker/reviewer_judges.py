@@ -13,6 +13,7 @@ every judged reviewer's doctrine, joined in reviewer id order.
 import hashlib
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 
 from bugflow.apps.shared.policies import ReviewersInForce
 from bugflow.apps.worker.litellm_judge import (
@@ -97,14 +98,21 @@ class ReviewerJudges:
         policy_id: str,
     ) -> JudgeAssessment:
         """Ask the judge of the reviewer that holds the policy, with that
-        reviewer's doctrine.
+        reviewer's doctrine, and name that reviewer on each finding.
 
         ``doctrine`` is the evaluation's, every judged reviewer's
         joined. A request carries its own reviewer's alone.
         """
-        for judge, own in self._judges.values():
+        for agent_id, (judge, own) in self._judges.items():
             if policy_id in judge.policies:
-                return judge.assess(submission, own, policy_id)
+                assessment = judge.assess(submission, own, policy_id)
+                return replace(
+                    assessment,
+                    findings=tuple(
+                        replace(finding, agent_id=agent_id)
+                        for finding in assessment.findings
+                    ),
+                )
         raise ValueError(f"no judge here judges {policy_id}")
 
     def check_model_classes(self) -> None:
