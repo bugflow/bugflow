@@ -3,7 +3,9 @@
 A reviewer is a directory. It holds a manifest named ``manifest.md``,
 or ``reviewer.md`` in a repository made before the manifest had that
 name, and may hold a ``policies`` directory and a ``doctrine``
-directory.
+directory. They are in the ``references`` directory of the reviewer's
+skill, ``skills/<name>/references/``, or in the reviewer's directory in
+a repository laid out before skills held them.
 
 A manifest is a header, a line of three dashes, and then the reviewer's
 instructions in prose. The header is lines of the form ``key: value``::
@@ -83,12 +85,20 @@ class DomainSpecificReviewAgent:
     checks: tuple[CheckedPolicy, ...] = ()
 
     @property
+    def references(self) -> Path:
+        """The directory that holds the ``policies`` and ``doctrine``
+        directories: the first skill's ``references`` directory, in
+        name order, or the reviewer's directory if no skill has one."""
+        found = sorted(self.directory.glob("skills/*/references"))
+        return found[0] if found else self.directory
+
+    @property
     def policy_dir(self) -> Path:
-        return self.directory / "policies"
+        return self.references / "policies"
 
     @property
     def doctrine_dir(self) -> Path:
-        return self.directory / "doctrine"
+        return self.references / "doctrine"
 
 
 def _flag(name: str, field: str, value: str) -> bool:

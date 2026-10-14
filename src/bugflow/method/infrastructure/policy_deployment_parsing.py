@@ -79,21 +79,32 @@ class ParsedDeployment:
     declared: tuple[RepositoryDeclaration, ...] | None = None
 
 
-def _kind(path: str) -> tuple[str, str] | None:
-    """Classify a path as (agent directory, kind), or None if the path
-    is not one a server reads.
+def _kind(path: str) -> tuple[str, str, str] | None:
+    """Classify a path as (agent directory, kind, place), or None if the
+    path is not one a server reads.
 
-    The kinds are "manifest", "policy" and "doctrine". The files beside
-    the reviewers belong to no agent and are handled apart.
+    The kinds are "manifest", "policy" and "doctrine". The place is the
+    directory that holds a policy's or a doctrine's directory: the
+    ``references`` directory of one of the agent's skills, or, in a
+    deployment made before skills held them, the agent's directory. A
+    manifest's place is the agent's directory. The files beside the
+    reviewers belong to no agent and are handled apart.
     """
     parts = PurePosixPath(path).parts
     if len(parts) == 2 and parts[1] in MANIFESTS:
-        return parts[0], "manifest"
-    if len(parts) == 3 and parts[2].endswith(".md"):
-        if parts[1] == "policies":
-            return parts[0], "policy"
-        if parts[1] == "doctrine":
-            return parts[0], "doctrine"
+        return parts[0], "manifest", parts[0]
+    if not parts[-1].endswith(".md"):
+        return None
+    if len(parts) == 6 and parts[1] == "skills" and parts[3] == "references":
+        place = "/".join(parts[:4])
+    elif len(parts) == 3:
+        place = parts[0]
+    else:
+        return None
+    if parts[-2] == "policies":
+        return parts[0], "policy", place
+    if parts[-2] == "doctrine":
+        return parts[0], "doctrine", place
     return None
 
 
@@ -110,7 +121,8 @@ def parse_deployment(
     path the server does not read, a manifest or policy or topology
     that does not parse, two agents with one id, two manifests in one
     directory, two policies with one id in one agent, policy or
-    doctrine files in a directory that has no manifest, and a
+    doctrine files in a directory that has no manifest, policy or
+    doctrine files of one agent in two places, and a
     declaration naming a policy or process the deployment does not
     hold, a checked policy no manifest gives a check, or a policy whose
     subject this server does not render.
@@ -157,6 +169,7 @@ def parse_deployment(
     }
     policy_texts: dict[str, list[str]] = {}
     doctrine_parts: dict[str, list[str]] = {}
+    places: dict[str, str] = {}
     for one in deployment.files:
         kind = _kind(one.path)
         if kind is None or kind[1] == "manifest":
@@ -165,6 +178,13 @@ def parse_deployment(
         if owner is None:
             problems.append(f"{one.path}: {kind[0]}/{MANIFEST} is missing")
             continue
+        place = places.setdefault(kind[0], kind[2])
+        if place != kind[2]:
+            problems.append(
+                f"{one.path}: {kind[0]}/ already holds policies or "
+                f"doctrine in {place}/"
+            )
+            continue
         if kind[1] == "doctrine":
             doctrine_parts.setdefault(owner.agent_id, []).append(one.text)
             continue
@@ -172,7 +192,7 @@ def parse_deployment(
         try:
             policy = parse_policy(PurePosixPath(one.path).name, one.text)
         except ValueError as exc:
-            problems.append(f"{kind[0]}/policies/{exc}")
+            problems.append(f"{kind[2]}/policies/{exc}")
             continue
         if policy.policy_id in policies[owner.agent_id]:
             problems.append(

@@ -22,7 +22,7 @@ from bugflow.method.infrastructure.in_memory_policy_deployments import (
     InMemoryPolicyDeployments,
 )
 from bugflow.method.infrastructure.policy_directory import PolicyDirectory
-from bugflow.method.tests.policy_files import laid_out
+from bugflow.method.tests.policy_files import REFERENCES, laid_out
 
 REPOSITORY = "example-org/pull-request-policies"
 
@@ -88,9 +88,9 @@ def test_a_directory_is_read_as_the_files_a_server_reads(
     assert (read.repository, read.commit) == (REPOSITORY, "c1")
     assert [one.path for one in read.files] == [
         "pace-layers.toml",
-        "prose/doctrine/01-voice.md",
-        "prose/policies/P-01-example.md",
         "prose/reviewer.md",
+        f"{REFERENCES}/doctrine/01-voice.md",
+        f"{REFERENCES}/policies/P-01-example.md",
     ]
 
 

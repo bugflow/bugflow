@@ -20,13 +20,15 @@ from bugflow.method.infrastructure.deployment_watch import (
 from bugflow.method.infrastructure.in_memory_policy_deployments import (
     InMemoryPolicyDeployments,
 )
-from bugflow.method.tests.policy_files import READ
+from bugflow.method.tests.policy_files import READ, REFERENCES
 
 REPOSITORY = "example-org/pull-request-policies"
 
 
 def deployment(commit: str) -> PolicyDeployment:
-    files = READ | {"prose/doctrine/02-commit.md": f"Deployed as {commit}.\n"}
+    files = READ | {
+        f"{REFERENCES}/doctrine/02-commit.md": f"Deployed as {commit}.\n"
+    }
     return PolicyDeployment(
         repository=REPOSITORY,
         commit=commit,

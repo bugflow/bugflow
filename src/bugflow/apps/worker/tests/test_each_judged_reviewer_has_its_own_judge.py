@@ -25,6 +25,9 @@ from bugflow.method.tests.policy_files import (
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.submission import Submission
 
+#: Where the second reviewer's skill holds its policies and doctrine.
+CANON = "canon/skills/canon-review/references"
+
 #: The second reviewer's doctrine, whose one clause the first's lacks.
 CANON_DOCTRINE = "**EX-2.** A document says each thing in one place.\n"
 
@@ -34,10 +37,10 @@ TWO = READ | {
     "canon/reviewer.md": MANIFEST.replace("agent_id: prose", "agent_id: canon")
     .replace("governs: yes", "governs: no")
     .replace("policies: P-01", "policies: P-11"),
-    "canon/policies/P-11-one-place.md": POLICY.replace(
+    f"{CANON}/policies/P-11-one-place.md": POLICY.replace(
         "policy_id: P-01", "policy_id: P-11"
     ).replace("clause: EX-1", "clause: EX-2"),
-    "canon/doctrine/01-places.md": CANON_DOCTRINE,
+    f"{CANON}/doctrine/01-places.md": CANON_DOCTRINE,
 }
 
 SUBMISSION = Submission(

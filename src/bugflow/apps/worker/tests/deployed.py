@@ -13,7 +13,7 @@ from bugflow.method.dtos.deploy_policies import (
     DeployPoliciesRequest,
     PolicyFile,
 )
-from bugflow.method.tests.policy_files import DOCTRINE, POLICY
+from bugflow.method.tests.policy_files import DOCTRINE, POLICY, REFERENCES
 from bugflow.review.domain.values.checked_policy import CHECKS
 
 REPOSITORY = "example-org/pull-request-policies"
@@ -73,8 +73,8 @@ FILES = {
     "pace-layers.toml": TOPOLOGY,
     "declarations.toml": DECLARATIONS,
     "prose/reviewer.md": PROSE,
-    "prose/policies/P-01-example.md": POLICY,
-    "prose/doctrine/01-voice.md": DOCTRINE,
+    f"{REFERENCES}/policies/P-01-example.md": POLICY,
+    f"{REFERENCES}/doctrine/01-voice.md": DOCTRINE,
     "security/reviewer.md": SECURITY,
 }
 

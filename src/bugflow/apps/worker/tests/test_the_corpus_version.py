@@ -18,7 +18,7 @@ from bugflow.apps.worker.reviewers import corpus_of
 from bugflow.apps.worker.tests.policies import a_judge, deployed
 from bugflow.method.domain.models.corpus import AgentCorpus, Corpus
 from bugflow.method.domain.models.doctrine import Doctrine
-from bugflow.method.tests.policy_files import TOPOLOGY
+from bugflow.method.tests.policy_files import REFERENCES, TOPOLOGY
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.judge_assessment import JudgeAssessment
 from bugflow.review.domain.models.submission import Submission
@@ -72,8 +72,8 @@ Measured once: 13 of 13.
 FILES = {
     "pace-layers.toml": TOPOLOGY,
     "prose/reviewer.md": PROSE,
-    "prose/policies/P-02-scope.md": POLICY,
-    "prose/doctrine/01-voice.md": "**EX-1.** Be terse.\n",
+    f"{REFERENCES}/policies/P-02-scope.md": POLICY,
+    f"{REFERENCES}/doctrine/01-voice.md": "**EX-1.** Be terse.\n",
     "security/reviewer.md": SECURITY,
 }
 
@@ -160,7 +160,12 @@ def test_editing_the_judged_reviewers_doctrine_moves_only_its_version() -> (
 ):
     before = corpus(FILES)
     after = corpus(
-        FILES | {"prose/doctrine/01-voice.md": "**EX-1.** Be terse. Always.\n"}
+        FILES
+        | {
+            f"{REFERENCES}/doctrine/01-voice.md": (
+                "**EX-1.** Be terse. Always.\n"
+            )
+        }
     )
     assert after.installed["prose"] != before.installed["prose"]
     assert after.installed["security"] == before.installed["security"]
@@ -178,7 +183,8 @@ def test_a_calibration_note_moves_no_version() -> None:
     judge's fingerprint drops it: writing a measurement down must not
     move the version it was taken under."""
     noted = FILES | {
-        "prose/policies/P-02-scope.md": POLICY + "Measured again: 13 of 13.\n"
+        f"{REFERENCES}/policies/P-02-scope.md": POLICY
+        + "Measured again: 13 of 13.\n"
     }
     assert corpus(noted).installed == corpus(FILES).installed
 

@@ -145,7 +145,19 @@ def test_a_check_that_is_not_three_words_is_refused() -> None:
         parse_agent(Path("a/reviewer.md"), with_checks("em-dash S-02"))
 
 
-def test_a_reviewers_policies_and_doctrine_are_beside_its_manifest(
+def test_a_reviewers_policies_and_doctrine_are_in_its_skills_references(
+    tmp_path: Path,
+) -> None:
+    references = write(tmp_path, "safety") / "skills/safety-check/references"
+    references.mkdir(parents=True)
+
+    agent = load_agents(tmp_path)["safety"]
+
+    assert agent.policy_dir == references / "policies"
+    assert agent.doctrine_dir == references / "doctrine"
+
+
+def test_a_reviewer_with_no_skill_references_holds_them_beside_its_manifest(
     tmp_path: Path,
 ) -> None:
     write(tmp_path, "safety")
