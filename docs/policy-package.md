@@ -16,23 +16,35 @@ and the gnomes it pins.
 
 ## Layout
 
-    pace-layers.toml            binding: the processes and when they run
-    declarations.toml           binding: what each repository is reviewed for
-    <reviewer>/manifest.md      gnome: the reviewer's id, subjects, policies, checks
-    <reviewer>/doctrine/*.md    gnome: the doctrine, read in filename order
-    <reviewer>/policies/*.md    gnome: one policy each
-    <reviewer>/cases/<ID>/*.md  gnome: the cases of policy <ID>; not sent
-    <reviewer>/bin/, lib/       gnome: checks a garden's lint runs; not sent
-    <reviewer>/skills/          gnome: skills a garden installs; not sent
+    pace-layers.toml                  binding: the processes and when they run
+    declarations.toml                 binding: what each repository is reviewed for
+    <reviewer>/manifest.md            gnome: the reviewer's id, subjects, policies, checks
+    <reviewer>/cases/<ID>/*.md        gnome: the cases of policy <ID>; not sent
+    <reviewer>/skills/<skill>/        gnome: the skill a garden installs
+        SKILL.md                      the skill's instructions; not sent
+        references/doctrine/*.md      the doctrine, read in filename order
+        references/policies/*.md      one policy each
+        scripts/                      checks a garden's lint runs, each
+                                      named check-<name>; not sent
+
+A gnome's doctrine and policies are in its skill's `references/`
+directory, and its checks in the skill's `scripts/`, because the tool
+that installs a skill in a garden copies the skill's directory and
+nothing outside it. One skill of a reviewer holds the doctrine and the
+policies; a deployment that holds a reviewer's doctrine or policies in
+two places is refused.
 
 A server reads the two binding files and, of each reviewer, the manifest,
 the doctrine and the policies. A deployment holding a file of any other
 path is refused. `bugflow deploy-policies DIRECTORY` sends only the files
-a server reads, so a repository holds its cases, checks, skills, notes
-and pipeline beside them.
+a server reads, so a repository holds its cases, scripts, skill
+instructions, notes and pipeline beside them.
 
 `reviewer.md` is read as `manifest.md` is, for repositories made before
-the manifest had that name.
+the manifest had that name. `<reviewer>/doctrine/` and
+`<reviewer>/policies/` are read as the skill's `references/doctrine/`
+and `references/policies/` are, for deployments made before the skill
+held them.
 
 ## The manifest
 
@@ -136,8 +148,8 @@ the policy reports nothing.
 
 ## The doctrine
 
-The files of `doctrine/`, each Markdown, joined in filename order into
-one document. A clause is a paragraph opening `**ID. Name.**`, such as
+The files of `references/doctrine/`, each Markdown, joined in filename
+order into one document. A clause is a paragraph opening `**ID. Name.**`, such as
 `**VOICE-6. Marketing register.**`. A finding cites a clause id, and a
 policy may cite only the clauses its header lists.
 
