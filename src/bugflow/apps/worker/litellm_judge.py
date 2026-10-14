@@ -1158,34 +1158,44 @@ def model_classes_from_environment(
     }
 
 
-def judging_agent(reviewers: ReviewersInForce) -> str | None:
-    """Return the id of the reviewer the judge answers for: the first, in
-    id order, whose manifest names the judge as its runner. None if the
-    deployment holds no such reviewer."""
-    return next(
-        (
-            agent_id
-            for agent_id, agent in sorted(reviewers.agents.items())
-            if agent.runner == JUDGE_RUNNER
-        ),
-        None,
+def judging_agents(reviewers: ReviewersInForce) -> tuple[str, ...]:
+    """Return the ids of the reviewers a judge answers for, in id order:
+    those whose manifest names the judge as its runner."""
+    return tuple(
+        agent_id
+        for agent_id, agent in sorted(reviewers.agents.items())
+        if agent.runner == JUDGE_RUNNER
     )
 
 
-def judged_texts(reviewers: ReviewersInForce) -> dict[str, PolicyText]:
-    """Return the policies the judge answers, by policy id: those of the
-    reviewer the judge answers for that a model answers and whose
-    subject this judge renders. A gnome may hold a file for a policy a
-    check answers, and a policy that reads a whole scope for a garden;
-    neither is among them. Empty if the deployment holds no such
+def judging_agent(reviewers: ReviewersInForce) -> str | None:
+    """Return the id of the first reviewer, in id order, whose manifest
+    names the judge as its runner. None if the deployment holds no such
     reviewer."""
-    agent_id = judging_agent(reviewers)
-    if agent_id is None:
-        return {}
+    return next(iter(judging_agents(reviewers)), None)
+
+
+def _judged_texts_of(
+    reviewers: ReviewersInForce, agent_id: str
+) -> dict[str, PolicyText]:
     return {
         policy_id: text
         for policy_id, text in reviewers.policies[agent_id].items()
         if text.evidence in EVIDENCE and not text.checked
+    }
+
+
+def judged_texts(reviewers: ReviewersInForce) -> dict[str, PolicyText]:
+    """Return the policies a judge answers, by policy id: those of every
+    reviewer a judge answers for that a model answers and whose subject
+    this judge renders. A gnome may hold a file for a policy a check
+    answers, and a policy that reads a whole scope for a garden;
+    neither is among them. Empty if the deployment holds no such
+    reviewer."""
+    return {
+        policy_id: text
+        for agent_id in judging_agents(reviewers)
+        for policy_id, text in _judged_texts_of(reviewers, agent_id).items()
     }
 
 
@@ -1195,34 +1205,36 @@ def judge_from_environment(
     objects: ObjectStoreService | None = None,
     fidelity: str = "whole",
     temperature: float = 0.0,
+    agent_id: str | None = None,
 ) -> LiteLLMJudge | None:
-    """Build the judge of the deployment in force, or None without a key
-    to call the proxy with.
+    """Build the judge of one reviewer in the deployment in force, or
+    None without a key to call the proxy with.
 
     Settings: ``LITELLM_MASTER_KEY`` is the key. ``JUDGE_URL`` is the
     proxy's address, by default the local one. ``JUDGE_MODEL``, if
     given, answers for every policy. The classes' models are read by
     ``model_classes_from_environment``.
 
-    The policies judged are the ones the judging reviewer's manifest
-    names that the deployment holds a text for. A policy a check
-    answers is not judged, with a file or without. Nor is a policy
-    whose subject this judge does not render, which a gnome may hold
-    for a garden. A server that was never sent a deployment, or whose
-    deployment has no reviewer the judge answers for, gets a judge of
-    no policy.
+    ``agent_id`` is the reviewer, by default the first one a judge
+    answers for. The policies judged are the ones its manifest names
+    that the deployment holds a text for. A policy a check answers is
+    not judged, with a file or without. Nor is a policy whose subject
+    this judge does not render, which a gnome may hold for a garden. A
+    server that was never sent a deployment, or whose deployment has no
+    reviewer a judge answers for, gets a judge of no policy.
 
     ``objects`` is where each call's content is kept, if anywhere.
     """
     key = environ.get("LITELLM_MASTER_KEY")
     if not key:
         return None
-    agent_id = judging_agent(reviewers) if reviewers is not None else None
+    if reviewers is not None and agent_id is None:
+        agent_id = judging_agent(reviewers)
     texts: Mapping[str, PolicyText] = {}
     source = ""
     policies: tuple[str, ...] = ()
     if reviewers is not None and agent_id is not None:
-        texts = judged_texts(reviewers)
+        texts = _judged_texts_of(reviewers, agent_id)
         source = reviewers.policy_sources[agent_id]
         policies = tuple(
             policy_id

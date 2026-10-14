@@ -163,16 +163,11 @@ database must each be given the new name.
 | Word | Is | Is not |
 |---|---|---|
 | Reviewer | A directory in a deployment: a manifest, policies and a doctrine. Its id names a commit status | A process. Nothing runs under a reviewer's name |
-| Judge | Code in the worker that asks a model about one policy | A reviewer, or a service of its own |
+| Judge | Code in the worker that asks a model about one policy, with the doctrine of the reviewer that holds the policy. Each reviewer whose runner is `judge` has one | A reviewer, or a service of its own |
 | Checkout agent | A session on a vendor's platform that checks the code out and writes a review, for a reviewer whose manifest names a runner other than `judge` | Part of the composition |
 | Policy deployment | The files of one commit of a binding, stored in the database | A deployment of the server's code |
 
 ## Present limits
 
-- **One judged reviewer.** A deployment may hold several reviewers
-  whose runner is `judge`. The worker builds its judge from one: the
-  first in id order. Policies of the others that a model answers are
-  not judged, though `declarations.toml` may declare them. Their
-  checked policies are answered.
 - **Calibration is not here.** A gnome's cases are read by a
   calibration, and this repository has no command that runs one.
