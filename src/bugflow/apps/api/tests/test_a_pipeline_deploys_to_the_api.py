@@ -14,7 +14,7 @@ import pytest
 
 from bugflow.apps.api.tests.doubles import DEPLOYER, READER, Server
 from bugflow.apps.command.command import run
-from bugflow.method.tests.policy_files import laid_out
+from bugflow.method.tests.policy_files import REFERENCES, laid_out
 
 REPOSITORY = "example-org/pull-request-policies"
 ISSUER = "https://idp.example"
@@ -138,7 +138,9 @@ def test_files_the_server_refuses_fail_the_pipeline_with_the_reasons(
 ) -> None:
     provider = Provider()
     laid_out(tmp_path)
-    (tmp_path / "prose/policies/P-01-example.md").write_text("broken\n")
+    (tmp_path / f"{REFERENCES}/policies/P-01-example.md").write_text(
+        "broken\n"
+    )
     assert provider.run(tmp_path, check_only=True) == 1
     assert "P-01-example.md" in capsys.readouterr().err
 
@@ -148,7 +150,7 @@ def test_a_commit_held_with_other_content_fails_the_pipeline(
 ) -> None:
     provider = Provider()
     provider.run(laid_out(tmp_path))
-    (tmp_path / "prose/doctrine/01-voice.md").write_text("Changed.\n")
+    (tmp_path / f"{REFERENCES}/doctrine/01-voice.md").write_text("Changed.\n")
     assert provider.run(tmp_path) == 1
     assert "already held with other content" in capsys.readouterr().err
 

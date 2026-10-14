@@ -13,7 +13,12 @@ from bugflow.method.infrastructure.policy_deployment_parsing import (
     RepositoryDeclaration,
     parse_deployment,
 )
-from bugflow.method.tests.policy_files import MANIFEST, POLICY, READ
+from bugflow.method.tests.policy_files import (
+    MANIFEST,
+    POLICY,
+    READ,
+    REFERENCES,
+)
 
 REPOSITORY = "example-org/pull-request-policies"
 
@@ -136,8 +141,8 @@ HOLDING_BOTH = {
     "prose/reviewer.md": CHECKING.replace(
         "policies: P-01, P-02", "policies: P-01, P-02, P-03, P-04"
     ),
-    "prose/policies/P-03-checked.md": CHECKED,
-    "prose/policies/P-04-scoped.md": SCOPED,
+    f"{REFERENCES}/policies/P-03-checked.md": CHECKED,
+    f"{REFERENCES}/policies/P-04-scoped.md": SCOPED,
 }
 
 

@@ -30,6 +30,7 @@ from bugflow.method.tests.policy_files import (
     MANIFEST,
     POLICY,
     READ,
+    REFERENCES,
     TOPOLOGY,
 )
 from bugflow.review.domain.errors import (
@@ -67,7 +68,7 @@ DEPLOYED = {
     "pace-layers.toml": TOPOLOGY,
     "prose/reviewer.md": JUDGED,
     "security/reviewer.md": CHECKOUT,
-} | {f"prose/policies/{name}": text for name, text in FILES.items()}
+} | {f"{REFERENCES}/policies/{name}": text for name, text in FILES.items()}
 
 
 def test_every_class_a_policy_names_has_a_setting_and_a_default() -> None:
@@ -140,7 +141,7 @@ def test_the_judge_is_fingerprinted_with_the_deployed_text() -> None:
         source=SOURCE,
     )
     edited = DEPLOYED | {
-        "prose/policies/P-02-scope.md": FILES["P-02-scope.md"].replace(
+        f"{REFERENCES}/policies/P-02-scope.md": FILES["P-02-scope.md"].replace(
             "does one thing.\n", "does one thing only.\n"
         )
     }
@@ -180,8 +181,8 @@ def test_a_policy_the_judge_cannot_answer_is_held_and_not_judged() -> None:
         "prose/reviewer.md": MANIFEST.replace(
             "policies: P-01", "policies: P-01, P-07, P-08"
         ),
-        "prose/policies/P-07-scoped.md": scoped,
-        "prose/policies/P-08-checked.md": checked,
+        f"{REFERENCES}/policies/P-07-scoped.md": scoped,
+        f"{REFERENCES}/policies/P-08-checked.md": checked,
     }
     judge = judge_from_environment(
         {"LITELLM_MASTER_KEY": KEY}, deployed(files)

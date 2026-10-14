@@ -20,7 +20,7 @@ from bugflow.method.infrastructure.in_memory_policy_deployments import (
 from bugflow.method.infrastructure.policy_deployment_parsing import (
     ParsedPolicyDeploymentCheck,
 )
-from bugflow.method.tests.policy_files import MANIFEST, READ
+from bugflow.method.tests.policy_files import MANIFEST, READ, REFERENCES
 from bugflow.method.usecases.deploy_policies import DeployPoliciesUseCase
 from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 
@@ -150,7 +150,7 @@ def test_a_check_says_which_deployment_is_in_force() -> None:
 def test_files_that_do_not_parse_are_refused_and_nothing_changes() -> None:
     fixture = Fixture()
     fixture.deploy.execute(request("c1"))
-    broken = READ | {"prose/policies/P-01-example.md": "broken\n"}
+    broken = READ | {f"{REFERENCES}/policies/P-01-example.md": "broken\n"}
     with pytest.raises(PolicyDeploymentError, match="no --- line"):
         fixture.deploy.execute(request("c2", broken))
     in_force = fixture.deployments.in_force()

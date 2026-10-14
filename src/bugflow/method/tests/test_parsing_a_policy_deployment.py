@@ -16,6 +16,7 @@ from bugflow.method.tests.policy_files import (
     MANIFEST,
     POLICY,
     READ,
+    REFERENCES,
     TOPOLOGY,
 )
 
@@ -54,6 +55,17 @@ def test_a_manifest_named_manifest_is_read_as_one_named_reviewer() -> None:
     assert list(parsed.policies["prose"]) == ["P-01"]
 
 
+def test_a_deployment_laid_out_before_skills_held_the_files_is_read() -> None:
+    files = {
+        path.replace("skills/prose-write/references/", ""): text
+        for path, text in READ.items()
+    }
+    parsed = parse_deployment(deployment(files))
+    assert list(parsed.policies["prose"]) == ["P-01"]
+    assert parsed.doctrine["prose"].text == DOCTRINE
+    assert parsed.prose == parse_deployment(deployment(READ)).prose
+
+
 def test_a_deployment_with_no_files_parses_to_nothing() -> None:
     parsed = parse_deployment(deployment({}))
     assert parsed.agents == {}
@@ -63,7 +75,7 @@ def test_a_deployment_with_no_files_parses_to_nothing() -> None:
 
 
 def test_doctrine_files_are_joined_in_filename_order() -> None:
-    files = READ | {"prose/doctrine/00-first.md": "**EX-0.** First.\n"}
+    files = READ | {f"{REFERENCES}/doctrine/00-first.md": "**EX-0.** First.\n"}
     parsed = parse_deployment(deployment(files))
     assert parsed.doctrine["prose"].text == "**EX-0.** First.\n" + DOCTRINE
 
@@ -113,32 +125,33 @@ def test_a_check_the_server_names_is_accepted_and_another_refused() -> None:
             "prose/reviewer.md: a second manifest in prose/",
         ),
         (
-            {"prose/policies/P-01-example.md": POLICY},
-            "prose/policies/P-01-example.md: prose/reviewer.md is missing",
+            {f"{REFERENCES}/policies/P-01-example.md": POLICY},
+            f"{REFERENCES}/policies/P-01-example.md: "
+            "prose/reviewer.md is missing",
         ),
         (
-            {"prose/doctrine/01-voice.md": DOCTRINE},
-            "prose/doctrine/01-voice.md: prose/reviewer.md is missing",
+            {f"{REFERENCES}/doctrine/01-voice.md": DOCTRINE},
+            f"{REFERENCES}/doctrine/01-voice.md: prose/reviewer.md is missing",
         ),
         (
             {
                 "prose/reviewer.md": MANIFEST,
-                "prose/policies/P-01-example.md": "policy_id: P-01\n",
+                f"{REFERENCES}/policies/P-01-example.md": "policy_id: P-01\n",
             },
-            "prose/policies/P-01-example.md: no --- line",
+            f"{REFERENCES}/policies/P-01-example.md: no --- line",
         ),
         (
             {
                 "prose/reviewer.md": MANIFEST,
-                "prose/policies/P-01-example.md": POLICY,
-                "prose/policies/P-01-again.md": POLICY,
+                f"{REFERENCES}/policies/P-01-example.md": POLICY,
+                f"{REFERENCES}/policies/P-01-again.md": POLICY,
             },
             "a second policy with the id P-01",
         ),
         (
             {
                 "prose/reviewer.md": MANIFEST,
-                "prose/policies/P-01-example.md": POLICY.replace(
+                f"{REFERENCES}/policies/P-01-example.md": POLICY.replace(
                     "evidence: description", "evidence: telepathy"
                 ),
             },
@@ -147,6 +160,26 @@ def test_a_check_the_server_names_is_accepted_and_another_refused() -> None:
         (
             {"pace-layers.toml": TOPOLOGY.replace('"event"', '"hourly"')},
             "pace-layers.toml:",
+        ),
+        (
+            READ | {"prose/doctrine/02-more.md": DOCTRINE},
+            f"{REFERENCES}/doctrine/01-voice.md: "
+            "prose/ already holds policies or doctrine in prose/",
+        ),
+        (
+            READ
+            | {"prose/skills/other/references/doctrine/02-more.md": DOCTRINE},
+            f"{REFERENCES}/doctrine/01-voice.md: "
+            "prose/ already holds policies or doctrine in "
+            "prose/skills/other/references/",
+        ),
+        (
+            {
+                "prose/reviewer.md": MANIFEST,
+                "prose/skills/prose-write/scripts/check-example.md": "x",
+            },
+            "prose/skills/prose-write/scripts/check-example.md: "
+            "not a file a server reads",
         ),
     ],
 )

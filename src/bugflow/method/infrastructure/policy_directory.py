@@ -2,8 +2,11 @@
 
 Only the files a server reads are taken: each reviewer's manifest, its
 policies and its doctrine, and the two files beside the reviewers. A
-file of any other name is left out, so a policy repository can hold
-notes, calibration cases and a pipeline without sending them.
+reviewer's policies and doctrine are in the ``references`` directory of
+its skill, or, in a repository laid out before skills held them, in the
+reviewer's directory. A file of any other name is left out, so a policy
+repository can hold notes, calibration cases, scripts and a pipeline
+without sending them.
 """
 
 from pathlib import Path
@@ -19,6 +22,8 @@ PATTERNS = (
     "declarations.toml",
     "*/manifest.md",
     "*/reviewer.md",
+    "*/skills/*/references/policies/*.md",
+    "*/skills/*/references/doctrine/*.md",
     "*/policies/*.md",
     "*/doctrine/*.md",
 )

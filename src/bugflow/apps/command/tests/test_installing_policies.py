@@ -24,7 +24,7 @@ from bugflow.method.infrastructure.in_memory_policy_deployments import (
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
-from bugflow.method.tests.policy_files import laid_out
+from bugflow.method.tests.policy_files import REFERENCES, laid_out
 from bugflow.review.infrastructure.in_memory_review_declaration import (
     InMemoryDispatchedProcesses,
     InMemoryJudgedPolicies,
@@ -72,9 +72,9 @@ def test_a_directory_is_stored_and_what_is_in_force_is_printed(
     assert lines[0].startswith(f"{REPOSITORY} at c1 is in force, 4 files")
     assert lines[1:] == [
         "  pace-layers.toml",
-        "  prose/doctrine/01-voice.md",
-        "  prose/policies/P-01-example.md",
         "  prose/reviewer.md",
+        "  prose/skills/prose-write/references/doctrine/01-voice.md",
+        "  prose/skills/prose-write/references/policies/P-01-example.md",
     ]
     (fact,) = host.journal.entries
     assert fact.payload["sent_by"] == INSTALLED_ON_THE_HOST
@@ -101,7 +101,9 @@ def test_files_that_do_not_parse_exit_1_with_the_reasons(
 ) -> None:
     host = Host()
     laid_out(tmp_path)
-    (tmp_path / "prose/policies/P-01-example.md").write_text("broken\n")
+    (tmp_path / f"{REFERENCES}/policies/P-01-example.md").write_text(
+        "broken\n"
+    )
     assert host.install(tmp_path) == 1
     assert "P-01-example.md" in capsys.readouterr().err
     assert host.deployments.in_force() is None
@@ -112,7 +114,7 @@ def test_a_commit_held_with_other_content_exits_1(
 ) -> None:
     host = Host()
     host.install(laid_out(tmp_path))
-    (tmp_path / "prose/doctrine/01-voice.md").write_text("Changed.\n")
+    (tmp_path / f"{REFERENCES}/doctrine/01-voice.md").write_text("Changed.\n")
     assert host.install(tmp_path) == 1
     assert "already held with other content" in capsys.readouterr().err
 
