@@ -19,13 +19,17 @@ A gnome has seven parts.
 
 | Part | Where | What it is |
 |---|---|---|
-| Doctrine | `doctrine/*.md` | The standard, written for a person. A list of clauses |
+| Doctrine | `skills/<skill>/references/doctrine/*.md` | The standard, written for a person. A list of clauses |
 | Clause | A paragraph of the doctrine | One rule, with an id such as `VOICE-6` and a name |
-| Policy | `policies/<ID>-<name>.md` | One question asked about the subject, and the clauses it judges |
+| Policy | `skills/<skill>/references/policies/<ID>-<name>.md` | One question asked about the subject, and the clauses it judges |
 | Case | `cases/<ID>/*.md` | An example with the answer a correct judge gives it |
-| Check | `bin/`, `lib/` | A command that answers a policy in code, with no model |
-| Skill | `skills/<name>/` | Instructions for an agent that writes or tidies to the doctrine |
+| Check | `skills/<skill>/scripts/check-<name>` | A script that answers a policy in code, with no model |
+| Skill | `skills/<skill>/SKILL.md` | Instructions for an agent that writes or tidies to the doctrine |
 | Manifest | `manifest.md` | The gnome's id, and the lists of its subjects, policies and checks |
+
+The doctrine, the policies and the checks are in the skill's directory
+because the tool that installs a skill in a garden copies the skill's
+directory and nothing outside it.
 
 ## How the parts relate
 
@@ -46,8 +50,8 @@ flowchart TD
     manifest -- "lists" --> check
 ```
 
-- A gnome has one doctrine. The files of `doctrine/` are joined in
-  filename order into one document.
+- A gnome has one doctrine. The files of `references/doctrine/` are
+  joined in filename order into one document.
 - A policy does not restate the doctrine. Its header lists the clauses
   it judges, and its instructions tell a model how to judge them.
 - A finding quotes the words at fault and cites one clause. A policy
@@ -70,9 +74,8 @@ one alone.
 | A policy a model answers | Asked about each pull request, if a binding declares it | Not read |
 | A policy a check answers | Answered only if the server has that check | The lint runs the check |
 | Cases | Not read. A calibration reads them | Not read |
-| `bin/` and `lib/` | Not sent to the server | Run by the lint |
-| Skill | Not sent to the server | Listed for the garden's agent |
-| `methodology.yaml` | Not sent to the server | Names the checks the lint runs |
+| The skill's `scripts/` | Not sent to the server | Each `check-<name>` is run by the lint |
+| The skill's `SKILL.md` | Not sent to the server | Listed for the garden's agent |
 
 A reader skips what it cannot use. A server renders the subjects it
 has code for, so a policy that reads every document of a scope stays
@@ -90,17 +93,18 @@ A server calls a gnome's directory a reviewer.
 
 A server also has checks of its own, written in its code. A manifest's
 `checks` line gives one of the gnome's policies to a server's check by
-name. That is a different thing from a command in the gnome's `bin/`,
+name. That is a different thing from a script in the skill's `scripts/`,
 which a garden's lint runs and a server never does.
 
 ### What a garden makes of a gnome
 
-A garden declares a gnome as a methodology, at a path beneath its
-methodologies directory.
+A garden declares a gnome as a methodology in its configuration, at a
+tag.
 
-- Its skill is linked into the skills the garden's agent is offered.
-- Its commands in `bin/` are linked into the garden's commands.
-- The garden's lint runs each check that `methodology.yaml` names.
+- Its skill, with the skill's `references/` and `scripts/`, is copied
+  into the skills the garden's agent is offered.
+- The garden's lint runs each script of the skill named
+  `check-<name>`.
 
 ## What a gnome does not hold
 
@@ -119,9 +123,9 @@ So one gnome serves any number of servers and gardens unchanged.
 
 ### Change what a clause says
 
-Edit the clause in `doctrine/`. Then read each policy that lists the
-clause, because its instructions were written against the old words.
-Measure those policies again.
+Edit the clause in the skill's `references/doctrine/`. Then read each
+policy that lists the clause, because its instructions were written
+against the old words. Measure those policies again.
 
 ### Add a clause
 
@@ -131,9 +135,10 @@ add a `clause` line to a policy's header, or add a policy.
 
 ### Add a policy
 
-Add a file under `policies/`, add its id to the manifest's `policies`
-line, and add at least one clean case and one seeded case. A policy is
-judged on a server only after a binding declares it for a repository.
+Add a file under the skill's `references/policies/`, add its id to the
+manifest's `policies` line, and add at least one clean case and one
+seeded case. A policy is judged on a server only after a binding
+declares it for a repository.
 
 ### Add a case
 
