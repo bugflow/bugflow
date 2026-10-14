@@ -65,10 +65,23 @@ class Proxy:
 
     def __init__(self) -> None:
         self.sent: list[dict[str, Any]] = []
+        self.answer: dict[str, Any] = {"violations": []}
 
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.sent.append(json.loads(request.content))
-        return httpx2.Response(200, json=ANSWER)
+        content = json.dumps(self.answer)
+        return httpx2.Response(
+            200,
+            json=ANSWER
+            | {
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": content},
+                        "finish_reason": "stop",
+                    }
+                ]
+            },
+        )
 
     def system(self) -> str:
         (request,) = self.sent
@@ -168,3 +181,19 @@ def test_a_deployment_with_no_judged_reviewer_judges_nothing() -> None:
 
 def test_without_a_key_there_are_no_judges() -> None:
     assert judges_from_environment({}, deployed(TWO)) is None
+
+
+def test_a_finding_names_the_reviewer_whose_policy_it_is() -> None:
+    proxy = Proxy()
+    proxy.answer = {
+        "violations": [
+            {
+                "clause": "EX-2",
+                "quote": "Adds a poller.",
+                "explanation": "Said twice.",
+            }
+        ]
+    }
+    joined = DoctrineText(text=judged_doctrine(deployed(TWO)).text)
+    (finding,) = judges(proxy).assess(SUBMISSION, joined, "P-11").findings
+    assert finding.agent_id == "canon"

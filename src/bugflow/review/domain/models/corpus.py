@@ -19,8 +19,8 @@ class Corpus:
     #: reviewer has a version of its own because it has doctrine and
     #: policies of its own.
     installed: Mapping[str, str] = field(default_factory=dict)
-    #: The reviewer that judged and checked findings are recorded under.
-    #: Empty if none is installed.
+    #: The reviewer a judged finding is recorded under when the judge
+    #: names none on it. Empty if none is installed.
     reporting_agent: str = ""
 
     def components(self) -> dict[str, str | None]:
