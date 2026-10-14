@@ -26,7 +26,12 @@ from bugflow.apps.worker.tests.policies import (
     deployed,
     publishing,
 )
-from bugflow.method.tests.policy_files import MANIFEST, READ, TOPOLOGY
+from bugflow.method.tests.policy_files import (
+    MANIFEST,
+    POLICY,
+    READ,
+    TOPOLOGY,
+)
 from bugflow.review.domain.errors import (
     JudgeTemporarilyUnavailableError,
     JudgeUnavailableError,
@@ -159,6 +164,30 @@ def test_a_deployment_with_one_policy_is_judged_on_it() -> None:
     assert judge is not None
     assert judge.policies == ("P-01",)
     assert judge.model_for("P-01") == "small"
+
+
+def test_a_policy_the_judge_cannot_answer_is_held_and_not_judged() -> None:
+    """A gnome may hold a policy that reads a whole scope, and a file for
+    a policy a check answers, both for a garden. The worker starts, and
+    judges the reviewer's other policies."""
+    scoped = POLICY.replace("policy_id: P-01", "policy_id: P-07").replace(
+        "evidence: description", "evidence: scope/canon"
+    )
+    checked = POLICY.replace("policy_id: P-01", "policy_id: P-08").replace(
+        "model_class: small", "model_class: none\nimplemented: check"
+    )
+    files = READ | {
+        "prose/reviewer.md": MANIFEST.replace(
+            "policies: P-01", "policies: P-01, P-07, P-08"
+        ),
+        "prose/policies/P-07-scoped.md": scoped,
+        "prose/policies/P-08-checked.md": checked,
+    }
+    judge = judge_from_environment(
+        {"LITELLM_MASTER_KEY": KEY}, deployed(files)
+    )
+    assert judge is not None
+    assert judge.policies == ("P-01",)
 
 
 def test_a_policy_is_judged_by_its_classs_model() -> None:

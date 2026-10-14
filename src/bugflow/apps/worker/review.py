@@ -58,6 +58,7 @@ from bugflow.apps.worker.litellm_judge import (
     MODEL_CLASS_VARIABLES,
     LiteLLMJudge,
     judge_from_environment,
+    judged_texts,
     judging_agent,
 )
 from bugflow.apps.worker.parts import WorkerParts
@@ -86,7 +87,6 @@ from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
     SqlAlchemySnapshotStore,
 )
 from bugflow.method.domain.models.pace_layer import EVENT
-from bugflow.method.domain.models.policy_text import PolicyText
 from bugflow.method.infrastructure.deployment_watch import (
     stop_on_new_deployment,
 )
@@ -218,21 +218,6 @@ def watched_repositories(environ: Mapping[str, str]) -> tuple[str, ...]:
         for name in _listed(environ, "WATCHED_REPOSITORIES")
     )
     return tuple(f"{one.forge}:{one.owner}/{one.repo}" for one in watched)
-
-
-def judged_texts(reviewers: ReviewersInForce) -> Mapping[str, PolicyText]:
-    """Return the policies the judge has a text for, by policy id:
-    those of the reviewer the judge answers for that a model answers.
-    A policy a check answers has a text for a person and is not among
-    them. Empty if the deployment holds no such reviewer."""
-    agent_id = judging_agent(reviewers)
-    if agent_id is None:
-        return {}
-    return {
-        policy_id: policy
-        for policy_id, policy in reviewers.policies[agent_id].items()
-        if not policy.checked
-    }
 
 
 def checked_policies(
