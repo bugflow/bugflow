@@ -1,0 +1,175 @@
+# What a gnome is
+
+For a person who maintains a gnome: what its parts are, who reads each
+part, and what has to happen after a change.
+[The policy package](policy-package.md) specifies each file's format.
+[What is deployed where](architecture.md) explains the server that
+reads a gnome.
+
+## The definition
+
+A gnome is a repository that holds an editorial standard for one kind
+of thing, and the means to keep to it.
+
+It is named for the thing it judges. A gnome for pull requests judges
+titles, descriptions and commit messages. A gnome for a repository's
+documents judges those documents.
+
+A gnome has seven parts.
+
+| Part | Where | What it is |
+|---|---|---|
+| Doctrine | `doctrine/*.md` | The standard, written for a person. A list of clauses |
+| Clause | A paragraph of the doctrine | One rule, with an id such as `VOICE-6` and a name |
+| Policy | `policies/<ID>-<name>.md` | One question asked about the subject, and the clauses it judges |
+| Case | `cases/<ID>/*.md` | An example with the answer a correct judge gives it |
+| Check | `bin/`, `lib/` | A command that answers a policy in code, with no model |
+| Skill | `skills/<name>/` | Instructions for an agent that writes or tidies to the doctrine |
+| Manifest | `manifest.md` | The gnome's id, and the lists of its subjects, policies and checks |
+
+## How the parts relate
+
+```mermaid
+flowchart TD
+    doctrine["Doctrine:<br/>the standard, as clauses"]
+    policy["Policy:<br/>one question, and its clauses"]
+    case["Cases:<br/>examples with the right answer"]
+    check["Check:<br/>code that answers a policy"]
+    skill["Skill:<br/>writes to the doctrine"]
+    manifest["Manifest:<br/>id, subjects, policies, checks"]
+
+    policy -- "judges some clauses of" --> doctrine
+    case -- "tests" --> policy
+    check -- "answers, in place of a model" --> policy
+    skill -- "reads" --> doctrine
+    manifest -- "lists" --> policy
+    manifest -- "lists" --> check
+```
+
+- A gnome has one doctrine. The files of `doctrine/` are joined in
+  filename order into one document.
+- A policy does not restate the doctrine. Its header lists the clauses
+  it judges, and its instructions tell a model how to judge them.
+- A finding quotes the words at fault and cites one clause. A policy
+  may cite only the clauses its header lists.
+- A policy reads one subject, named on its `evidence` line: a part of
+  a pull request, one document, or every document of a scope.
+- A policy is answered by a model or by a check, and never by both.
+- A clause's id is never reused. A retired clause leaves a gap in the
+  numbers.
+
+## Who reads a gnome
+
+Two readers use the same files, and nothing in a gnome is written for
+one alone.
+
+| Part | A bugflow server | A garden |
+|---|---|---|
+| Manifest | Reads the id, policies and checks | Not read |
+| Doctrine | Given to the model with each policy | Read by the skill |
+| A policy a model answers | Asked about each pull request, if a binding declares it | Not read |
+| A policy a check answers | Answered only if the server has that check | The lint runs the check |
+| Cases | Not read. A calibration reads them | Not read |
+| `bin/` and `lib/` | Not sent to the server | Run by the lint |
+| Skill | Not sent to the server | Listed for the garden's agent |
+| `methodology.yaml` | Not sent to the server | Names the checks the lint runs |
+
+A reader skips what it cannot use. A server renders the subjects it
+has code for, so a policy that reads every document of a scope stays
+in the gnome for a garden, and a server does not judge it.
+
+### What a server makes of a gnome
+
+A server calls a gnome's directory a reviewer.
+
+- The manifest's `agent_id` is the reviewer's id.
+- The reviewer's findings on one commit make one verdict: `pass`,
+  `warn` or `fail`, the worst grade among them.
+- The server writes one commit status on the pull request, named by
+  the reviewer's id.
+
+A server also has checks of its own, written in its code. A manifest's
+`checks` line gives one of the gnome's policies to a server's check by
+name. That is a different thing from a command in the gnome's `bin/`,
+which a garden's lint runs and a server never does.
+
+### What a garden makes of a gnome
+
+A garden declares a gnome as a methodology, at a path beneath its
+methodologies directory.
+
+- Its skill is linked into the skills the garden's agent is offered.
+- Its commands in `bin/` are linked into the garden's commands.
+- The garden's lint runs each check that `methodology.yaml` names.
+
+## What a gnome does not hold
+
+- Which repositories it applies to. A binding's `declarations.toml`
+  says that.
+- When a review runs. A binding's `pace-layers.toml` says that.
+- Whether findings are published, and whether a failure blocks a
+  merge. The server's operator declares that for each repository.
+- What a review may spend. The operator declares that too.
+- Which model answers. A policy names a class of model, `small`,
+  `medium` or `large`, and each server says which model fills a class.
+
+So one gnome serves any number of servers and gardens unchanged.
+
+## A maintainer's tasks
+
+### Change what a clause says
+
+Edit the clause in `doctrine/`. Then read each policy that lists the
+clause, because its instructions were written against the old words.
+Measure those policies again.
+
+### Add a clause
+
+Give it the next unused id. A clause that no policy lists is read by
+people and by the skill, and no judge reports it. To have it judged,
+add a `clause` line to a policy's header, or add a policy.
+
+### Add a policy
+
+Add a file under `policies/`, add its id to the manifest's `policies`
+line, and add at least one clean case and one seeded case. A policy is
+judged on a server only after a binding declares it for a repository.
+
+### Add a case
+
+A clean case is an example with nothing wrong, and a correct judge
+reports nothing. A seeded case has one fault written in, and a correct
+judge reports the clause the case expects. Add a case whenever a judge
+is found wrong about a real example: the example becomes the case, with
+the right answer.
+
+### Measure a policy
+
+A calibration runs one policy over all of its cases and counts the
+cases the judge answered correctly. Record the date, the model and the
+counts in the policy's calibration notes, below the line
+`=== calibration`. Nothing below that line reaches the model, so a
+recorded measurement does not change what was measured.
+
+A model's answers vary between runs, so run each measurement twice,
+and change one thing between two measurements.
+
+This repository has no command that runs a calibration.
+
+### Check the files
+
+A gnome carries a test that every file is in the format its readers
+expect. Run it before opening a pull request.
+
+## After a change is merged
+
+A merged change in a gnome reaches nothing by itself.
+
+| Reader | What takes the change |
+|---|---|
+| A bugflow server | The binding moves its pin to the gnome's new commit and copies the gnome in. When that is merged, the binding's pipeline deploys it, and the server reviews by it within about a minute |
+| A garden | The garden updates its copy of the gnome's repository. Its lint and its skill then use the new files |
+
+A change to the doctrine or to a policy gives the server a new version
+of the reviewer. A commit the server judged before is judged again
+under the new version, the next time its pull request is evaluated.

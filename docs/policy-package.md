@@ -5,6 +5,8 @@ what else such a repository holds for other readers. This is the
 specification; the parsers in `src/bugflow/method/infrastructure/` and
 `src/bugflow/apps/worker/litellm_judge.py` implement it, and a policy
 repository's own tests check its files against it.
+[What a gnome is](gnomes.md) explains the parts to a person who
+maintains them.
 
 A policy package is a directory. The files in it are of two kinds: a
 gnome, which is one doctrine with its policies and cases and is the same
