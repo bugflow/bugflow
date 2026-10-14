@@ -21,3 +21,7 @@ a local run:
 [docs/deploying.md](docs/deploying.md) describes the settings, how to
 copy the composition for a host of your own, and how policies reach a
 server.
+[docs/architecture.md](docs/architecture.md) explains what is deployed
+where and what each part depends on.
+[docs/gnomes.md](docs/gnomes.md) explains the rules a server reviews
+by, for a person who maintains them.
