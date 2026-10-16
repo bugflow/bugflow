@@ -25,8 +25,8 @@ from bugflow.method.tests.policy_files import (
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.submission import Submission
 
-#: Where the second reviewer's skill holds its policies and doctrine.
-CANON = "canon/skills/canon-review/references"
+#: The second reviewer's directory, which holds its policies and doctrine.
+CANON = "canon"
 
 #: The second reviewer's doctrine, whose one clause the first's lacks.
 CANON_DOCTRINE = "**EX-2.** A document says each thing in one place.\n"

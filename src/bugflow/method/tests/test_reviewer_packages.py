@@ -145,7 +145,21 @@ def test_a_check_that_is_not_three_words_is_refused() -> None:
         parse_agent(Path("a/reviewer.md"), with_checks("em-dash S-02"))
 
 
-def test_a_reviewers_policies_and_doctrine_are_in_its_skills_references(
+def test_a_reviewers_policies_and_doctrine_are_beside_its_manifest(
+    tmp_path: Path,
+) -> None:
+    safety = write(tmp_path, "safety")
+    (safety / "doctrine").mkdir()
+    (safety / "skills/safety-check/references/doctrine").mkdir(parents=True)
+    (safety / "skills/safety-write/references/doctrine").mkdir(parents=True)
+
+    agent = load_agents(tmp_path)["safety"]
+
+    assert agent.policy_dir == safety / "policies"
+    assert agent.doctrine_dir == safety / "doctrine"
+
+
+def test_a_reviewer_with_the_files_in_its_one_skill_is_read_from_it(
     tmp_path: Path,
 ) -> None:
     references = write(tmp_path, "safety") / "skills/safety-check/references"
@@ -157,7 +171,20 @@ def test_a_reviewers_policies_and_doctrine_are_in_its_skills_references(
     assert agent.doctrine_dir == references / "doctrine"
 
 
-def test_a_reviewer_with_no_skill_references_holds_them_beside_its_manifest(
+def test_a_reviewer_with_the_files_in_two_skills_and_none_at_root_is_refused(
+    tmp_path: Path,
+) -> None:
+    safety = write(tmp_path, "safety")
+    (safety / "skills/safety-check/references").mkdir(parents=True)
+    (safety / "skills/safety-write/references").mkdir(parents=True)
+
+    agent = load_agents(tmp_path)["safety"]
+
+    with pytest.raises(ReviewAgentError, match="no policies/ or doctrine/"):
+        _ = agent.policy_dir
+
+
+def test_a_reviewer_with_no_files_anywhere_is_read_beside_its_manifest(
     tmp_path: Path,
 ) -> None:
     write(tmp_path, "safety")

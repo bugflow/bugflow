@@ -19,20 +19,26 @@ and the gnomes it pins.
     pace-layers.toml                  binding: the processes and when they run
     declarations.toml                 binding: what each repository is reviewed for
     <reviewer>/manifest.md            gnome: the reviewer's id, subjects, policies, checks
+    <reviewer>/doctrine/*.md          gnome: the doctrine, read in filename order
+    <reviewer>/policies/*.md          gnome: one policy each
     <reviewer>/cases/<ID>/*.md        gnome: the cases of policy <ID>; not sent
-    <reviewer>/skills/<skill>/        gnome: the skill a garden installs
-        SKILL.md                      the skill's instructions; not sent
-        references/doctrine/*.md      the doctrine, read in filename order
-        references/policies/*.md      one policy each
+    <reviewer>/skills/<skill>/        gnome: a skill a garden installs; not sent
+        SKILL.md                      the skill's instructions
+        references/doctrine/*.md      a copy of doctrine/
+        references/policies/*.md      a copy of policies/
         scripts/                      checks a garden's lint runs, each
-                                      named check-<name>; not sent
+                                      named check-<name>
 
-A gnome's doctrine and policies are in its skill's `references/`
-directory, and its checks in the skill's `scripts/`, because the tool
-that installs a skill in a garden copies the skill's directory and
-nothing outside it. One skill of a reviewer holds the doctrine and the
-policies; a deployment that holds a reviewer's doctrine or policies in
-two places is refused.
+A gnome keeps its doctrine in `doctrine/` and its policies in
+`policies/`. A gnome can have more than one skill, and all of its
+skills use the same doctrine. The tool that installs skills (`npx
+skills`) only copies the skill's own directory, so each skill carries a
+copy of `doctrine/` and `policies/` in its `references/`. The copies
+are made by a build step (for example `make skills`), not by hand. A
+server reads `doctrine/` and `policies/` and ignores the copies. A
+garden installs a skill and reads the copy in its `references/`. The
+gnome's format tests compare each copy with the original and fail if
+they differ.
 
 A server reads the two binding files and, of each reviewer, the manifest,
 the doctrine and the policies. A deployment holding a file of any other
@@ -40,11 +46,12 @@ path is refused. `bugflow deploy-policies DIRECTORY` sends only the files
 a server reads, so a repository holds its cases, scripts, skill
 instructions, notes and pipeline beside them.
 
-`reviewer.md` is read as `manifest.md` is, for repositories made before
-the manifest had that name. `<reviewer>/doctrine/` and
-`<reviewer>/policies/` are read as the skill's `references/doctrine/`
-and `references/policies/` are, for deployments made before the skill
-held them.
+Older gnomes keep their files in other places, and a server still
+reads them. `reviewer.md` is read the same way as `manifest.md`. A
+gnome with no `doctrine/` and exactly one skill is read from that
+skill's `references/doctrine/` and `references/policies/`. A gnome with
+no `doctrine/` and more than one skill is refused, because the server
+cannot tell which copy is the original.
 
 ## The manifest
 
@@ -148,10 +155,24 @@ the policy reports nothing.
 
 ## The doctrine
 
-The files of `references/doctrine/`, each Markdown, joined in filename
-order into one document. A clause is a paragraph opening `**ID. Name.**`, such as
-`**VOICE-6. Marketing register.**`. A finding cites a clause id, and a
-policy may cite only the clauses its header lists.
+A gnome judges something against a set of rules (doctrine). The
+doctrine is supposed to be plain English, so that a person can read
+it. The doctrine is a collection of rules (clauses), and each clause
+has a name and an id. For example id: "VOICE-6", name: "Marketing
+register". A finding uses the id to say which rule was broken. A
+policy uses the ids to say which rules it checks.
+
+The doctrine is written in Markdown files in `doctrine/`. Each clause
+is one paragraph. The paragraph starts with the id and the name in
+bold, `**VOICE-6. Marketing register.**`, and the rule follows. When a
+server judges a pull request, it joins the files in filename order into
+one document. It shows the model that document, then the policy's
+instructions, then the evidence. The model answers with findings. Each
+finding is a quote from the evidence and the id of the clause the quote
+breaks. A policy may only cite the clauses listed in its header.
+
+In a garden, the skill shows the same document to the agent that is
+writing or tidying. The writer and the judge use the same rules.
 
 ## A case
 

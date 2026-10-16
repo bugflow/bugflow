@@ -43,8 +43,11 @@ processes = ["evaluate-pull-request"]
 
 DOCTRINE = "**EX-1.** A description says what changed.\n"
 
-#: Where the reviewer's skill holds its policies and doctrine.
-REFERENCES = "prose/skills/prose-write/references"
+#: The reviewer's directory, which holds its policies and doctrine.
+REFERENCES = "prose"
+
+#: Where the reviewer's skill holds its copy of both.
+SKILL = "prose/skills/prose-write/references"
 
 #: The files a server reads, by path, all valid.
 READ = {
@@ -58,6 +61,8 @@ READ = {
 NOT_READ = {
     "prose/cases/P-01/one.json": "{}\n",
     "prose/skills/prose-write/SKILL.md": "A skill.\n",
+    f"{SKILL}/policies/P-01-example.md": POLICY,
+    f"{SKILL}/doctrine/01-voice.md": DOCTRINE,
     "prose/skills/prose-write/scripts/check-example": "#!/bin/sh\n",
     "README.md": "notes\n",
     ".github/workflows/deploy.yml": "pipeline\n",
