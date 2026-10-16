@@ -1,12 +1,12 @@
-"""Declaring what a repository is reviewed under, and what a run may
-spend: ``bugflow declare``, ``allow``, ``revoke``, ``cadence`` and
-``declared``.
+"""Declaring what a repository is reviewed under, what a run may
+spend, and which ledger's archive this server keeps: ``bugflow
+declare``, ``allow``, ``revoke``, ``cadence`` and ``declared``.
 
 A repository nobody bound to a profile has nothing published to it, a
-reviewer nothing allows is not dispatched, and a watched repository
-with no boundary on a layer stops the worker. These commands write the
-records that decide each, so that nobody writes them into the database
-by hand.
+reviewer nothing allows is not dispatched, a watched repository with no
+boundary on a layer stops the worker, and the archive host refuses a
+ledger no operator bound. These commands write the records that decide
+each, so that nobody writes them into the database by hand.
 
 Each command prints what the database holds afterwards, read back and
 not echoed, so a run that wrote nothing prints nothing new. A refusal
@@ -14,11 +14,19 @@ is written to the error stream and returns 2, and nothing is written.
 """
 
 import sys
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TextIO
 
 from bugflow.apps.shared.deploying import declared_by_deployment
+from bugflow.apps.shared.journals import stamped_journal
+from bugflow.archive.domain.models.binding import ArchiveBinding
+from bugflow.archive.dtos.bind_ledger import BindLedgerRequest
+from bugflow.archive.infrastructure.sqlalchemy_bindings import (
+    SqlAlchemyBindings,
+)
+from bugflow.archive.usecases.bind_ledger import BindLedgerUseCase
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.method.domain.models.boundary import (
     BoundaryError,
@@ -142,17 +150,26 @@ def run_declare(
     layer: str = "",
     boundary: str | None = None,
     withhold: float | None = None,
+    archive: str | None = None,
+    scope: str | None = None,
     zone: str = "UTC",
+    build: str | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
 ) -> int:
     """Declare what a repository is judged on and dispatches, its
-    profile, a boundary and its withheld share, and print what is held.
+    profile, a boundary, its withheld share and a ledger whose archive
+    this server keeps, and print what is held.
 
     Only what the call names is written. A set that is named is written
     whole, because a declaration is a set: a name left out of it is no
     longer declared. None is not named; an empty list is named and
     declares nothing. ``boundary`` empty withdraws the layer's.
+
+    ``archive`` is a ledger id, bound to the repository at ``scope``, a
+    path within it, or at its root when ``scope`` is None or ``.``. The
+    binding is recorded in the journal as ``archive.bound``, stamped
+    with ``build``.
 
     ``zone`` is the timezone a boundary is read in, to refuse one that
     does not read.
@@ -162,18 +179,36 @@ def run_declare(
         forge, repo = _split(repository)
     except ValueError as exc:
         return console.refuse(str(exc))
+    if scope is not None and archive is None:
+        return console.refuse(
+            "--scope needs --archive: it says which scope of the "
+            "repository the ledger's archive is kept for"
+        )
     if (
         policies is None
         and processes is None
         and profile is None
         and boundary is None
         and withhold is None
+        and archive is None
     ):
         return console.refuse(
             "name --policy, --process, --profile, --boundary, --withhold, "
-            "--no-policies or --no-processes: a call that names none of "
-            "them declares nothing"
+            "--archive, --no-policies or --no-processes: a call that names "
+            "none of them declares nothing"
         )
+    if archive is not None:
+        try:
+            binding = ArchiveBinding(
+                ledger_id=archive,
+                forge=forge,
+                repo=repo,
+                # A scope's entry in its configuration writes the root
+                # as ".", and a binding holds it as empty.
+                scope="" if scope in (None, ".") else scope,
+            )
+        except ValueError as exc:
+            return console.refuse(str(exc))
     if (
         policies is not None or processes is not None
     ) and declared_by_deployment(SqlAlchemyPolicyDeployments(database_url)):
@@ -210,6 +245,35 @@ def run_declare(
     enforcement = SqlAlchemyEnforcement(database_url)
     boundaries = SqlAlchemyLayerBoundaries(database_url)
     withholding = SqlAlchemyWithholding(database_url)
+    kept = SqlAlchemyBindings(database_url)
+    if archive is not None:
+        bound = BindLedgerUseCase(
+            kept,
+            stamped_journal(database_url, build),
+            SystemClock(),
+            uuid.uuid4().hex,
+        ).execute(
+            BindLedgerRequest(
+                ledger_id=binding.ledger_id,
+                forge=binding.forge,
+                repo=binding.repo,
+                scope=binding.scope,
+            )
+        )
+        if bound.replaces:
+            was = bound.replaces
+            console.say(
+                f"ledger {binding.ledger_id} was bound to "
+                f"{_scope_of(was.forge, was.repo, was.scope)} and is moved"
+            )
+        if bound.beside:
+            console.say(
+                f"{_scope_of(forge, repo, bound.scope)} has "
+                f"{len(bound.beside)} other ledger(s) bound to it: "
+                f"{', '.join(bound.beside)}. A scope keeps one archive "
+                "unless its ledger was started again, and an archive "
+                "replaced looks the same"
+            )
     if boundary:
         boundaries.declare(
             LayerBoundary(
@@ -246,7 +310,19 @@ def run_declare(
         )
     console.say(_profile(where, enforcement.profile_for(forge, repo).name))
     console.say(_withholds(where, withholding.share_for(forge, repo)))
+    for ledger in kept.bindings():
+        if (ledger.forge, ledger.repo) == (forge, repo):
+            console.say(_keeps(ledger))
     return 0
+
+
+def _scope_of(forge: str, repo: str, scope: str) -> str:
+    return f"{forge}:{repo}" + (f" at {scope}" if scope else "")
+
+
+def _keeps(binding: ArchiveBinding) -> str:
+    where = _scope_of(binding.forge, binding.repo, binding.scope)
+    return f"{where} has the archive of ledger {binding.ledger_id} kept here"
 
 
 def _judged(where: str, policies: frozenset[str] | tuple[str, ...]) -> str:
@@ -488,11 +564,12 @@ def run_declared(
     out: TextIO | None = None,
     err: TextIO | None = None,
 ) -> int:
-    """Print every declaration and every allowance the database holds.
+    """Print every declaration, every allowance and every ledger bound
+    the database holds.
 
     With a repository, print only what bears on it: its own
-    declarations, every allowance that covers it, and this server's
-    cadence boundaries.
+    declarations, every allowance that covers it, this server's cadence
+    boundaries, and the ledgers bound to it.
     """
     console = _console(out, err)
     only: tuple[str, str] | None = None
@@ -542,6 +619,11 @@ def run_declared(
         _withholds(f"{drawn.forge}:{drawn.repo}", drawn.share)
         for drawn in SqlAlchemyWithholding(database_url).declarations()
         if wanted(drawn.forge, drawn.repo)
+    ]
+    lines += [
+        _keeps(ledger)
+        for ledger in SqlAlchemyBindings(database_url).bindings()
+        if wanted(ledger.forge, ledger.repo)
     ]
     if not lines:
         console.say(

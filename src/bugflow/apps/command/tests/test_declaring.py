@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 
 from bugflow.apps.command.command import run
 from bugflow.apps.command.declaring import (
@@ -30,7 +31,9 @@ from bugflow.method.tests.policy_files import laid_out
 from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
 )
+from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.migrations import upgrade
+from bugflow.shared.infrastructure.sqlalchemy_journal import journal
 from bugflow.shared.tests.postgres import scratch_database
 
 
@@ -396,6 +399,141 @@ def test_withdrawing_this_servers_boundary_says_what_it_costs(
     run_cadence(database_url, "monthly", "1 00:00", out=quiet())
     run_cadence(database_url, "monthly", "", out=said.out)
     assert "every allowance counted per monthly refuses" in said.printed
+
+
+def ledger() -> str:
+    return str(uuid.uuid4())
+
+
+def test_binding_a_ledger_says_its_archive_is_kept_here(shared: str) -> None:
+    said, name, bound = Said(), repo(), ledger()
+    assert run_declare(shared, name, archive=bound, out=said.out) == 0
+    assert (
+        f"github:{name} has the archive of ledger {bound} kept here"
+        in said.printed
+    )
+
+
+def test_a_ledger_is_bound_to_a_scope_of_the_repository(shared: str) -> None:
+    said, name, bound = Said(), repo(), ledger()
+    status = run_declare(
+        shared, name, archive=bound, scope="a/b", out=said.out
+    )
+    assert status == 0
+    assert f"github:{name} at a/b has the archive of ledger {bound}" in (
+        said.printed
+    )
+
+
+def test_the_root_is_written_as_a_dot_and_held_as_empty(shared: str) -> None:
+    said, name, bound = Said(), repo(), ledger()
+    run_declare(shared, name, archive=bound, scope=".", out=said.out)
+    assert f"github:{name} has the archive of ledger {bound}" in said.printed
+
+
+def test_binding_a_ledger_again_to_the_same_place_says_nothing_of_a_move(
+    shared: str,
+) -> None:
+    said, name, bound = Said(), repo(), ledger()
+    run_declare(shared, name, archive=bound, out=quiet())
+    run_declare(shared, name, archive=bound, out=said.out)
+    assert "is moved" not in said.printed
+    assert f"has the archive of ledger {bound}" in said.printed
+
+
+def test_binding_a_ledger_to_another_place_says_it_is_moved(
+    shared: str,
+) -> None:
+    said, name, bound = Said(), repo(), ledger()
+    run_declare(shared, name, archive=bound, scope="a", out=quiet())
+    run_declare(shared, name, archive=bound, scope="b", out=said.out)
+    assert (
+        f"ledger {bound} was bound to github:{name} at a and is moved"
+        in said.printed
+    )
+    assert f"github:{name} at b has the archive of ledger {bound}" in (
+        said.printed
+    )
+    assert f"github:{name} at a has" not in said.printed
+
+
+def test_a_scope_with_two_ledgers_names_the_other(shared: str) -> None:
+    said, name, first, second = Said(), repo(), ledger(), ledger()
+    run_declare(shared, name, archive=first, out=quiet())
+    run_declare(shared, name, archive=second, out=said.out)
+    assert f"github:{name} has 1 other ledger(s) bound to it: {first}" in (
+        said.printed
+    )
+
+
+def test_a_scope_without_an_archive_is_refused(shared: str) -> None:
+    said, name = Said(), repo()
+    status = run_declare(shared, name, scope="a", out=said.out, err=said.err)
+    assert status == 2
+    assert "--scope needs --archive" in said.refused
+    assert said.printed == ""
+
+
+def test_what_is_no_ledger_id_is_refused_and_not_written(shared: str) -> None:
+    said, name = Said(), repo()
+    status = run_declare(
+        shared, name, archive="not-a-ledger", out=said.out, err=said.err
+    )
+    assert status == 2
+    assert "is no ledger id" in said.refused
+    said = Said()
+    run_declared(shared, name, out=said.out)
+    assert "kept here" not in said.printed
+
+
+def test_binding_a_ledger_is_recorded_in_the_journal(shared: str) -> None:
+    name, bound = repo(), ledger()
+    build = "0123456789abcdef0123456789abcdef01234567"
+    run_declare(shared, name, archive=bound, build=build, out=quiet())
+    engine = sa.create_engine(engine_url(shared))
+    try:
+        with engine.connect() as connection:
+            rows = list(
+                connection.execute(
+                    sa.select(journal.c.payload, journal.c.build).where(
+                        journal.c.event_type == "archive.bound",
+                        journal.c.repo == name,
+                    )
+                )
+            )
+    finally:
+        engine.dispose()
+    assert [(row.payload["ledger_id"], row.build) for row in rows] == [
+        (bound, build)
+    ]
+
+
+def test_declared_lists_the_ledgers_bound_to_a_repository(
+    shared: str,
+) -> None:
+    said, name, bound = Said(), repo(), ledger()
+    run_declare(shared, name, archive=bound, out=quiet())
+    assert run_declared(shared, name, out=said.out) == 0
+    assert f"github:{name} has the archive of ledger {bound} kept here" in (
+        said.printed
+    )
+
+
+def test_the_command_binds_a_ledger(
+    shared: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    name, bound = repo(), ledger()
+    environ = {"DATABASE_URL": shared}
+    assert (
+        run(["declare", name, "--archive", bound, "--scope", "docs"], environ)
+        == 0
+    )
+    printed = capsys.readouterr().out
+    assert (
+        f"github:{name} at docs has the archive of ledger {bound}" in printed
+    )
+    assert run(["declare", name, "--scope", "docs"], environ) == 2
+    assert "--scope needs --archive" in capsys.readouterr().err
 
 
 def test_nothing_declared_says_so(database_url: str) -> None:
