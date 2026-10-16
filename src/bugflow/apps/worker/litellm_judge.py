@@ -358,7 +358,7 @@ def _patch_evidence(
     return "\n".join(rendered)
 
 
-def render_honesty_evidence(
+def render_patches_evidence(
     snapshot: Submission,
     fidelity: str = "whole",
     only: str | None = None,
@@ -377,7 +377,7 @@ def render_honesty_evidence(
     )
 
 
-def _honesty_text(snapshot: Submission) -> str:
+def _patches_text(snapshot: Submission) -> str:
     return "\n".join(
         [
             _scope_text(snapshot),
@@ -478,9 +478,9 @@ EVIDENCE: dict[
     "pull-request/scope": (render_scope_evidence, _scope_text, None),
     "pull-request/commits": (render_commit_evidence, _commit_summaries, None),
     "pull-request/patches": (
-        render_honesty_evidence,
-        _honesty_text,
-        render_honesty_evidence,
+        render_patches_evidence,
+        _patches_text,
+        render_patches_evidence,
     ),
     "document/file": (render_document_evidence, _document_text, None),
 }
