@@ -330,13 +330,25 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    `bugflow revoke OWNER/NAME --per event` removes an allowance. That
    is not the same as allowing zero, which refuses everything.
 
-5. Read it back.
+5. Bind a ledger, if this server keeps archives.
+
+       bugflow declare OWNER/NAME --archive LEDGER
+       bugflow declare OWNER/NAME --archive LEDGER --scope docs
+
+   The archive host keeps the archive of a ledger only once an
+   operator has bound it to a repository, and to a scope within it
+   when the archive is a scope's own. `LEDGER` is the ledger's id, the
+   UUID its events carry. Binding it again to the same place changes
+   nothing. Binding it to another place moves it, and the command says
+   where it was. Each binding is recorded in the journal.
+
+6. Read it back.
 
        bugflow declared
        bugflow declared OWNER/NAME
 
-   The first prints every declaration and every allowance. The second
-   prints what bears on one repository.
+   The first prints every declaration, every allowance and every
+   ledger bound. The second prints what bears on one repository.
 
 ## How webhooks are registered
 
