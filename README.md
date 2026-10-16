@@ -25,3 +25,6 @@ server.
 where and what each part depends on.
 [docs/gnomes.md](docs/gnomes.md) explains the rules a server reviews
 by, for a person who maintains them.
+[bugflow/bugflow-examples](https://github.com/bugflow/bugflow-examples)
+holds policies a server can review with, each example laid out as a
+policy repository.
