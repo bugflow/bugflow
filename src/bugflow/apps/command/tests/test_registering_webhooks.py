@@ -37,7 +37,7 @@ def test_the_settings_are_read_and_the_route_is_added() -> None:
         WatchedRepository(owner="o", repo="other"),
     )
     assert settings.url == "https://ingress.example/webhooks/github"
-    assert (settings.secret, settings.token) == ("s3cret", "t")
+    assert (settings.secret, settings.token.any_owner) == ("s3cret", "t")
 
 
 @pytest.mark.parametrize("name", ["INGRESS_URL", "WEBHOOK_SECRET"])

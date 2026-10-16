@@ -1,12 +1,16 @@
 """The adapter for GitHub.
 
 It talks to GitHub's REST API at api.github.com, signing in with a personal
-access token. One class, ``GitHubForge``, provides everything the forge
-context asks of a forge: reading and writing a pull request, reading its
-discussion, listing what has changed for the poller, and managing webhooks.
+access token: one for any owner, or one for each owner, since a
+fine-grained token belongs to one organisation. One class,
+``GitHubForge``, provides everything the forge context asks of a forge:
+reading and writing a pull request, reading its discussion, listing what
+has changed for the poller, and managing webhooks.
 """
 
 import time
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -193,20 +197,64 @@ def classify(response: httpx2.Response, path: str) -> ForgeError:
     return ForgeRejectedError(message)
 
 
+@dataclass(frozen=True)
+class GitHubTokens:
+    """The tokens GitHub is signed in with: one for any owner, and one for
+    each owner that has a token of its own.
+
+    A fine-grained token belongs to one organisation, so a server whose
+    watched repositories span organisations holds one token per owner.
+    ``by_owner`` is keyed by the owner's name in lower case, since GitHub
+    reads an owner's name without regard to case.
+    """
+
+    any_owner: str | None = None
+    by_owner: Mapping[str, str] = field(default_factory=dict)
+
+    def for_owner(self, owner: str) -> str:
+        """The token for ``owner``: its own, else the one for any owner.
+        Raises ``ForgeRejectedError`` where there is neither, before
+        anything is sent."""
+        token = self.by_owner.get(owner.lower()) or self.any_owner
+        if not token:
+            raise ForgeRejectedError(
+                f"no token for {owner}: name it in FORGE_TOKENS_BY_OWNER as "
+                f"{owner}=TOKEN, or set FORGE_TOKEN for any owner"
+            )
+        return token
+
+    def for_path(self, path: str) -> str:
+        """The token for a request to ``path``: the owner's where the path
+        is a repository's, else the one for any owner, else any token
+        held."""
+        parts = path.split("/")
+        if len(parts) > 3 and parts[1] == "repos" and parts[2]:
+            return self.for_owner(parts[2])
+        token = self.any_owner or next(iter(self.by_owner.values()), None)
+        if not token:
+            raise ForgeRejectedError("no token for GitHub: set FORGE_TOKEN")
+        return token
+
+
 class GitHubForge:
     """GitHub, as the forge context sees a forge.
 
-    ``token`` is a personal access token. ``transport`` replaces the
-    network, for tests.
+    ``token`` is a personal access token, or the tokens by owner. Each
+    request is signed with the token for the repository's owner.
+    ``transport`` replaces the network, for tests.
     """
 
     def __init__(
-        self, token: str, transport: httpx2.BaseTransport | None = None
+        self,
+        token: str | GitHubTokens,
+        transport: httpx2.BaseTransport | None = None,
     ) -> None:
+        self._tokens = (
+            GitHubTokens(any_owner=token) if isinstance(token, str) else token
+        )
         self._client = httpx2.Client(
             base_url=API_URL,
             headers={
-                "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
@@ -436,9 +484,14 @@ class GitHubForge:
         json: dict[str, Any] | None = None,
         missing_ok: bool = False,
     ) -> Any:
+        token = self._tokens.for_path(path)
         try:
             response = self._client.request(
-                method, path, params=params, json=json
+                method,
+                path,
+                params=params,
+                json=json,
+                headers={"Authorization": f"Bearer {token}"},
             )
             if missing_ok and response.status_code == 404:
                 return None

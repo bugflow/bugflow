@@ -3,7 +3,7 @@ the forge its reference names."""
 
 from collections.abc import Mapping
 
-from bugflow.apps.shared.forges import forge_token, forgejo_settings
+from bugflow.apps.shared.forges import forge_tokens, forgejo_settings
 from bugflow.apps.worker.conversation import ConversingForge
 from bugflow.forge.domain.errors import ForgeRejectedError
 from bugflow.forge.domain.models.pull_request import PullRequestSnapshot
@@ -112,13 +112,16 @@ class ForgeByReference:
 def forge_from_environment(environ: Mapping[str, str]) -> ForgeByReference:
     """Build the forges from the settings ``apps/shared/forges.py``
     reads. A forge whose settings are not given is a ``MissingForge``."""
-    token = forge_token(environ)
+    tokens = forge_tokens(environ)
     forgejo = forgejo_settings(environ)
     return ForgeByReference(
         {
-            "github": GitHubForge(token)
-            if token
-            else MissingForge("no forge token configured; set FORGE_TOKEN"),
+            "github": GitHubForge(tokens)
+            if tokens
+            else MissingForge(
+                "no forge token configured; set FORGE_TOKEN, or "
+                "FORGE_TOKENS_BY_OWNER"
+            ),
             "forgejo": ForgejoForge(*forgejo)
             if forgejo
             else MissingForge(
