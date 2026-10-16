@@ -88,9 +88,9 @@ def test_a_directory_is_read_as_the_files_a_server_reads(
     assert (read.repository, read.commit) == (REPOSITORY, "c1")
     assert [one.path for one in read.files] == [
         "pace-layers.toml",
-        "prose/reviewer.md",
         f"{REFERENCES}/doctrine/01-voice.md",
         f"{REFERENCES}/policies/P-01-example.md",
+        "prose/reviewer.md",
     ]
 
 

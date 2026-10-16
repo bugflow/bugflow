@@ -3,9 +3,11 @@
 A reviewer is a directory. It holds a manifest named ``manifest.md``,
 or ``reviewer.md`` in a repository made before the manifest had that
 name, and may hold a ``policies`` directory and a ``doctrine``
-directory. They are in the ``references`` directory of the reviewer's
-skill, ``skills/<name>/references/``, or in the reviewer's directory in
-a repository laid out before skills held them.
+directory. Each of its skills has a copy of both under
+``skills/<name>/references/``, which a server does not read. A reviewer
+laid out before the originals were kept at its root has them in its one
+skill's ``references`` directory and nothing at its root, and is read
+from there.
 
 A manifest is a header, a line of three dashes, and then the reviewer's
 instructions in prose. The header is lines of the form ``key: value``::
@@ -50,6 +52,8 @@ MANIFESTS = ("manifest.md", "reviewer.md")
 #: The name a reviewer's manifest file had, which a repository made
 #: before the manifest was named may keep.
 MANIFEST = "reviewer.md"
+#: The directories a reviewer keeps its originals in.
+ORIGINALS = ("policies", "doctrine")
 
 
 @dataclass(frozen=True)
@@ -87,9 +91,25 @@ class DomainSpecificReviewAgent:
     @property
     def references(self) -> Path:
         """The directory that holds the ``policies`` and ``doctrine``
-        directories: the first skill's ``references`` directory, in
-        name order, or the reviewer's directory if no skill has one."""
+        directories: the reviewer's directory when it holds either, or
+        else the ``references`` directory of its one skill.
+
+        Raises ``ReviewAgentError`` when the reviewer's directory holds
+        neither and more than one skill has a ``references`` directory:
+        nothing then says which copy is the original."""
+        if any((self.directory / name).is_dir() for name in ORIGINALS):
+            return self.directory
         found = sorted(self.directory.glob("skills/*/references"))
+        if len(found) > 1:
+            places = " and ".join(
+                f"{one.relative_to(self.directory).as_posix()}/"
+                for one in found
+            )
+            raise ReviewAgentError(
+                f"{self.directory.name}/: the policies and the doctrine "
+                f"are in {places}, and {self.directory.name}/ has no "
+                "policies/ or doctrine/ of its own"
+            )
         return found[0] if found else self.directory
 
     @property

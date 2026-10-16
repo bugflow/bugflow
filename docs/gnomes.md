@@ -19,17 +19,19 @@ A gnome has seven parts.
 
 | Part | Where | What it is |
 |---|---|---|
-| Doctrine | `skills/<skill>/references/doctrine/*.md` | The standard, written for a person. A list of clauses |
+| Doctrine | `doctrine/*.md` | The standard, written for a person. A list of clauses |
 | Clause | A paragraph of the doctrine | One rule, with an id such as `VOICE-6` and a name |
-| Policy | `skills/<skill>/references/policies/<ID>-<name>.md` | One question asked about the subject, and the clauses it judges |
+| Policy | `policies/<ID>-<name>.md` | One question asked about the subject, and the clauses it judges |
 | Case | `cases/<ID>/*.md` | An example with the answer a correct judge gives it |
 | Check | `skills/<skill>/scripts/check-<name>` | A script that answers a policy in code, with no model |
 | Skill | `skills/<skill>/SKILL.md` | Instructions for an agent that writes or tidies to the doctrine |
 | Manifest | `manifest.md` | The gnome's id, and the lists of its subjects, policies and checks |
 
-The doctrine, the policies and the checks are in the skill's directory
-because the tool that installs a skill in a garden copies the skill's
-directory and nothing outside it.
+The doctrine and the policies are kept in `doctrine/` and `policies/`
+at the root of the gnome. Each skill has a copy of both in its
+`references/`, because the tool that installs skills (`npx skills`)
+only copies the skill's own directory. The copies are made by a build
+step (for example `make skills`). Edit the originals, never a copy.
 
 ## How the parts relate
 
@@ -50,8 +52,8 @@ flowchart TD
     manifest -- "lists" --> check
 ```
 
-- A gnome has one doctrine. The files of `references/doctrine/` are
-  joined in filename order into one document.
+- A gnome has one doctrine. The files of `doctrine/` are joined in
+  filename order into one document.
 - A policy does not restate the doctrine. Its header lists the clauses
   it judges, and its instructions tell a model how to judge them.
 - A finding quotes the words at fault and cites one clause. A policy
@@ -74,6 +76,7 @@ one alone.
 | A policy a model answers | Asked about each pull request, if a binding declares it | Not read |
 | A policy a check answers | Answered only if the server has that check | The lint runs the check |
 | Cases | Not read. A calibration reads them | Not read |
+| A skill's `references/` | Not sent. The server reads the originals | The skill reads its copy |
 | The skill's `scripts/` | Not sent to the server | Each `check-<name>` is run by the lint |
 | The skill's `SKILL.md` | Not sent to the server | Listed for the garden's agent |
 
@@ -123,7 +126,7 @@ So one gnome serves any number of servers and gardens unchanged.
 
 ### Change what a clause says
 
-Edit the clause in the skill's `references/doctrine/`. Then read each
+Edit the clause in `doctrine/`, then run the build step. Then read each
 policy that lists the clause, because its instructions were written
 against the old words. Measure those policies again.
 
@@ -135,10 +138,9 @@ add a `clause` line to a policy's header, or add a policy.
 
 ### Add a policy
 
-Add a file under the skill's `references/policies/`, add its id to the
-manifest's `policies` line, and add at least one clean case and one
-seeded case. A policy is judged on a server only after a binding
-declares it for a repository.
+Add a file under `policies/`, add its id to the manifest's `policies`
+line, and add at least one clean case and one seeded case. A policy is
+judged on a server only after a binding declares it for a repository.
 
 ### Add a case
 
@@ -160,6 +162,12 @@ A model's answers vary between runs, so run each measurement twice,
 and change one thing between two measurements.
 
 This repository has no command that runs a calibration.
+
+### Copy the doctrine into the skills
+
+After changing anything in `doctrine/` or `policies/`, run the build
+step (for example `make skills`). It copies both directories into each
+skill's `references/`. The format test fails if a copy is out of date.
 
 ### Check the files
 

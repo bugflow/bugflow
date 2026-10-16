@@ -17,6 +17,7 @@ from bugflow.method.tests.policy_files import (
     POLICY,
     READ,
     REFERENCES,
+    SKILL,
     TOPOLOGY,
 )
 
@@ -55,13 +56,23 @@ def test_a_manifest_named_manifest_is_read_as_one_named_reviewer() -> None:
     assert list(parsed.policies["prose"]) == ["P-01"]
 
 
-def test_a_deployment_laid_out_before_skills_held_the_files_is_read() -> None:
+def test_a_reviewer_with_the_files_in_its_one_skill_is_read_from_it() -> None:
     files = {
-        path.replace("skills/prose-write/references/", ""): text
+        path.replace(f"{REFERENCES}/policies", f"{SKILL}/policies").replace(
+            f"{REFERENCES}/doctrine", f"{SKILL}/doctrine"
+        ): text
         for path, text in READ.items()
     }
     parsed = parse_deployment(deployment(files))
     assert list(parsed.policies["prose"]) == ["P-01"]
+    assert parsed.doctrine["prose"].text == DOCTRINE
+    assert parsed.prose == parse_deployment(deployment(READ)).prose
+
+
+def test_a_skills_copy_of_the_files_is_not_read() -> None:
+    stale = "**EX-9.** A stale copy.\n"
+    files = READ | {f"{SKILL}/doctrine/01-voice.md": stale}
+    parsed = parse_deployment(deployment(files))
     assert parsed.doctrine["prose"].text == DOCTRINE
     assert parsed.prose == parse_deployment(deployment(READ)).prose
 
@@ -162,16 +173,15 @@ def test_a_check_the_server_names_is_accepted_and_another_refused() -> None:
             "pace-layers.toml:",
         ),
         (
-            READ | {"prose/doctrine/02-more.md": DOCTRINE},
-            f"{REFERENCES}/doctrine/01-voice.md: "
-            "prose/ already holds policies or doctrine in prose/",
-        ),
-        (
-            READ
-            | {"prose/skills/other/references/doctrine/02-more.md": DOCTRINE},
-            f"{REFERENCES}/doctrine/01-voice.md: "
-            "prose/ already holds policies or doctrine in "
-            "prose/skills/other/references/",
+            {
+                "prose/reviewer.md": MANIFEST,
+                f"{SKILL}/doctrine/01-voice.md": DOCTRINE,
+                "prose/skills/other/references/doctrine/01-voice.md": DOCTRINE,
+            },
+            "prose/: the policies and the doctrine are in "
+            "prose/skills/other/references/ and "
+            "prose/skills/prose-write/references/, and prose/ has no "
+            "policies/ or doctrine/ of its own",
         ),
         (
             {

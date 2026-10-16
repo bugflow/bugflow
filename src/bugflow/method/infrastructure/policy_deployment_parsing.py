@@ -85,10 +85,10 @@ def _kind(path: str) -> tuple[str, str, str] | None:
 
     The kinds are "manifest", "policy" and "doctrine". The place is the
     directory that holds a policy's or a doctrine's directory: the
-    ``references`` directory of one of the agent's skills, or, in a
-    deployment made before skills held them, the agent's directory. A
-    manifest's place is the agent's directory. The files beside the
-    reviewers belong to no agent and are handled apart.
+    agent's directory, or the ``references`` directory of one of its
+    skills, which holds a copy. A manifest's place is the agent's
+    directory. The files beside the reviewers belong to no agent and
+    are handled apart.
     """
     parts = PurePosixPath(path).parts
     if len(parts) == 2 and parts[1] in MANIFESTS:
@@ -122,7 +122,8 @@ def parse_deployment(
     that does not parse, two agents with one id, two manifests in one
     directory, two policies with one id in one agent, policy or
     doctrine files in a directory that has no manifest, policy or
-    doctrine files of one agent in two places, and a
+    doctrine files of one agent in two skills and none in its own
+    directory, and a
     declaration naming a policy or process the deployment does not
     hold, a checked policy no manifest gives a check, or a policy whose
     subject this server does not render.
@@ -169,7 +170,7 @@ def parse_deployment(
     }
     policy_texts: dict[str, list[str]] = {}
     doctrine_parts: dict[str, list[str]] = {}
-    places: dict[str, str] = {}
+    originals = _originals(deployment, by_directory, problems)
     for one in deployment.files:
         kind = _kind(one.path)
         if kind is None or kind[1] == "manifest":
@@ -178,12 +179,8 @@ def parse_deployment(
         if owner is None:
             problems.append(f"{one.path}: {kind[0]}/{MANIFEST} is missing")
             continue
-        place = places.setdefault(kind[0], kind[2])
-        if place != kind[2]:
-            problems.append(
-                f"{one.path}: {kind[0]}/ already holds policies or "
-                f"doctrine in {place}/"
-            )
+        if kind[2] != originals.get(kind[0]):
+            # A skill's copy of a file whose original is read.
             continue
         if kind[1] == "doctrine":
             doctrine_parts.setdefault(owner.agent_id, []).append(one.text)
@@ -253,6 +250,43 @@ def parse_deployment(
         layers=layers,
         declared=declared,
     )
+
+
+def _originals(
+    deployment: PolicyDeployment,
+    by_directory: Mapping[str, DomainSpecificReviewAgent],
+    problems: list[str],
+) -> dict[str, str]:
+    """The place each agent's policies and doctrine are read from, by
+    the agent's directory: the directory itself when it holds any, or
+    else the ``references`` directory of its one skill. Each skill's
+    copy is passed over.
+
+    An agent with the files in two skills and none in its directory
+    gets no place, and the problem is added to ``problems``: nothing
+    says which copy is the original.
+    """
+    places: dict[str, set[str]] = {}
+    for one in deployment.files:
+        kind = _kind(one.path)
+        if kind is None or kind[1] == "manifest":
+            continue
+        if kind[0] not in by_directory:
+            continue
+        places.setdefault(kind[0], set()).add(kind[2])
+    originals: dict[str, str] = {}
+    for directory, found in places.items():
+        if directory in found:
+            originals[directory] = directory
+        elif len(found) == 1:
+            originals[directory] = next(iter(found))
+        else:
+            problems.append(
+                f"{directory}/: the policies and the doctrine are in "
+                f"{' and '.join(place + '/' for place in sorted(found))}, "
+                f"and {directory}/ has no policies/ or doctrine/ of its own"
+            )
+    return originals
 
 
 def _unanswerable(
