@@ -602,7 +602,7 @@ def test_a_commit_mood_finding_quotes_a_summary_and_nothing_else() -> None:
     assert "commit summaries" in dropped
 
 
-def honesty_judge(fake: FakeLiteLLM) -> LiteLLMJudge:
+def patches_judge(fake: FakeLiteLLM) -> LiteLLMJudge:
     return a_judge(
         policies=("P-04",),
         transport=httpx2.MockTransport(fake),
@@ -622,9 +622,9 @@ PATCHED = replace(
 )
 
 
-def test_the_honesty_policy_sees_the_patches() -> None:
+def test_the_patches_policy_sees_the_patches() -> None:
     fake = FakeLiteLLM()
-    honesty_judge(fake).assess(PATCHED, DOCTRINE, "P-04")
+    patches_judge(fake).assess(PATCHED, DOCTRINE, "P-04")
     system, user = fake.sent()["messages"]
     assert (
         "EX-5: the description is honest about the diff" in system["content"]
@@ -643,7 +643,7 @@ def test_patches_past_the_budget_are_omitted_but_their_files_listed(
 ) -> None:
     monkeypatch.setattr(litellm_judge, "PATCH_BUDGET", 3)
     fake = FakeLiteLLM()
-    honesty_judge(fake).assess(PATCHED, DOCTRINE, "P-04")
+    patches_judge(fake).assess(PATCHED, DOCTRINE, "P-04")
     _, user = fake.sent()["messages"]
     assert "+x = 1" not in user["content"]
     assert (
@@ -652,7 +652,7 @@ def test_patches_past_the_budget_are_omitted_but_their_files_listed(
     )
 
 
-def test_an_honesty_finding_may_quote_a_patch_or_code_in_the_description() -> (
+def test_a_patches_finding_may_quote_a_patch_or_code_in_the_description() -> (
     None
 ):
     fake = FakeLiteLLM(
@@ -660,7 +660,7 @@ def test_an_honesty_finding_may_quote_a_patch_or_code_in_the_description() -> (
             [violation("EX-5", "+x = 1"), violation("EX-5", "--dry-run")]
         )
     )
-    assessment = honesty_judge(fake).assess(PATCHED, DOCTRINE, "P-04")
+    assessment = patches_judge(fake).assess(PATCHED, DOCTRINE, "P-04")
     first, second = assessment.findings
     assert (first.policy_id, first.subject) == (
         "P-04",
@@ -690,7 +690,7 @@ TWO_PATCHES = replace(
 )
 
 
-def honesty_judge_at(fidelity: str, fake: FakeLiteLLM) -> LiteLLMJudge:
+def patches_judge_at(fidelity: str, fake: FakeLiteLLM) -> LiteLLMJudge:
     return a_judge(
         policies=("P-04",),
         transport=httpx2.MockTransport(fake),
@@ -701,7 +701,7 @@ def honesty_judge_at(fidelity: str, fake: FakeLiteLLM) -> LiteLLMJudge:
 
 def test_per_file_sends_one_request_for_each_patch() -> None:
     fake = FakeLiteLLM(body=completion([violation("EX-5", "+a")]))
-    assessment = honesty_judge_at("per-file", fake).assess(
+    assessment = patches_judge_at("per-file", fake).assess(
         TWO_PATCHES, DOCTRINE, "P-04"
     )
     first, second = (
@@ -722,7 +722,7 @@ def test_per_file_sends_one_request_for_each_patch() -> None:
 
 def test_summarised_shows_only_each_patchs_hunk_headers() -> None:
     fake = FakeLiteLLM()
-    assessment = honesty_judge_at("summarised", fake).assess(
+    assessment = patches_judge_at("summarised", fake).assess(
         TWO_PATCHES, DOCTRINE, "P-04"
     )
     _, user = fake.sent()["messages"]
