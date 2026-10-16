@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TextIO
 
-from bugflow.apps.shared.forges import forge_token
+from bugflow.apps.shared.forges import forge_tokens
 from bugflow.forge.domain.repositories.webhook_admin import (
     WebhookAdminRepository,
 )
@@ -26,6 +26,7 @@ from bugflow.forge.dtos.reconcile_webhooks import (
     ReconcileWebhooksRequest,
     ReconcileWebhooksResponse,
 )
+from bugflow.forge.infrastructure.github import GitHubTokens
 from bugflow.forge.usecases.reconcile_webhooks import ReconcileWebhooksUseCase
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.services.recording import RecordingService
@@ -46,7 +47,7 @@ class HookSettings:
     repositories: tuple[WatchedRepository, ...]
     url: str
     secret: str
-    token: str
+    token: GitHubTokens
 
     @classmethod
     def from_environment(cls, environ: Mapping[str, str]) -> "HookSettings":
@@ -83,17 +84,18 @@ class HookSettings:
                 "WEBHOOK_SECRET is not set; a hook registered without one "
                 "would post deliveries the ingress answers 401 to"
             )
-        token = forge_token(environ) or ""
-        if not token and repositories:
+        token = forge_tokens(environ)
+        if token is None and repositories:
             raise ValueError(
-                "FORGE_TOKEN is not set; registering a webhook needs a "
-                "token that may administer the repository's hooks"
+                "FORGE_TOKEN is not set, nor FORGE_TOKENS_BY_OWNER; "
+                "registering a webhook needs a token that may administer "
+                "the repository's hooks"
             )
         return cls(
             repositories=tuple(repositories),
             url=f"{url}/webhooks/github",
             secret=secret,
-            token=token,
+            token=token or GitHubTokens(),
         )
 
 

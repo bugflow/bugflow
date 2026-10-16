@@ -39,7 +39,7 @@ from temporalio.client import Client
 
 from bugflow.apps.shared.boundaries import refuse_without_a_boundary
 from bugflow.apps.shared.deploying import checks_from
-from bugflow.apps.shared.forges import forge_token, forgejo_settings
+from bugflow.apps.shared.forges import forge_tokens, forgejo_settings
 from bugflow.apps.shared.journals import build_sha, review_journal
 from bugflow.apps.shared.policies import ReviewersInForce, reviewers_in_force
 from bugflow.apps.worker.activities import (
@@ -449,9 +449,9 @@ def backfill_activities_from_environment(
     is read from."""
     database_url = environ["DATABASE_URL"]
     feeds: dict[str, ClosedPullRequestFeedRepository] = {}
-    token = forge_token(environ)
-    if token:
-        feeds["github"] = ForgeClosedPullRequests(GitHubForge(token))
+    tokens = forge_tokens(environ)
+    if tokens:
+        feeds["github"] = ForgeClosedPullRequests(GitHubForge(tokens))
     forgejo = forgejo_settings(environ)
     if forgejo:
         feeds["forgejo"] = ForgeClosedPullRequests(ForgejoForge(*forgejo))
@@ -550,7 +550,7 @@ def refuse_without_a_forge(
     Raises ``ValueError`` if a repository is bound to a profile that
     publishes and neither forge's settings are given.
     """
-    if forge_token(environ) or forgejo_settings(environ):
+    if forge_tokens(environ) or forgejo_settings(environ):
         return
     publishing = sorted(
         f"{forge}:{repo}"
@@ -560,9 +560,9 @@ def refuse_without_a_forge(
     if publishing:
         raise ValueError(
             f"{', '.join(publishing)} is bound to a profile that "
-            "publishes, and FORGE_TOKEN is not set, nor FORGEJO_URL "
-            "and FORGEJO_TOKEN; the worker does not start without a "
-            "forge to publish to"
+            "publishes, and FORGE_TOKEN is not set, nor "
+            "FORGE_TOKENS_BY_OWNER, nor FORGEJO_URL and FORGEJO_TOKEN; the "
+            "worker does not start without a forge to publish to"
         )
 
 

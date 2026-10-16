@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from bugflow.apps.shared.forges import forge_token, forgejo_settings
+from bugflow.apps.shared.forges import forge_tokens, forgejo_settings
 from bugflow.forge.domain.services.polling import PullRequestFeedService
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.dtos.poll_pull_requests import (
@@ -25,7 +25,7 @@ from bugflow.forge.dtos.poll_pull_requests import (
     PollPullRequestsResponse,
 )
 from bugflow.forge.infrastructure.forgejo import ForgejoForge
-from bugflow.forge.infrastructure.github import GitHubForge
+from bugflow.forge.infrastructure.github import GitHubForge, GitHubTokens
 from bugflow.forge.infrastructure.webhook_sink import SignedWebhookSink
 from bugflow.forge.usecases.poll_pull_requests import PollPullRequestsUseCase
 from bugflow.shared.infrastructure.system_clock import SystemClock
@@ -40,8 +40,8 @@ class PollerSettings:
     interval: timedelta
     ingress_url: str
     secret: str
-    # github.com's token, when a repository there is watched.
-    token: str | None
+    # github.com's tokens, when a repository there is watched.
+    token: GitHubTokens | None
     # The Forgejo's URL and token, when a repository there is watched.
     forgejo: tuple[str, str] | None = None
 
@@ -73,10 +73,11 @@ class PollerSettings:
                 "WEBHOOK_SECRET is not set; the poller does not start "
                 "without it"
             )
-        token = forge_token(environ)
+        token = forge_tokens(environ)
         if token is None and "github" in forges:
             raise ValueError(
-                "FORGE_TOKEN is not set; the poller does not start without it"
+                "FORGE_TOKEN is not set, nor FORGE_TOKENS_BY_OWNER; the "
+                "poller does not start without one"
             )
         forgejo = forgejo_settings(environ)
         if forgejo is None and "forgejo" in forges:

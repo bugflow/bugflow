@@ -106,6 +106,7 @@ hold only letters, digits, `-`, `.`, `_` and `~`.
 | `vault_bugflow_webhook_secret` | `ingress`, `webhooks`, `poller` | What a forge signs its deliveries with |
 | `vault_bugflow_webhook_secret_previous` | `ingress` | The previous secret, supplied only while the secret is rotated. Not written if empty |
 | `vault_bugflow_forge_token` | `worker`, `webhooks`, `poller` | The token pull requests are fetched and answered with: read pull requests and contents, write comments, labels and commit statuses, on the watched repositories alone. Registering webhooks also needs the right to administer a repository's hooks. Not written if empty |
+| `vault_bugflow_forge_tokens_by_owner` | `worker`, `webhooks`, `poller` | A token for each owner that has its own, as `owner=token` pairs separated by commas: `gs-dawr=github_pat_...,gs-gs=github_pat_...`. A repository whose owner is named here is reached with that token, and the rest with `vault_bugflow_forge_token`. Needed where the watched repositories span organisations and the tokens are fine-grained, since such a token belongs to one organisation. Not written if empty |
 | `bugflow_forgejo_url` | `worker`, `poller` | The address of a Forgejo whose pull requests are reviewed. Not written if empty |
 | `vault_bugflow_forgejo_token` | `worker`, `poller` | A token for that Forgejo. Required if `bugflow_forgejo_url` is given |
 | `bugflow_poll_interval_seconds` | `poller` | Seconds between polls. Default `60` |
