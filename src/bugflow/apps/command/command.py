@@ -318,7 +318,8 @@ def _declaring_parsers(
         "declare",
         help="say what a repository is judged on and dispatches, the "
         "profile that decides what is published, where its period on a "
-        "layer begins, and the share of its warnings withheld",
+        "layer begins, the share of its warnings withheld, and a ledger "
+        "whose archive this server keeps",
     )
     declare.add_argument("repository", help=repository)
     declare.add_argument(
@@ -379,6 +380,22 @@ def _declaring_parsers(
         "becomes of a warning nobody read can be compared with one "
         "somebody could have. Omit the flag to leave it as it is; a "
         "repository that has declared none withholds nothing",
+    )
+    declare.add_argument(
+        "--archive",
+        metavar="LEDGER",
+        help="the id of a ledger whose archive this server keeps, for "
+        "this repository: the UUID in lower case that the ledger's "
+        "events carry. The archive host refuses a ledger nobody bound. "
+        "Binding a ledger again to the same place changes nothing; to "
+        "another place moves it, and says so",
+    )
+    declare.add_argument(
+        "--scope",
+        metavar="PATH",
+        help="the scope within the repository the ledger's archive is "
+        "kept for, as a path, with --archive. Omitted, or '.', is the "
+        "repository's root",
     )
     cadence = commands.add_parser(
         "cadence",
@@ -644,6 +661,7 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return run_declared(database_url, args.repository)
     try:
         zone = periods_timezone(environ)
+        build = build_sha(environ)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -658,7 +676,10 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
         layer=args.layer,
         boundary=args.boundary,
         withhold=args.withhold,
+        archive=args.archive,
+        scope=args.scope,
         zone=zone,
+        build=build,
     )
 
 
