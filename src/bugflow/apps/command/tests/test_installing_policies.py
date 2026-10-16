@@ -72,9 +72,9 @@ def test_a_directory_is_stored_and_what_is_in_force_is_printed(
     assert lines[0].startswith(f"{REPOSITORY} at c1 is in force, 4 files")
     assert lines[1:] == [
         "  pace-layers.toml",
+        "  prose/doctrine/01-voice.md",
+        "  prose/policies/P-01-example.md",
         "  prose/reviewer.md",
-        "  prose/skills/prose-write/references/doctrine/01-voice.md",
-        "  prose/skills/prose-write/references/policies/P-01-example.md",
     ]
     (fact,) = host.journal.entries
     assert fact.payload["sent_by"] == INSTALLED_ON_THE_HOST
