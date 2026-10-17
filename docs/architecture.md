@@ -158,6 +158,68 @@ repository is renamed at the forge, the watched repositories, the
 binding's declarations, and the boundary, profile and allowance in the
 database must each be given the new name.
 
+## The things, and who enforces each
+
+What a gnome, a binding, a deployment and a server are made of, what
+contains or points at what, and which code holds each to its form.
+[Words](words.md) gives each word one line and says where it is
+defined. A gnome is also a methodology to a ClankOS garden, which
+installs its skill and runs its checks; `clankos-run help model`
+covers that side, and the two models meet at one point only: the
+commit a binding pins a gnome at is the ref a garden declares it at.
+
+```mermaid
+flowchart TD
+    subgraph gnome["A gnome: one repository"]
+        manifest["manifest.md:<br/>id, subjects, policies, checks"]
+        doctrine["doctrine/: clauses"]
+        policy["policies/: one question each,<br/>its clauses, subject, class, ceiling"]
+        case["cases/: clean and seeded,<br/>each with its answer"]
+        skill["skills/: SKILL.md,<br/>references/ (copies), scripts/check-*"]
+        manifest -- lists --> policy
+        policy -- judges --> doctrine
+        case -- tests --> policy
+        skill -- copies --> doctrine
+        skill -- copies --> policy
+    end
+    subgraph binding["A binding: one repository"]
+        copies["a copy of each gnome,<br/>at a pinned commit"]
+        declarations["declarations.toml:<br/>policy × repository"]
+        pace["pace-layers.toml:<br/>process × cadence"]
+    end
+    subgraph server["A server"]
+        deployment[("the deployment in force:<br/>a binding at one commit")]
+        reviewer["a reviewer for each gnome,<br/>named by its id"]
+        judge["judge: a model,<br/>one policy at a time"]
+        check["check: the server's own code"]
+        finding["findings: words at fault,<br/>one clause, a grade"]
+        verdict["verdict: pass, warn or fail,<br/>as a commit status"]
+        deployment --> reviewer
+        reviewer --> judge
+        reviewer --> check
+        judge --> finding
+        check --> finding
+        finding --> verdict
+    end
+    gnome -- "pinned, copied in" --> copies
+    binding -- "merged, sent by its pipeline" --> deployment
+    garden["A garden:<br/>the same gnome as a methodology"]
+    gnome -. "declared at a ref" .-> garden
+```
+
+| Thing | Its form is held by |
+|---|---|
+| A gnome's files: manifest, doctrine, policies, cases | The policy package parser, which the API runs on every deployment and the binding's pipeline runs with `--check` before a merge. A file with a problem stores nothing and reports every problem |
+| The copies in a skill's `references/` | The gnome's own tests, which fail when a copy differs from its original. The server reads the originals and never a copy |
+| A skill's `scripts/check-*` | Not this server. A garden's lint runs them |
+| The binding's two files | The same parser, as part of a deployment |
+| The deployment in force | The API, which stores each deployment and puts the latest in force; the worker and the ingress re-read it within 15 seconds |
+| A reviewer's id, subjects and the policies it may ask | The manifest, read at deployment; a declared policy the worker cannot answer is left out |
+| A finding's clause | The policy's header: a judge may cite only the clauses the policy lists |
+| A grade's ceiling, and the model class | The policy's header, read by the worker when it asks |
+| A verdict | The worker, which takes the worst grade among a reviewer's findings on one commit |
+| Calibration | Nothing here. This repository has no command that runs one |
+
 ## The model, in one place
 
 | Word | Is | Is not |
