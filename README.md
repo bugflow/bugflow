@@ -28,6 +28,9 @@ by, for a person who maintains them.
 [bugflow/bugflow-examples](https://github.com/bugflow/bugflow-examples)
 holds policies a server can review with, each example laid out as a
 policy repository.
+[docs/review.md](docs/review.md) says what a review writes on a pull
+request and where each part comes from, for an author and for whoever
+keeps a binding.
 [docs/words.md](docs/words.md) lists what bugflow calls things and
 where each word is defined.
 
