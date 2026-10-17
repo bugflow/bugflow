@@ -28,3 +28,6 @@ by, for a person who maintains them.
 [bugflow/bugflow-examples](https://github.com/bugflow/bugflow-examples)
 holds policies a server can review with, each example laid out as a
 policy repository.
+[docs/words.md](docs/words.md) lists what bugflow calls things and
+where each word is defined.
+
