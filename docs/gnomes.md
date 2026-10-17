@@ -103,8 +103,11 @@ which a garden's lint runs and a server never does.
 
 ### What a garden makes of a gnome
 
-A garden declares a gnome as a methodology in its configuration, at a
-tag.
+To a garden a gnome is a methodology: a repository of skills with
+checks, declared in the garden's configuration at a tag and installed
+by the ClankOS image. `clankos-run help model` says what a methodology
+is on that side. What a gnome holds beyond its skill, the doctrine,
+the policies and the cases, a garden never reads.
 
 - Its skill, with the skill's `references/` and `scripts/`, is copied
   into the skills the garden's agent is offered.
@@ -183,7 +186,7 @@ A merged change in a gnome reaches nothing by itself.
 | Reader | What takes the change |
 |---|---|
 | A bugflow server | The binding moves its pin to the gnome's new commit and copies the gnome in. When that is merged, the binding's pipeline deploys it, and the server reviews by it within about a minute |
-| A garden | The garden updates its copy of the gnome's repository. Its lint and its skill then use the new files |
+| A garden | The garden moves the tag it declares the gnome at and installs again. Its lint and its skill then use the new files |
 
 A change to the doctrine or to a policy gives the server a new version
 of the reviewer. A commit the server judged before is judged again
