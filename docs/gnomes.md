@@ -5,6 +5,8 @@ part, and what has to happen after a change.
 [The policy package](policy-package.md) specifies each file's format.
 [What is deployed where](architecture.md) explains the server that
 reads a gnome.
+[Words](words.md) lists what bugflow calls things and where each is
+defined.
 
 ## The definition
 
