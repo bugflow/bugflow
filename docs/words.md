@@ -49,11 +49,19 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 
 ## A server and what it says
 
-- **Reviewer.** What a server calls a gnome's directory: a group of
-  policies whose findings make one verdict, named by the manifest's
-  `agent_id`. [What a gnome is](gnomes.md), "What a server makes of
+- **Reviewer.** What a server calls a gnome's directory in a
+  deployment: a manifest, policies and a doctrine, whose findings make
+  one verdict, named by the manifest's `agent_id`. Not a process:
+  nothing runs under a reviewer's name. [What a gnome is](gnomes.md), "What a server makes of
   a gnome".
-- **Judge.** The model, when it answers one policy for one subject.
+- **Judge.** The model, when it answers one policy for one subject,
+  with the doctrine of the reviewer that holds the policy. Code in the
+  worker, not a reviewer or a service of its own.
+  [What is deployed where](architecture.md), "How a pull request is
+  reviewed".
+- **Checkout agent.** A session on a vendor's platform that checks the
+  code out and writes a review, for a reviewer whose manifest names a
+  runner other than `judge`. Not part of the composition.
   [What is deployed where](architecture.md), "How a pull request is
   reviewed".
 - **Model class.** `small`, `medium` or `large`: the class a policy
@@ -83,11 +91,12 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 - **Pace layer.** A group of the server's processes that run at one
   cadence, on an event or on a clock, declared in `pace-layers.toml`.
   [The policy package](policy-package.md), "The binding".
-- **Deployment.** The copy of a binding, at one commit, that a server
-  stores and judges by; the one in force is the latest sent.
-  [What is deployed where](architecture.md), "How rules reach a
-  server". The same word names the composition and settings of one
-  server, which [Deploying a server](deploying.md) covers.
+- **Deployment.** Two things. A policy deployment is the files of one
+  commit of a binding, stored in the database, which a server judges
+  by; the one in force is the latest sent. A deployment of the server
+  is the composition and settings of one server, which
+  [Deploying a server](deploying.md) covers. [What is deployed
+  where](architecture.md), "How rules reach a server".
 - **Operator.** Whoever runs a server: declares its repositories,
   fills its model classes, and says whether findings are published.
   [What is deployed where](architecture.md).
