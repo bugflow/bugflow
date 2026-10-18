@@ -7,7 +7,13 @@ This class only reads. Writing to the journal is done by
 
 import sqlalchemy as sa
 
+from bugflow.review.domain.errors import HistoryTooLargeError
 from bugflow.review.domain.facts import ACTION_TAKEN
+from bugflow.review.domain.models.history import (
+    HistoryLimits,
+    HistoryScope,
+    StoredReviewEvent,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -36,6 +42,74 @@ class SqlAlchemyJournalQueries:
                 journal.c.run_id == correlation.run_id,
             )
             .order_by(journal.c.occurred_at, journal.c.event_type)
+        )
+
+    def entries_for_history(
+        self, scope: HistoryScope, limits: HistoryLimits
+    ) -> tuple[StoredReviewEvent, ...]:
+        """Read bounded evidence from one database snapshot.
+
+        The preflight transfers sizes only. The byte guard includes all
+        column values and an allowance for each row's structure. The
+        caller also bounds its encoded response, which can repeat facts.
+        """
+        predicates = [
+            journal.c.forge == scope.forge,
+            journal.c.repo == scope.repo,
+            journal.c.pr_number.in_(scope.pr_numbers),
+        ]
+        if scope.correlation is not None:
+            predicates.extend(
+                [
+                    journal.c.workflow_id == scope.correlation.workflow_id,
+                    journal.c.run_id == scope.correlation.run_id,
+                ]
+            )
+        size: sa.ColumnElement[int] = sa.literal(1024)
+        for column in journal.c:
+            size = size + sa.func.coalesce(
+                sa.func.octet_length(sa.cast(column, sa.Text)), 0
+            )
+        candidates = (
+            sa.select(size.label("bytes"))
+            .where(*predicates)
+            .limit(limits.max_events + 1)
+            .subquery()
+        )
+        preflight = sa.select(
+            sa.func.count(),
+            sa.func.coalesce(sa.func.sum(candidates.c.bytes), 0),
+        ).select_from(candidates)
+        query = (
+            sa.select(journal)
+            .where(*predicates)
+            .order_by(
+                journal.c.occurred_at,
+                journal.c.recorded_at,
+                journal.c.event_id,
+            )
+        )
+        with (
+            self._engine.connect().execution_options(
+                isolation_level="REPEATABLE READ"
+            ) as connection,
+            connection.begin(),
+        ):
+            count, byte_count = connection.execute(preflight).one()
+            if count > limits.max_events:
+                raise HistoryTooLargeError("history exceeds the event limit")
+            if byte_count > limits.max_bytes:
+                raise HistoryTooLargeError("history exceeds the byte limit")
+            rows = connection.execute(query).mappings().all()
+        return tuple(
+            StoredReviewEvent(
+                entry=from_columns(JournalEntry, row),
+                recorded_at=row["recorded_at"],
+                policy_repository=row["policy_repository"],
+                policy_commit=row["policy_commit"],
+                policy_content=row["policy_content"],
+            )
+            for row in rows
         )
 
     def latest_acted_run(

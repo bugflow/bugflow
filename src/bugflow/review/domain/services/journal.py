@@ -5,10 +5,27 @@ It includes writing, so that one object can be given for both.
 
 from typing import Protocol
 
+from bugflow.review.domain.models.history import (
+    HistoryLimits,
+    HistoryScope,
+    StoredReviewEvent,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+
+
+class HistoryService(Protocol):
+    def entries_for_history(
+        self, scope: HistoryScope, limits: HistoryLimits
+    ) -> tuple[StoredReviewEvent, ...]:
+        """Read one consistent, bounded set of repository-scoped facts.
+
+        Refuse the entire request if a limit is exceeded. Order by event
+        time, recording time and event id. No linked content is opened.
+        """
+        ...
 
 
 class JournalService(RecordingService, Protocol):

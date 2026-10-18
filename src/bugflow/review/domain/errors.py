@@ -5,6 +5,14 @@ from datetime import timedelta
 from bugflow.shared.domain.models.call_record import CallRecord
 
 
+class HistoryTooLargeError(Exception):
+    """The requested history exceeds a configured event or byte limit."""
+
+
+class ReviewRecordNotFoundError(Exception):
+    """No evaluation was recorded in the requested repository scope."""
+
+
 class JudgeUnavailableError(Exception):
     """The judge refused or could not answer.
 

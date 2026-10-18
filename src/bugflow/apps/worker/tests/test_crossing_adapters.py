@@ -42,10 +42,14 @@ from bugflow.forge.domain.values.conversation import (
     Reaction as ForgeReaction,
 )
 from bugflow.forge.domain.values.review_scope import ReviewScope
+from bugflow.forge.infrastructure.in_memory_snapshots import (
+    InMemorySnapshotStore,
+)
 from bugflow.review.domain.errors import (
     AgentTemporarilyUnavailableError,
     AgentUnavailableError,
     PublicationRejectedError,
+    SubmissionNotFoundError,
     WorktreeUnavailableError,
 )
 from bugflow.review.domain.models.conversation import Closing, Reaction
@@ -124,6 +128,33 @@ def test_forge_submission_source_translates_a_snapshot_into_a_submission() -> (
     assert submission.files[0].path == "thing.py"
     assert submission.files[0].additions == 2
     assert submission.files[0].patch == "+x\n+y"
+
+
+def test_submission_source_refuses_another_repositorys_snapshot() -> None:
+    snapshots = InMemorySnapshotStore()
+    other = PullRequestRef(owner="private", repo="other", number=1)
+    stored = snapshots.put(
+        PullRequestSnapshot(
+            ref=other,
+            title="Private",
+            body="Private content",
+            head_branch="change",
+            base_branch="main",
+            commits=(),
+            files=(),
+        )
+    )
+    with pytest.raises(SubmissionNotFoundError):
+        ForgeSubmissionSource(snapshots).get(
+            SubmissionRef(snapshot_id=stored.snapshot_id, ref=REF)
+        )
+
+
+def test_submission_source_translates_a_missing_snapshot() -> None:
+    with pytest.raises(SubmissionNotFoundError):
+        ForgeSubmissionSource(InMemorySnapshotStore()).get(
+            SubmissionRef(snapshot_id="gone", ref=REF)
+        )
 
 
 class FakeForge:

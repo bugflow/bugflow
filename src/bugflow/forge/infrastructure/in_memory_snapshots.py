@@ -1,10 +1,14 @@
 """A snapshot store that keeps snapshots in memory, for tests."""
 
+import json
+
 from bugflow.forge.domain.errors import SnapshotNotFoundError
 from bugflow.forge.domain.models.pull_request import (
     PullRequestSnapshot,
     SnapshotRef,
 )
+from bugflow.shared.domain.errors import ContentTooLargeError
+from bugflow.shared.infrastructure.serde import to_json
 
 
 class InMemorySnapshotStore:
@@ -25,3 +29,14 @@ class InMemorySnapshotStore:
             raise SnapshotNotFoundError(
                 f"no stored snapshot {reference.snapshot_id}"
             ) from exc
+
+    def get_bounded(
+        self, reference: SnapshotRef, max_bytes: int
+    ) -> tuple[PullRequestSnapshot, int]:
+        snapshot = self.get(reference)
+        size = 1024 + len(
+            json.dumps(to_json(snapshot), ensure_ascii=False).encode("utf-8")
+        )
+        if size > max_bytes:
+            raise ContentTooLargeError("snapshot exceeds the byte allowance")
+        return snapshot, size
