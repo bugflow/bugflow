@@ -407,3 +407,24 @@ Supply actual IDP subject identifiers, not display names or login emails.
 Manage aliases as access grants. Render changed settings and recreate the API
 container for them to take effect. This does not change the IDP's role assignments
 or invalidate tokens already issued by it.
+
+### MCP evaluation tools
+
+The optional `mcp` profile runs an authenticated HTTP client of the API.
+[Reading evaluations through MCP](evaluation-mcp.md) describes its tools,
+token exchange and provider setup. It has no database configuration.
+
+| Variable | Is |
+|---|---|
+| `bugflow_mcp_issuer` | The exact trusted IDP issuer |
+| `bugflow_mcp_audience` | The audience for incoming MCP tokens |
+| `bugflow_mcp_clients` | Comma-separated coding-agent client IDs |
+| `bugflow_mcp_roles_claim` | The role claim in provider tokens |
+| `bugflow_mcp_exchange_client_id` | The confidential token-exchange client |
+| `vault_bugflow_mcp_exchange_client_secret` | That client's secret |
+| `bugflow_mcp_api_audience` | The API audience, distinct from the MCP audience |
+| `bugflow_mcp_api_url` | The API origin; default `http://api:8000` |
+| `bugflow_mcp_public_url` | The public HTTPS origin, without `/mcp` |
+
+Apart from the API origin, defaults are empty. The MCP server refuses to start
+until each setting is supplied. The default composition does not start MCP.
