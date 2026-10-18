@@ -227,3 +227,7 @@ flowchart TD
 
 - **Calibration is not here.** A gnome's cases are read by a
   calibration, and this repository has no command that runs one.
+
+The [evaluation MCP server](evaluation-mcp.md) is an HTTP API client. It
+exchanges the caller's token and relays the API's JSON. It does not open the
+database, invoke evaluation use cases or implement a second access policy.

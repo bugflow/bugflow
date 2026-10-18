@@ -16,6 +16,7 @@ dependencies = [
     "jsonschema>=4.26.0",
     # Trace spans for calls to a model. Only the API: with no SDK set
     # up by the application, the spans are not recorded.
+    "mcp>=2.2,<3",
     "opentelemetry-api>=1.30",
     # Leaving a query out of the traces, where it runs on a timer.
     "opentelemetry-instrumentation>=0.51b0",
@@ -128,9 +129,16 @@ forbidden_modules = ["bugflow.apps"]
 name = "What programs share imports no program"
 type = "forbidden"
 source_modules = ["bugflow.apps.shared"]
-forbidden_modules = ["bugflow.apps.api", "bugflow.apps.archive_host", "bugflow.apps.command", "bugflow.apps.worker"]
+forbidden_modules = ["bugflow.apps.api", "bugflow.apps.archive_host", "bugflow.apps.command", "bugflow.apps.worker", "bugflow.apps.mcp"]
 
 [[tool.importlinter.contracts]]
 name = "A context imports no other context"
 type = "independence"
 modules = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review", "bugflow.method"]
+
+
+[[tool.importlinter.contracts]]
+name = "MCP reads through the API, not a database"
+type = "forbidden"
+source_modules = ["bugflow.apps.mcp.server", "bugflow.apps.mcp.tools"]
+forbidden_modules = ["bugflow.archive", "bugflow.forge", "bugflow.work", "bugflow.review", "bugflow.method", "bugflow.apps.api", "bugflow.apps.worker", "sqlalchemy", "psycopg"]
