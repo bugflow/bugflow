@@ -17,6 +17,7 @@ from bugflow.forge.domain.models.pull_request import (
     SnapshotRef,
 )
 from bugflow.shared.domain.errors import ContentTooLargeError
+from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.serde import from_json, to_json
 
@@ -44,6 +45,28 @@ class SqlAlchemySnapshotStore:
         self._engine = sa.create_engine(
             engine_url(database_url), pool_pre_ping=True
         )
+
+    def has_contribution(
+        self, ref: PullRequestRef, emails: frozenset[str]
+    ) -> bool:
+        aliases = sorted(email for email in emails if email.strip())
+        if not aliases:
+            return False
+        # JSON containment matches any commit in any retained snapshot.
+        # Only the existence result crosses the database connection.
+        matches = [
+            snapshots.c.body.contains(
+                {
+                    "ref": to_json(ref),
+                    "commits": [{role: {"email": email}}],
+                }
+            )
+            for email in aliases
+            for role in ("author", "committer")
+        ]
+        query = sa.select(sa.exists().where(sa.or_(*matches)))
+        with self._engine.connect() as connection:
+            return bool(connection.execute(query).scalar_one())
 
     def put(self, snapshot: PullRequestSnapshot) -> SnapshotRef:
         reference = SnapshotRef(

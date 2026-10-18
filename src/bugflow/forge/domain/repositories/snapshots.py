@@ -7,6 +7,18 @@ from bugflow.forge.domain.models.pull_request import (
     SnapshotRef,
 )
 from bugflow.shared.domain.repositories.base import BaseRepository
+from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+
+
+class ContributionReader(Protocol):
+    def has_contribution(
+        self, ref: PullRequestRef, emails: frozenset[str]
+    ) -> bool:
+        """Whether a retained snapshot names an email as author or committer.
+
+        Match the exact pull request and email. Empty aliases grant nothing.
+        """
+        ...
 
 
 class SnapshotStoreRepository(BaseRepository[PullRequestSnapshot], Protocol):

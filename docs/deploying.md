@@ -15,7 +15,7 @@ brought up together by Docker Compose.
 | `migrate` | `bugflow migrate`, which brings the database up to date and exits | `postgres` healthy |
 | `worker` | `bugflow worker`, which reviews pull requests | `temporal`, `postgres` and `litellm` healthy, `migrate` finished |
 | `ingress` | The server that receives a forge's webhooks | `temporal` and `postgres` healthy, `migrate` finished |
-| `api` | The server a policy repository's pipeline deploys policies to | `postgres` healthy, `migrate` finished, an identity provider in its settings |
+| `api` | The API for policy deployment and authorised evaluation reads | `postgres` healthy, `migrate` finished, an identity provider in its settings |
 | `poller` | `bugflow poll`, which stands in for webhooks. Started only when asked for | `ingress` healthy |
 | `webhooks` | `bugflow webhooks`, which registers webhooks and exits. Run only when asked for | `migrate` finished |
 
@@ -391,3 +391,19 @@ stands in for the webhooks:
   carry the roles claim.
 - **Backups.** Everything the server keeps is in the `pgdata` volume,
   unless a bucket is named for the content of model calls.
+
+### Evaluation readers
+
+The API also serves [recorded evaluation reads](evaluation-history.md).
+These optional template inputs configure access:
+
+| Variable | Is |
+|---|---|
+| `bugflow_api_clients` | Comma-separated accepted API client IDs; overrides the policy-pipeline client fallback |
+| `bugflow_evaluation_admin_role` | The IDP role allowed to read all evaluations; omitted, no role grants it |
+| `bugflow_evaluation_identities` | A JSON string listing issuer, subject and approved commit-email aliases; omitted, no contributor aliases are configured |
+
+Supply actual IDP subject identifiers, not display names or login emails.
+Manage aliases as access grants. Render changed settings and recreate the API
+container for them to take effect. This does not change the IDP's role assignments
+or invalidate tokens already issued by it.

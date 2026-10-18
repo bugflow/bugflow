@@ -8,12 +8,27 @@ from bugflow.forge.domain.models.pull_request import (
     SnapshotRef,
 )
 from bugflow.shared.domain.errors import ContentTooLargeError
+from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.serde import to_json
 
 
 class InMemorySnapshotStore:
     def __init__(self) -> None:
         self.snapshots: dict[str, PullRequestSnapshot] = {}
+
+    def has_contribution(
+        self, ref: PullRequestRef, emails: frozenset[str]
+    ) -> bool:
+        aliases = {email for email in emails if email.strip()}
+        return any(
+            snapshot.ref == ref
+            and any(
+                commit.author.email in aliases
+                or commit.committer.email in aliases
+                for commit in snapshot.commits
+            )
+            for snapshot in self.snapshots.values()
+        )
 
     def put(self, snapshot: PullRequestSnapshot) -> SnapshotRef:
         reference = SnapshotRef(

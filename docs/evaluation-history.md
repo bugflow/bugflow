@@ -2,8 +2,8 @@
 
 For application developers exposing stored review evidence. The readers in
 `review/usecases/read_review_record.py` use domain interfaces and do not call
-a model or publish to a forge. They are Python use cases; the HTTP API does
-not expose them yet.
+a model or publish to a forge. The HTTP API exposes both readers after checking access to each selected
+pull request.
 
 ## History
 
@@ -73,6 +73,76 @@ History lists references without opening content. Detail distinguishes
 `not_recorded`, `not_checked`, `available` and `missing`. Linked content can
 be deleted; its availability is observed when detail is read.
 
-An application must authorise the caller for the repository before invoking
-either reader. Repository scoping prevents a run identifier from selecting
+An application must authorise the caller for every requested pull request
+before invoking either reader. Repository scoping prevents a run identifier from selecting
 another repository's facts; it does not grant permission to read.
+
+## HTTP API
+
+Send the API's accepted bearer token with each request:
+
+- `GET /api/repositories/{forge}/{owner}/{repo}/evaluations?pr_number=30&pr_number=31&policy_id=ED-02`
+- `GET /api/repositories/{forge}/{owner}/{repo}/pull-requests/30/evaluation?workflow_id=review%2F30&run_id=run-id`
+
+History requires between 1 and 100 explicit positive PR numbers. Repeated
+numbers are counted once. The optional policy selects a view while preserving
+all observed runs. Detail requires both workflow and run IDs; query parameters
+allow workflow IDs containing slashes. Forge is `github` or `forgejo`.
+Responses use the Python readers' DTOs without another counting implementation.
+
+A missing or refused token returns 401. Insufficient access returns 403 before
+journal or retained review content is read. A batch containing an inaccessible
+PR is refused in full. Invalid selectors return 422; an absent authorised
+evaluation returns 404; exceeding a reader limit returns 413 without a partial
+response. Missing linked content remains a successful detail response with
+explicit availability. There is no endpoint for reading an arbitrary exchange
+or snapshot ID.
+
+## Who may read
+
+An authenticated contributor may read all evaluation data for a PR when any
+retained snapshot of that PR contains a commit with a recognised author or
+committer email. This includes evaluations of other commits on the PR and
+retained model exchanges. Opening a PR, having a similar login name, or holding
+the policy-deployer role does not grant access.
+
+The operator configures identities in Bugflow through `EVALUATION_IDENTITIES`:
+
+```json
+[
+  {
+    "issuer": "https://identity.example",
+    "subject": "person-123",
+    "emails": ["developer@work.example", "123+developer@users.noreply.github.com"]
+  }
+]
+```
+
+Issuer and subject identify the person independently of login email and client
+application. The issuer must be the provider verified by the API. Addresses
+match commit metadata exactly, including case. The operator must approve the
+aliases; callers cannot register their own through this API. Duplicate
+identities, ambiguous shared addresses within an issuer and malformed
+configuration stop startup. An omitted list grants no contributor access.
+
+`EVALUATION_ADMIN_ROLE` names the token role that can read all evaluations.
+Unset, no role grants administrative read access. Roles come from the configured
+`API_ROLES_CLAIM`; every token must still satisfy issuer, audience and allowed
+client checks. `API_CLIENTS` must include the applications used by readers.
+
+Alias and administrator-role configuration changes take effect on API restart.
+Changing an IDP role affects access when the caller presents a token reflecting
+that change; an already issued token can retain its roles until expiry.
+The API does not introspect tokens on each request.
+
+Commit email is attribution supplied by the commit, not proof of authorship.
+This initial policy accepts operator-approved aliases and unsigned commits.
+A recognised contribution in an older retained snapshot still grants access.
+If no retained snapshot establishes contribution, access is denied even when
+journal evidence survives; an administrator can read that evidence. The check
+uses only a boolean contribution result, not the snapshot's content.
+
+The current forge identity is a forge kind, not a server hostname. Deployments
+must not combine distinct forge hosts under colliding repository identities.
+Product-specific tech leads, mentors and stronger authorship verification are
+not implemented.
