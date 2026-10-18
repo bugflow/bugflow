@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict, dataclass
 
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -108,6 +109,18 @@ class PullRequestSnapshot:
     author_login: str = ""
     commits: tuple[CommitSnapshot, ...]
     files: tuple[ChangedFile, ...]
+    origin: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.origin is not None:
+            origin = RepositoryOrigin(self.origin)
+            if (
+                str(origin).split("/", 1)[1]
+                != f"{self.ref.owner}/{self.ref.repo}"
+            ):
+                raise ValueError(
+                    "snapshot origin does not match its repository"
+                )
 
     @property
     def changed_lines(self) -> int:
@@ -118,7 +131,12 @@ class PullRequestSnapshot:
     def content_id(self) -> str:
         """A SHA-256 hash of everything in the snapshot. Two snapshots of
         a pull request that has not changed have the same hash."""
-        canonical = json.dumps(asdict(self), separators=(",", ":"))
+        content = asdict(self)
+        # Old bodies have no origin field. Decoding them must preserve their
+        # content identifiers, including when a historical mapping exists.
+        if self.origin is None:
+            content.pop("origin")
+        canonical = json.dumps(content, separators=(",", ":"))
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def summary(self) -> PullRequestSummary:

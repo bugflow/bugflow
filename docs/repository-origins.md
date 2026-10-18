@@ -3,8 +3,9 @@
 Bugflow can inventory retained repository references and associate each
 record with an explicit canonical origin. Migration `0008` adds the
 association table. It leaves existing records and access behaviour intact.
-Ingestion still writes hostless references. Evaluation API reads accept
-an optional canonical origin and use explicit associations to select
+New GitHub and HTTPS Forgejo snapshots retain and associate their origin.
+Journal ingestion still writes hostless references. Evaluation API reads
+accept an optional canonical origin and use explicit associations to select
 retained records. This release does not implement repository-key enforcement.
 
 ## Canonical form
@@ -36,7 +37,7 @@ host. The parser does not contact a forge or follow redirects.
 | Storage | Existing identity | Association treatment |
 |---|---|---|
 | `journal` | `forge`, `repo`, optional PR number; UUID event id | Map each repository-bearing event by its UUID. Keep its payload and identifier. |
-| `pull_request_snapshots` | Hostless `body.ref`; content-derived snapshot id | Map each snapshot id. Keep its body and content hash. |
+| `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
 | `archive_bindings` | Ledger UUID, forge, repo and scope | Map the ledger UUID. Keep the existing binding. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
 | Policy deployments and activation records | Policy repository and commit | Policy-source provenance remains separate from reviewed-repository access. |
@@ -81,9 +82,9 @@ Kinds are `journal`, `snapshot` and `ledger`. The primary key is kind plus
 record id, so equal identifiers in different stores remain independent.
 Concurrent mappings cannot replace an association through this command.
 The command has no correction or reassignment operation. Review mappings
-before applying them. New ingestion remains unresolved until explicitly
-mapped. Canonical reads require associations for the journal records and
-snapshots they select.
+before applying them. Journal ingestion and legacy snapshots remain
+unresolved until explicitly mapped. Canonical reads require associations
+for the journal records and snapshots they select.
 
 An association states provenance. It grants no permission, creates no
 repository-name alias and carries no credential. A changed origin is a
@@ -94,9 +95,10 @@ history through an owner/name match.
 
 ## Rollback and remaining migration
 
-Rollback uses the preceding application release while retaining migration
-`0008` and its associations. Do not drop or rewrite retained records. Older
-applications ignore the additional table. No reverse migration is provided.
+Retain migration `0008` and its associations on rollback. Do not drop or
+rewrite retained records. Older applications ignore the additional table.
+No reverse migration is provided. Workers need the drain procedure below
+before rollback.
 
 Deploy the canonical reader before switching writers. Existing API callers
 keep their hostless selection when they omit `origin`. A canonical caller
@@ -106,9 +108,46 @@ hostless results. Suspend canonical requests before rolling the API back.
 An operator can test reader readiness with mapped records that share a
 path on two hosts.
 
-Ingestion still needs to retain the origin. Bindings and declarations need
-compatible migration paths. Repository-key activation requires credential
+Journal ingestion still needs to retain the origin. Bindings and
+declarations need compatible migration paths. Repository-key activation requires credential
 protection and compatible clients in later releases.
+
+## New snapshot ingestion
+
+The GitHub adapter records `github.com/owner/name` from its fixed endpoint.
+The Forgejo adapter records the host and port of its configured HTTPS URL.
+Forge kind remains separate from origin. A configured HTTPS URL with a path
+prefix cannot fit the two-component repository identity and is refused
+before fetching content. HTTP Forgejo endpoints retain legacy, unresolved
+snapshots. They do not acquire an HTTPS identity by inference.
+
+Every request used to assemble a snapshot refuses redirects, including
+commit/file pages and Forgejo's diff. A renamed or transferred repository
+must be addressed explicitly by its new name. Webhook administration and
+other adapter operations retain their existing redirect behaviour.
+
+A canonical snapshot includes its origin in its content hash, so identical
+PR content fetched from two hosts has distinct identifiers. Insertion writes
+the body and association in one transaction. A conflicting association
+rolls back the insertion. Repeated insertion is idempotent. Historical
+snapshots retain their bodies and hashes, even after an explicit mapping.
+The snapshot reference passed between existing workflow steps remains a
+content handle. The bounded API reader uses its separate origin selector.
+
+Install migration `0008` before starting these writers. Drain review
+workflows before replacing workers, and replace the worker set together.
+Do not mix old and new workers on the same task queue: older workers discard
+snapshot origins when decoding and can compute a different content hash.
+Before reverting workers, finish all workflows that consumed canonical
+snapshots. Keep stored snapshots and their associations. Older API versions
+also discard the body field when displaying content, although the compatible
+canonical reader still selects snapshots through the association table.
+A new canonical snapshot has a new hash and may cause the same PR content
+to be evaluated once more after upgrade.
+
+Snapshot association alone does not make new evaluation history canonical.
+Journal propagation and the declaration/binding transition remain pending.
+Do not enable repository-key enforcement on the strength of this migration.
 
 ## Canonical evaluation reads
 
