@@ -90,6 +90,7 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "agent_write_ups",
             "review_governance",
             "repository_enforcement",
+            "repository_associations",
             "repository_withholding",
             "spend_bindings",
             "repository_judged_policies",

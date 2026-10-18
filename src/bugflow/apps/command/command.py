@@ -1,6 +1,6 @@
 """The ``bugflow`` command.
 
-It has eleven subcommands::
+Its subcommands include::
 
     bugflow allow [REPOSITORY] [--layer LAYER] [--agent REVIEWER]
         [--usd DOLLARS | --no-money-limit]
@@ -15,6 +15,7 @@ It has eleven subcommands::
     bugflow install-policies DIRECTORY --repository OWNER/NAME
         --commit SHA [--check]
     bugflow migrate [--check]
+    bugflow repository-origins [--apply MAPPINGS.json]
     bugflow poll [--once]
     bugflow revoke [REPOSITORY] [--layer LAYER] [--agent REVIEWER]
         --per CADENCE
@@ -132,6 +133,7 @@ cannot be reached.
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
@@ -148,6 +150,7 @@ from bugflow.apps.command.declaring import (
     run_declared,
     run_revoke,
 )
+from bugflow.apps.command.repository_origins import apply_mapping, inventory
 from bugflow.apps.command.webhooks import HookSettings, run_webhooks
 from bugflow.apps.poller.poller import (
     PollerSettings,
@@ -185,6 +188,10 @@ from bugflow.method.infrastructure.http_policy_server import (
 )
 from bugflow.method.infrastructure.policy_directory import PolicyDirectory
 from bugflow.method.usecases.send_policies import SendPoliciesUseCase
+from bugflow.shared.domain.values.repository_association import (
+    AssociationConflictError,
+    AssociationRecordMissingError,
+)
 from bugflow.shared.infrastructure import migrations
 from bugflow.shared.infrastructure.system_clock import SystemClock
 
@@ -284,6 +291,12 @@ def _parser() -> argparse.ArgumentParser:
         help="run nothing; print the scripts that would be run and "
         "exit 1 if there are any",
     )
+    origins = commands.add_parser(
+        "repository-origins",
+        help="inventory retained repository references as JSON; optionally "
+        "apply explicit per-record origin mappings",
+    )
+    origins.add_argument("--apply", type=Path, metavar="MAPPINGS.json")
     poll = commands.add_parser(
         "poll",
         help="list the pull requests of the repositories POLL_REPOSITORIES "
@@ -542,6 +555,8 @@ def run(
         configure_telemetry(SERVICES[args.command], environ)
     if args.command == "migrate":
         return _migrate(args.check, environ)
+    if args.command == "repository-origins":
+        return _repository_origins(args.apply, environ)
     if args.command == "install-policies":
         return _install_policies(args, environ)
     if args.command == "poll":
@@ -747,3 +762,25 @@ def _migrate(check: bool, environ: Mapping[str, str]) -> int:
 
 def main() -> None:
     sys.exit(run())
+
+
+def _repository_origins(path: Path | None, environ: Mapping[str, str]) -> int:
+    database_url = environ.get("DATABASE_URL")
+    if not database_url:
+        print("error: DATABASE_URL not set", file=sys.stderr)
+        return 2
+    try:
+        if path is not None:
+            apply_mapping(database_url, path)
+        print(json.dumps(inventory(database_url), sort_keys=True))
+    except AssociationRecordMissingError:
+        print("error: mapping names an absent record", file=sys.stderr)
+        return 2
+    except AssociationConflictError:
+        print("error: record already has another origin", file=sys.stderr)
+        return 2
+    except (ValueError, OSError):
+        # Mapping input may contain a mistyped credential-bearing URL.
+        print("error: invalid repository mapping", file=sys.stderr)
+        return 2
+    return 0

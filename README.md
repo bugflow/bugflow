@@ -33,4 +33,6 @@ request and where each part comes from, for an author and for whoever
 keeps a binding.
 [docs/words.md](docs/words.md) lists what bugflow calls things and
 where each word is defined.
+[docs/repository-origins.md](docs/repository-origins.md) describes the
+inventory and explicit migration of retained repository references.
 
