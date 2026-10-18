@@ -20,6 +20,7 @@ differences were found with Forgejo 16.0.4, and this adapter handles each:
 
 import re
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -46,6 +47,7 @@ from bugflow.forge.domain.models.pull_request import (
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 # Forgejo's default page size (its ``MAX_RESPONSE_ITEMS`` setting). A server
 # may be set to return fewer, so a listing is read until it has as many items
@@ -231,6 +233,7 @@ class ForgejoForge:
         token: str,
         transport: httpx2.BaseTransport | None = None,
     ) -> None:
+        self._url = url.rstrip("/")
         self._client = httpx2.Client(
             base_url=f"{url.rstrip('/')}/api/v1",
             headers={
@@ -242,23 +245,44 @@ class ForgejoForge:
             # Forgejo answers a request for a renamed repository with a
             # redirect to its new name: 301 for a read, 307 for a write.
             # Redirects are followed, keeping the method. The host stays the
-            # same, so the token is sent on.
+            # same, so the token is sent on. Snapshot reads override this
+            # to refuse redirects that could attach content to the old origin.
             follow_redirects=True,
         )
 
     def fetch_snapshot(self, ref: PullRequestRef) -> PullRequestSnapshot:
         path = f"/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
-        pull = self._send("GET", path)
+        try:
+            origin = (
+                str(
+                    RepositoryOrigin.parse(
+                        f"{self._url}/{ref.owner}/{ref.repo}"
+                    )
+                )
+                if self._url.startswith("https://")
+                else None
+            )
+        except ValueError as exc:
+            raise ForgeRejectedError(
+                "Forgejo endpoint cannot identify a canonical repository"
+            ) from exc
+        pull = self._request("GET", path, follow_redirects=False).json()
         commits = self._get_all(
             # Ask for each commit's files, so that a review can look at each
             # commit's changes separately. Forgejo includes them in this one
             # response, so it costs no extra request.
             f"{path}/commits",
             {"files": "true", "verification": "false"},
+            follow_redirects=False,
         )
-        files = self._get_all(f"{path}/files")
-        diff = self._request("GET", f"{path}.diff").text
-        return snapshot_from_payloads(ref, pull, commits, files, diff)
+        files = self._get_all(f"{path}/files", follow_redirects=False)
+        diff = self._request(
+            "GET", f"{path}.diff", follow_redirects=False
+        ).text
+        return replace(
+            snapshot_from_payloads(ref, pull, commits, files, diff),
+            origin=origin,
+        )
 
     def is_open(self, ref: PullRequestRef) -> bool:
         path = f"/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
@@ -407,10 +431,15 @@ class ForgejoForge:
         *,
         params: dict[str, int | str] | None = None,
         json: dict[str, Any] | None = None,
+        follow_redirects: bool = True,
     ) -> httpx2.Response:
         try:
             response = self._client.request(
-                method, path, params=params, json=json
+                method,
+                path,
+                params=params,
+                json=json,
+                follow_redirects=follow_redirects,
             )
             response.raise_for_status()
         except httpx2.HTTPStatusError as exc:
@@ -432,7 +461,11 @@ class ForgejoForge:
         return response.json() if response.content else None
 
     def _pages(
-        self, path: str, params: dict[str, int | str] | None = None
+        self,
+        path: str,
+        params: dict[str, int | str] | None = None,
+        *,
+        follow_redirects: bool = True,
     ) -> Iterator[list[dict[str, Any]]]:
         read = 0
         for page in range(1, MAX_PAGES + 1):
@@ -440,6 +473,7 @@ class ForgejoForge:
                 "GET",
                 path,
                 params=(params or {}) | {"limit": PER_PAGE, "page": page},
+                follow_redirects=follow_redirects,
             )
             batch: list[dict[str, Any]] = response.json()
             yield batch
@@ -453,6 +487,16 @@ class ForgejoForge:
                 return
 
     def _get_all(
-        self, path: str, params: dict[str, int | str] | None = None
+        self,
+        path: str,
+        params: dict[str, int | str] | None = None,
+        *,
+        follow_redirects: bool = True,
     ) -> list[dict[str, Any]]:
-        return [item for batch in self._pages(path, params) for item in batch]
+        return [
+            item
+            for batch in self._pages(
+                path, params, follow_redirects=follow_redirects
+            )
+            for item in batch
+        ]

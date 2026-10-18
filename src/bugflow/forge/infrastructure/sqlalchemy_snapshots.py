@@ -19,11 +19,14 @@ from bugflow.forge.domain.models.pull_request import (
 from bugflow.shared.domain.errors import ContentTooLargeError
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociation,
     RepositoryAssociationUnresolvedError,
 )
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.serde import from_json, to_json
 from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
+    associate_on_connection,
     association_exists,
 )
 
@@ -92,16 +95,30 @@ class SqlAlchemySnapshotStore:
         reference = SnapshotRef(
             snapshot_id=snapshot.content_id, ref=snapshot.ref
         )
+        body = to_json(snapshot)
+        if snapshot.origin is None:
+            body.pop("origin")
         statement = (
             insert(snapshots)
             .values(
                 snapshot_id=reference.snapshot_id,
-                body=to_json(snapshot),
+                body=body,
             )
             .on_conflict_do_nothing(index_elements=["snapshot_id"])
         )
         with self._engine.begin() as connection:
             connection.execute(statement)
+            if snapshot.origin is not None:
+                associate_on_connection(
+                    connection,
+                    (
+                        RepositoryAssociation(
+                            kind="snapshot",
+                            record_id=reference.snapshot_id,
+                            origin=RepositoryOrigin(snapshot.origin),
+                        ),
+                    ),
+                )
         return reference
 
     def get(self, reference: SnapshotRef) -> PullRequestSnapshot:

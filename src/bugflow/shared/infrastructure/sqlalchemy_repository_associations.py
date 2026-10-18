@@ -44,31 +44,8 @@ class SqlAlchemyRepositoryAssociations:
     def associate(
         self, associations: tuple[RepositoryAssociation, ...]
     ) -> None:
-        table = repository_associations
-        # A stable order avoids deadlocks between overlapping batches.
         with self._engine.begin() as connection:
-            for one in sorted(
-                associations, key=lambda a: (a.kind, a.record_id)
-            ):
-                connection.execute(
-                    insert(table)
-                    .values(
-                        kind=one.kind,
-                        record_id=one.record_id,
-                        origin=str(one.origin),
-                    )
-                    .on_conflict_do_nothing()
-                )
-                held = connection.execute(
-                    sa.select(table.c.origin).where(
-                        table.c.kind == one.kind,
-                        table.c.record_id == one.record_id,
-                    )
-                ).scalar_one()
-                if held != str(one.origin):
-                    raise AssociationConflictError(
-                        "retained record already has another repository origin"
-                    )
+            associate_on_connection(connection, associations)
 
     def origin_for(
         self, kind: RecordKind, record_id: str
@@ -94,3 +71,30 @@ def association_exists(
     if origin is not None:
         predicates.append(table.c.origin == origin)
     return sa.exists(sa.select(table.c.record_id).where(*predicates))
+
+
+def associate_on_connection(
+    connection: sa.Connection, associations: tuple[RepositoryAssociation, ...]
+) -> None:
+    table = repository_associations
+    # A stable order avoids deadlocks between overlapping batches.
+    for one in sorted(associations, key=lambda a: (a.kind, a.record_id)):
+        connection.execute(
+            insert(table)
+            .values(
+                kind=one.kind,
+                record_id=one.record_id,
+                origin=str(one.origin),
+            )
+            .on_conflict_do_nothing()
+        )
+        held = connection.execute(
+            sa.select(table.c.origin).where(
+                table.c.kind == one.kind,
+                table.c.record_id == one.record_id,
+            )
+        ).scalar_one()
+        if held != str(one.origin):
+            raise AssociationConflictError(
+                "retained record already has another repository origin"
+            )

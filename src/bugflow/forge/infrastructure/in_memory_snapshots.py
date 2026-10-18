@@ -14,7 +14,12 @@ from bugflow.shared.domain.repositories.repository_associations import (
 )
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociation,
     RepositoryAssociationUnresolvedError,
+)
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
+from bugflow.shared.infrastructure.in_memory_repository_associations import (
+    InMemoryRepositoryAssociations,
 )
 from bugflow.shared.infrastructure.serde import to_json
 
@@ -24,7 +29,11 @@ class InMemorySnapshotStore:
         self, associations: RepositoryAssociations | None = None
     ) -> None:
         self.snapshots: dict[str, PullRequestSnapshot] = {}
-        self._associations = associations
+        self._associations = (
+            associations
+            if associations is not None
+            else InMemoryRepositoryAssociations()
+        )
 
     def has_contribution(
         self,
@@ -56,6 +65,16 @@ class InMemorySnapshotStore:
         reference = SnapshotRef(
             snapshot_id=snapshot.content_id, ref=snapshot.ref
         )
+        if snapshot.origin is not None:
+            self._associations.associate(
+                (
+                    RepositoryAssociation(
+                        kind="snapshot",
+                        record_id=reference.snapshot_id,
+                        origin=RepositoryOrigin(snapshot.origin),
+                    ),
+                )
+            )
         self.snapshots.setdefault(reference.snapshot_id, snapshot)
         return reference
 
@@ -93,9 +112,5 @@ class InMemorySnapshotStore:
         return snapshot, size
 
     def _origin(self, snapshot_id: str) -> str | None:
-        origin = (
-            self._associations.origin_for("snapshot", snapshot_id)
-            if self._associations is not None
-            else None
-        )
+        origin = self._associations.origin_for("snapshot", snapshot_id)
         return str(origin) if origin is not None else None
