@@ -10,7 +10,7 @@ has changed for the poller, and managing webhooks.
 
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -38,6 +38,7 @@ from bugflow.forge.domain.models.webhook import Webhook
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 API_URL = "https://api.github.com"
 PER_PAGE = 100
@@ -263,17 +264,26 @@ class GitHubForge:
             # GitHub answers a request for a renamed repository with a redirect
             # to its new name: 301 for a read, 307 for a write. Redirects are
             # followed, keeping the method. The host stays the same, so the
-            # token is sent on.
+            # token is sent on. Snapshot reads override this to refuse
+            # redirects that could attach content to the old origin.
             follow_redirects=True,
         )
 
     def fetch_snapshot(self, ref: PullRequestRef) -> PullRequestSnapshot:
         path = f"/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
-        pull = self._get(path)
-        commits = self._get_all(f"{path}/commits")
-        files = self._get_all(f"{path}/files")
-        return snapshot_from_payloads(
-            ref, pull, [self._with_files(ref, c) for c in commits], files
+        origin = str(
+            RepositoryOrigin.parse(
+                f"https://github.com/{ref.owner}/{ref.repo}"
+            )
+        )
+        pull = self._get(path, follow_redirects=False)
+        commits = self._get_all(f"{path}/commits", follow_redirects=False)
+        files = self._get_all(f"{path}/files", follow_redirects=False)
+        return replace(
+            snapshot_from_payloads(
+                ref, pull, [self._with_files(ref, c) for c in commits], files
+            ),
+            origin=origin,
         )
 
     def _with_files(
@@ -287,7 +297,8 @@ class GitHubForge:
         that a review can look at each commit's changes separately.
         """
         found = self._get(
-            f"/repos/{ref.owner}/{ref.repo}/commits/{commit['sha']}"
+            f"/repos/{ref.owner}/{ref.repo}/commits/{commit['sha']}",
+            follow_redirects=False,
         )
         return {**commit, "files": found.get("files") or []}
 
@@ -483,6 +494,7 @@ class GitHubForge:
         params: dict[str, int | str] | None = None,
         json: dict[str, Any] | None = None,
         missing_ok: bool = False,
+        follow_redirects: bool = True,
     ) -> Any:
         token = self._tokens.for_path(path)
         try:
@@ -492,6 +504,7 @@ class GitHubForge:
                 params=params,
                 json=json,
                 headers={"Authorization": f"Bearer {token}"},
+                follow_redirects=follow_redirects,
             )
             if missing_ok and response.status_code == 404:
                 return None
@@ -505,14 +518,26 @@ class GitHubForge:
         return response.json() if response.content else None
 
     def _get(
-        self, path: str, params: dict[str, int | str] | None = None
+        self,
+        path: str,
+        params: dict[str, int | str] | None = None,
+        *,
+        follow_redirects: bool = True,
     ) -> Any:
-        return self._send("GET", path, params=params)
+        return self._send(
+            "GET", path, params=params, follow_redirects=follow_redirects
+        )
 
-    def _get_all(self, path: str) -> list[dict[str, Any]]:
+    def _get_all(
+        self, path: str, *, follow_redirects: bool = True
+    ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         for page in range(1, MAX_PAGES + 1):
-            batch = self._get(path, {"per_page": PER_PAGE, "page": page})
+            batch = self._get(
+                path,
+                {"per_page": PER_PAGE, "page": page},
+                follow_redirects=follow_redirects,
+            )
             items.extend(batch)
             if len(batch) < PER_PAGE:
                 break
