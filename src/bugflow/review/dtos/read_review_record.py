@@ -21,6 +21,7 @@ class ReadReviewRecordRequest(BaseModel):
 
     # The workflow run of the evaluation to read.
     correlation: Correlation
+    origin: str | None = None
 
 
 class ReadReviewRecordResponse(BaseModel):

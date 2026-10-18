@@ -19,7 +19,11 @@ class Contributions:
         self.reads: list[tuple[PullRequestRef, frozenset[str]]] = []
 
     def has_contribution(
-        self, ref: PullRequestRef, emails: frozenset[str]
+        self,
+        ref: PullRequestRef,
+        emails: frozenset[str],
+        *,
+        origin: str | None = None,
     ) -> bool:
         self.reads.append((ref, emails))
         return bool(self.records.get(ref, frozenset()) & emails)

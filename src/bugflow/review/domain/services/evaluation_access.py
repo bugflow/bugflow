@@ -7,6 +7,8 @@ from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
 
 class EvaluationAccessService(Protocol):
-    def may_read(self, caller: Caller, ref: PullRequestRef) -> bool:
+    def may_read(
+        self, caller: Caller, ref: PullRequestRef, *, origin: str | None = None
+    ) -> bool:
         """Whether the verified caller may read this pull request."""
         ...

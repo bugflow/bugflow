@@ -3,8 +3,9 @@
 Bugflow can inventory retained repository references and associate each
 record with an explicit canonical origin. Migration `0008` adds the
 association table. It leaves existing records and access behaviour intact.
-Ingestion and API reads still use the existing hostless references. This
-release does not enable repository keys or canonical history queries.
+Ingestion still writes hostless references. Evaluation API reads accept
+an optional canonical origin and use explicit associations to select
+retained records. This release does not implement repository-key enforcement.
 
 ## Canonical form
 
@@ -52,7 +53,7 @@ inventory above does not establish what a production installation holds.
 These commands require direct access to the database named by `DATABASE_URL`.
 Restrict that access to administrators. There is no public mapping endpoint.
 
-1. Back up the database, then run `bugflow migrate --check` and
+1. Back up the database. Run `bugflow migrate --check`. Run
    `bugflow migrate`. Existing applications can use the additive schema.
 2. Run `bugflow repository-origins > inventory.json`.
 3. Establish the origin of each record from deployment records or other
@@ -81,7 +82,8 @@ record id, so equal identifiers in different stores remain independent.
 Concurrent mappings cannot replace an association through this command.
 The command has no correction or reassignment operation. Review mappings
 before applying them. New ingestion remains unresolved until explicitly
-mapped; this inventory is preparation for the reader/writer migration.
+mapped. Canonical reads require associations for the journal records and
+snapshots they select.
 
 An association states provenance. It grants no permission, creates no
 repository-name alias and carries no credential. A changed origin is a
@@ -96,10 +98,46 @@ Rollback uses the preceding application release while retaining migration
 `0008` and its associations. Do not drop or rewrite retained records. Older
 applications ignore the additional table. No reverse migration is provided.
 
-Before canonical identities can select review history or archive access,
-ingestion must retain the origin, readers must resolve historical records,
-and bindings and declarations need compatible migration paths. Existing
-API callers keep their current behaviour in this release. Canonical reads
-must distinguish an absent record from an unresolved association and check
-authority independently of historical lookup. Repository-key activation
-requires credential protection and compatible clients in later releases.
+Deploy the canonical reader before switching writers. Existing API callers
+keep their hostless selection when they omit `origin`. A canonical caller
+must use this reader release or later. An older API ignores unknown query
+parameters, so directing canonical callers to an older API could return
+hostless results. Suspend canonical requests before rolling the API back.
+An operator can test reader readiness with mapped records that share a
+path on two hosts.
+
+Ingestion still needs to retain the origin. Bindings and declarations need
+compatible migration paths. Repository-key activation requires credential
+protection and compatible clients in later releases.
+
+## Canonical evaluation reads
+
+Both evaluation endpoints accept `origin=host/owner/name`, or an equivalent
+SSH or HTTPS spelling. URL-encode the value as a query parameter. Its
+canonical path must match the route's owner and repository. Malformed or
+mismatching values return 422 before authorization or evidence selection.
+The history response reports the canonical value in `scope.origin`; a
+legacy response reports null there.
+
+The reader selects journal events through their explicit associations and
+the requested forge and PR numbers. The original event's repository path
+can differ, so an explicit historical mapping remains readable without
+rewriting the event. Snapshot reads require the same origin, forge and PR
+number before transferring their bodies. Exchanges remain selected through
+the admitted journal events that reference them.
+
+Contributor access requires author or committer evidence in a snapshot
+associated with the requested origin and PR. A contribution on another
+host grants nothing. Administrators retain their existing access. The
+origin selector itself grants no authority. Legacy requests keep their
+existing contributor and administrator rules.
+
+An authorized canonical read returns 409 if matching hostless journal
+records remain unresolved, or if a referenced retained snapshot lacks its
+association. The journal check covers the selected forge, route path and
+PR numbers, and the run for detail requests. This conservative check
+refuses partial history while the installation cannot establish which
+host those records came from. A mapped record from another origin is
+excluded. Absent evaluations retain their 404 response; missing or
+out-of-scope snapshots retain the missing-content representation. The
+existing event and byte limits still apply to canonical reads.

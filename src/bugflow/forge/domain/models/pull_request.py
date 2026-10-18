@@ -147,3 +147,4 @@ class SnapshotRef:
 
     snapshot_id: str
     ref: PullRequestRef
+    origin: str | None = None

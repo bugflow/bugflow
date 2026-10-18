@@ -17,11 +17,17 @@ from bugflow.review.domain.models.history import (
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociationUnresolvedError,
+)
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.serde import from_columns
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     ENTRY_COLUMNS,
     journal,
+)
+from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
+    association_exists,
 )
 
 
@@ -55,7 +61,6 @@ class SqlAlchemyJournalQueries:
         """
         predicates = [
             journal.c.forge == scope.forge,
-            journal.c.repo == scope.repo,
             journal.c.pr_number.in_(scope.pr_numbers),
         ]
         if scope.correlation is not None:
@@ -64,6 +69,25 @@ class SqlAlchemyJournalQueries:
                     journal.c.workflow_id == scope.correlation.workflow_id,
                     journal.c.run_id == scope.correlation.run_id,
                 ]
+            )
+        unresolved = sa.select(
+            sa.exists().where(
+                *predicates,
+                journal.c.repo == scope.repo,
+                ~association_exists(
+                    "journal", sa.cast(journal.c.event_id, sa.Text)
+                ),
+            )
+        )
+        if scope.origin is None:
+            predicates.append(journal.c.repo == scope.repo)
+        else:
+            predicates.append(
+                association_exists(
+                    "journal",
+                    sa.cast(journal.c.event_id, sa.Text),
+                    scope.origin,
+                )
             )
         size: sa.ColumnElement[int] = sa.literal(1024)
         for column in journal.c:
@@ -95,6 +119,13 @@ class SqlAlchemyJournalQueries:
             ) as connection,
             connection.begin(),
         ):
+            if (
+                scope.origin is not None
+                and connection.execute(unresolved).scalar_one()
+            ):
+                raise RepositoryAssociationUnresolvedError(
+                    "history contains unresolved repository associations"
+                )
             count, byte_count = connection.execute(preflight).one()
             if count > limits.max_events:
                 raise HistoryTooLargeError("history exceeds the event limit")

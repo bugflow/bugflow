@@ -88,7 +88,9 @@ class Exchange:
 
 
 class Access:
-    def may_read(self, caller: Caller, ref: PullRequestRef) -> bool:
+    def may_read(
+        self, caller: Caller, ref: PullRequestRef, *, origin: str | None = None
+    ) -> bool:
         return caller.subject == "subject" and ref in (
             REF,
             replace(REF, number=6),

@@ -56,3 +56,4 @@ class SubmissionRef:
     #: The hash of the stored content.
     snapshot_id: str
     ref: PullRequestRef
+    origin: str | None = None

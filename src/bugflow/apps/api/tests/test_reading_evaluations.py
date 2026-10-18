@@ -68,7 +68,9 @@ class Access:
         self.allowed = allowed
         self.checked: list[PullRequestRef] = []
 
-    def may_read(self, caller: Caller, ref: PullRequestRef) -> bool:
+    def may_read(
+        self, caller: Caller, ref: PullRequestRef, *, origin: str | None = None
+    ) -> bool:
         self.checked.append(ref)
         return ref.number in self.allowed
 

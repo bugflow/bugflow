@@ -27,6 +27,10 @@ from bugflow.review.usecases.read_review_record import (
 from bugflow.shared.domain.values.caller import Caller
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociationUnresolvedError,
+)
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 Component = Annotated[
     str, Path(pattern=r"^[\w.-]+$", min_length=1, max_length=255)
@@ -50,8 +54,10 @@ def evaluation_routes(
 ) -> None:
     prefix = "/api/repositories/{forge}/{owner}/{repo}"
 
-    def require_access(who: Caller, ref: PullRequestRef) -> None:
-        if not reading.access.may_read(who, ref):
+    def require_access(
+        who: Caller, ref: PullRequestRef, origin: str | None
+    ) -> None:
+        if not reading.access.may_read(who, ref, origin=origin):
             raise HTTPException(
                 403, "this caller may not read this evaluation"
             )
@@ -68,27 +74,37 @@ def evaluation_routes(
         policy_id: Annotated[
             str | None, Query(min_length=1, max_length=255)
         ] = None,
+        origin: Annotated[
+            str | None, Query(min_length=1, max_length=2048)
+        ] = None,
     ) -> ReadReviewHistoryResponse:
         # Refuse the whole request if even one selected PR is inaccessible.
         numbers = tuple(sorted(set(pr_number)))
+        origin = _origin(origin, owner, repo)
         for number in numbers:
             require_access(
                 who,
                 PullRequestRef(
                     forge=forge, owner=owner, repo=repo, number=number
                 ),
+                origin,
             )
         try:
             return reading.history.execute(
                 ReadReviewHistoryRequest(
                     scope=HistoryScope(
-                        forge=forge, repo=f"{owner}/{repo}", pr_numbers=numbers
+                        forge=forge,
+                        repo=f"{owner}/{repo}",
+                        pr_numbers=numbers,
+                        origin=origin,
                     ),
                     policy_id=policy_id,
                 )
             )
         except HistoryTooLargeError as exc:
             raise HTTPException(413, str(exc)) from exc
+        except RepositoryAssociationUnresolvedError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.get(prefix + "/pull-requests/{pr_number}/evaluation")
     def detail(
@@ -99,15 +115,20 @@ def evaluation_routes(
         pr_number: Annotated[int, Path(gt=0)],
         workflow_id: Identifier,
         run_id: Identifier,
+        origin: Annotated[
+            str | None, Query(min_length=1, max_length=2048)
+        ] = None,
     ) -> ReadReviewRecordResponse:
         ref = PullRequestRef(
             forge=forge, owner=owner, repo=repo, number=pr_number
         )
-        require_access(who, ref)
+        origin = _origin(origin, owner, repo)
+        require_access(who, ref, origin)
         try:
             return reading.detail.execute(
                 ReadReviewRecordRequest(
                     ref=ref,
+                    origin=origin,
                     correlation=Correlation(
                         workflow_id=workflow_id, run_id=run_id
                     ),
@@ -117,3 +138,17 @@ def evaluation_routes(
             raise HTTPException(404, str(exc)) from exc
         except HistoryTooLargeError as exc:
             raise HTTPException(413, str(exc)) from exc
+        except RepositoryAssociationUnresolvedError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+
+def _origin(value: str | None, owner: str, repo: str) -> str | None:
+    if value is None:
+        return None
+    try:
+        canonical = str(RepositoryOrigin.parse(value))
+        if canonical.split("/", 1)[1] != f"{owner}/{repo}":
+            raise ValueError("origin does not match the selected repository")
+        return canonical
+    except ValueError as exc:
+        raise HTTPException(422, "invalid repository origin") from exc
