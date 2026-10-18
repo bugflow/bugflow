@@ -108,6 +108,10 @@ under `src/` reads anything under `deployments/`.
 4. A use case does not import what runs it: no web framework, no
    workflow engine, no database driver.
 
+5. MCP reads through the HTTP API. Its production modules import no context,
+   API implementation or database driver. API access and evidence semantics
+   remain on the server; MCP relays its response under the caller's identity.
+
 ## Consequences
 
 A context's code and its tests are in one directory.

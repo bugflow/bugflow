@@ -143,6 +143,21 @@ services:
       timeout: 5s
       retries: 20
 
+  mcp:
+    # Reads evaluation evidence through the API. Opt in with --profile mcp.
+    build: ../..
+    command: ["uvicorn", "bugflow.apps.mcp.server:mcp_from_environment", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    profiles: ["mcp"]
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file: ../../env/mcp.env
+    networks:
+      default: {}
+      edge:
+        aliases: ["${SOLUTION}-mcp"]
+
   poller:
     # Stands in for a forge's webhooks where the forge cannot reach the
     # ingress. Started only when asked for, with --profile polling.

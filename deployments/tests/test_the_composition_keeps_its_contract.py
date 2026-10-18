@@ -37,7 +37,7 @@ ENVIRONMENTS = sorted(
 )
 
 #: The services a host's proxy routes to. Each joins the edge network.
-FRONTED = {"ingress", "api", "temporal-ui"}
+FRONTED = {"ingress", "api", "mcp", "temporal-ui"}
 
 #: The services told one address in the composition, with no file of
 #: settings.
@@ -539,3 +539,122 @@ def test_compose_preserves_identity_json_as_literal_data(
     # Compose escapes literal dollars when serializing reusable configuration.
     encoded = environment["EVALUATION_IDENTITIES"].replace("$$", "$")
     assert json.loads(encoded) == identities
+
+
+@pytest.mark.parametrize("environment", ENVIRONMENTS)
+def test_mcp_is_opt_in_and_depends_only_on_the_api(environment: str) -> None:
+    service = composition(environment)["services"]["mcp"]
+    assert service["profiles"] == ["mcp"]
+    assert service["depends_on"] == {"api": {"condition": "service_healthy"}}
+    assert service["command"] == [
+        "uvicorn",
+        "bugflow.apps.mcp.server:mcp_from_environment",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+    ]
+    assert service["restart"] == "unless-stopped"
+    assert "DATABASE_URL" not in (TEMPLATES / "mcp.env.j2").read_text()
+
+
+def test_unconfigured_mcp_renders_without_enabling_or_sharing_credentials(
+    tmp_path: Path,
+) -> None:
+    done = rendered((ROOT / ".env.example").read_text(), tmp_path)
+    assert done.returncode == 0, done.stderr
+    lines = (tmp_path / "env" / "mcp.env").read_text().splitlines()
+    settings = dict(
+        line.split("=", 1)
+        for line in lines
+        if "=" in line and not line.startswith("#")
+    )
+    assert settings.pop("MCP_API_URL") == "http://api:8000"
+    assert settings.pop("MCP_EXCHANGE_CLIENT_SECRET") == "''"
+    assert all(value == "" for value in settings.values())
+    assert all(name.startswith("MCP_") for name in settings)
+
+
+def test_mcp_renders_its_own_identity_and_api_settings(tmp_path: Path) -> None:
+    from bugflow.apps.mcp.server import REQUIRED as MCP_REQUIRED
+
+    supplied = {
+        "bugflow_mcp_issuer": "https://identity.example",
+        "bugflow_mcp_audience": "mcp-project",
+        "bugflow_mcp_clients": "work-client,other-client",
+        "bugflow_mcp_roles_claim": "project-roles",
+        "bugflow_mcp_exchange_client_id": "mcp-exchange",
+        "vault_bugflow_mcp_exchange_client_secret": "exchange-secret",
+        "bugflow_mcp_api_audience": "api-project",
+        "bugflow_mcp_api_url": "https://api.example",
+        "bugflow_mcp_public_url": "https://mcp.example",
+    }
+    values = (ROOT / ".env.example").read_text() + "\n".join(
+        f"{name}={value}" for name, value in supplied.items()
+    )
+    done = rendered(values, tmp_path)
+    assert done.returncode == 0, done.stderr
+    lines = (tmp_path / "env" / "mcp.env").read_text().splitlines()
+    settings = dict(
+        line.split("=", 1)
+        for line in lines
+        if "=" in line and not line.startswith("#")
+    )
+    assert set(settings) == set(MCP_REQUIRED)
+    assert settings == {
+        "MCP_ISSUER": "https://identity.example",
+        "MCP_AUDIENCE": "mcp-project",
+        "MCP_CLIENTS": "work-client,other-client",
+        "MCP_ROLES_CLAIM": "project-roles",
+        "MCP_EXCHANGE_CLIENT_ID": "mcp-exchange",
+        "MCP_EXCHANGE_CLIENT_SECRET": "'exchange-secret'",
+        "MCP_API_AUDIENCE": "api-project",
+        "MCP_API_URL": "https://api.example",
+        "MCP_PUBLIC_URL": "https://mcp.example",
+    }
+
+
+def test_compose_preserves_the_exchange_secret(tmp_path: Path) -> None:
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is not installed")
+    available = subprocess.run(
+        ["docker", "compose", "version"], capture_output=True, check=False
+    )
+    if available.returncode:
+        pytest.skip("Docker Compose is not installed")
+    secret = r"${EXCHANGE_SECRET}'back\slash"
+    values = (ROOT / ".env.example").read_text() + (
+        f"vault_bugflow_mcp_exchange_client_secret={secret}\n"
+    )
+    done = rendered(values, tmp_path)
+    assert done.returncode == 0, done.stderr
+    compose = tmp_path / "compose.yaml"
+    compose.write_text(
+        yaml.safe_dump(
+            {
+                "name": "mcp-settings-test",
+                "services": {
+                    "mcp": {"image": "unused", "env_file": "env/mcp.env"}
+                },
+            }
+        )
+    )
+    checked = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(compose),
+            "config",
+            "--format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=dict(os.environ, EXCHANGE_SECRET="must-not-be-substituted"),
+    )
+    assert checked.returncode == 0, checked.stderr
+    settings = json.loads(checked.stdout)["services"]["mcp"]["environment"]
+    assert settings["MCP_EXCHANGE_CLIENT_SECRET"].replace("$$", "$") == secret
