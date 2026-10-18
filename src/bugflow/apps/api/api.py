@@ -1,17 +1,6 @@
-"""The API: the two routes a policy repository's pipeline calls.
+"""Authenticated policy deployment and evaluation reads.
 
-``POST /api/policy-deployments`` stores the files sent as a deployment
-and puts it in force, or with ``check_only`` parses them and stores
-nothing. ``GET /api/policy-deployments/in-force`` names the deployment
-in force.
-
-Every call but the healthcheck, answered at ``/`` and at
-``/api/healthcheck``, carries a bearer token, checked here before
-anything else is read, and then the caller's right to deploy is asked
-of the access interface. A refused token answers 401 and a caller who
-may not deploy 403.
-
-Run by uvicorn with ``--factory``, as ``api_from_environment``.
+Run by uvicorn with --factory as api_from_environment.
 """
 
 import os
@@ -21,6 +10,8 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from bugflow.apps.api.evaluation_access import access_from_configuration
+from bugflow.apps.api.evaluations import EvaluationReading, evaluation_routes
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
 )
@@ -30,7 +21,11 @@ from bugflow.apps.shared.deploying import (
     deploying_over,
 )
 from bugflow.apps.shared.journals import build_sha
+from bugflow.apps.shared.submission_source import ForgeBoundedSubmissionSource
 from bugflow.apps.shared.telemetry import configure_telemetry, instrument_app
+from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
+    SqlAlchemySnapshotStore,
+)
 from bugflow.method.domain.errors import (
     PolicyDeploymentConflictError,
     PolicyDeploymentError,
@@ -43,6 +38,16 @@ from bugflow.method.dtos.deploy_policies import (
     DeployPoliciesRequest,
     DeployPoliciesResponse,
     InForce,
+)
+from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
+    SqlAlchemyJournalQueries,
+)
+from bugflow.review.infrastructure.sqlalchemy_judge_archive import (
+    SqlAlchemyJudgeArchive,
+)
+from bugflow.review.usecases.read_review_record import (
+    ReadReviewHistoryUseCase,
+    ReadReviewRecordUseCase,
 )
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.services.bearer_token import BearerTokenService
@@ -63,7 +68,9 @@ class PolicyDeploying:
 
 
 def create_api(
-    tokens: BearerTokenService, deploying: PolicyDeploying
+    tokens: BearerTokenService,
+    deploying: PolicyDeploying,
+    reading: EvaluationReading | None = None,
 ) -> FastAPI:
     """Build the API over the token check and what deploys."""
     app = FastAPI(title="bugflow API")
@@ -86,6 +93,8 @@ def create_api(
         return {"ok": True}
 
     policy_deployment_routes(app, caller, deploying)
+    if reading is not None:
+        evaluation_routes(app, caller, reading)
     return app
 
 
@@ -187,6 +196,11 @@ def api_from_environment(
 
     Optional:
 
+    - ``EVALUATION_ADMIN_ROLE``: a role allowed to read every evaluation.
+      Unset, no role grants this access.
+    - ``EVALUATION_IDENTITIES``: a JSON list of issuer, subject and commit
+      email aliases, managed by the operator. Unset, contributors have no
+      aliases. Changes take effect on API restart.
     - ``BUILD_SHA``: the full git sha of the build, recorded with every
       journal entry.
     - ``POLICY_CHECKS``: the checks this server performs, comma-separated.
@@ -214,6 +228,23 @@ def api_from_environment(
         for client in environ["API_CLIENTS"].split(",")
         if client.strip()
     ]
+    snapshots = SqlAlchemySnapshotStore(environ["DATABASE_URL"])
+    access = access_from_configuration(
+        issuer,
+        environ.get("EVALUATION_ADMIN_ROLE"),
+        environ.get("EVALUATION_IDENTITIES", "[]"),
+        snapshots,
+    )
+    history = SqlAlchemyJournalQueries(environ["DATABASE_URL"])
+    reading = EvaluationReading(
+        access=access,
+        history=ReadReviewHistoryUseCase(history),
+        detail=ReadReviewRecordUseCase(
+            history,
+            SqlAlchemyJudgeArchive(environ["DATABASE_URL"]),
+            ForgeBoundedSubmissionSource(snapshots),
+        ),
+    )
     app = create_api(
         JwtBearerToken(
             issuer,
@@ -230,6 +261,7 @@ def api_from_environment(
                 checks_from(environ),
             ),
         ),
+        reading=reading,
     )
     instrument_app(app, environ)
     return app
