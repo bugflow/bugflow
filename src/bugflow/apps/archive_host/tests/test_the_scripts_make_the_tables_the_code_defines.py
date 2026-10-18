@@ -31,7 +31,10 @@ from bugflow.review.infrastructure import (
     sqlalchemy_withholding,
     sqlalchemy_write_up_archive,
 )
-from bugflow.shared.infrastructure import sqlalchemy_journal
+from bugflow.shared.infrastructure import (
+    sqlalchemy_journal,
+    sqlalchemy_repository_associations,
+)
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.migrations import VERSION_TABLE, upgrade
 
@@ -45,6 +48,7 @@ def defined() -> sa.MetaData:
         sqlalchemy_block_puts.metadata,
         sqlalchemy_search_index.metadata,
         sqlalchemy_journal.metadata,
+        sqlalchemy_repository_associations.metadata,
         sqlalchemy_snapshots.metadata,
         sqlalchemy_judge_archive.metadata,
         sqlalchemy_write_up_archive.metadata,
