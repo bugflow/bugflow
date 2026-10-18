@@ -20,6 +20,7 @@ from uuid import uuid4
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from bugflow.apps.shared.submission_source import ForgeSubmissionSource
 from bugflow.apps.worker.backfill import (
     LIST_BACKFILL_PAGE_ACTIVITY,
     OUT_OF_ROOM_ACTIVITY,
@@ -69,7 +70,6 @@ from bugflow.apps.worker.stocktake import (
     STOCKTAKE_WAIT_ACTIVITY,
     TAKE_STOCK_ACTIVITY,
 )
-from bugflow.apps.worker.submission_source import ForgeSubmissionSource
 from bugflow.apps.worker.worktree import WorkWorktrees
 from bugflow.forge.domain.errors import (
     ForgeError,

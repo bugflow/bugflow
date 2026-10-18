@@ -8,8 +8,10 @@ compositions, the ``.env`` beside each, the templates under
 run renders them with.
 """
 
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -309,6 +311,8 @@ def test_the_templates_render_before_a_platform_supplies_anything(
     api = (tmp_path / "env" / "api.env").read_text()
     assert "API_CLIENTS" not in api
     assert "BUILD_SHA" not in api
+    assert "EVALUATION_ADMIN_ROLE" not in api
+    assert "EVALUATION_IDENTITIES" not in api
 
 
 def test_the_templates_render_what_a_platform_supplies(
@@ -451,3 +455,87 @@ def test_nothing_a_deployer_needs_is_ignored_by_git() -> None:
         check=False,
     ).stdout.split()
     assert ignored == []
+
+
+def test_evaluation_access_and_interactive_clients_render(
+    tmp_path: Path,
+) -> None:
+    identities = [
+        {
+            "issuer": "https://idp.example",
+            "subject": "stable-user-id",
+            "emails": ["commits@example.test", "old-commits@example.test"],
+        }
+    ]
+    values = (ROOT / ".env.example").read_text() + (
+        "project_oidc_clients.policies-pipeline.client_id=pipeline-1\n"
+        "bugflow_api_clients=pipeline-1,interactive-1\n"
+        "bugflow_evaluation_admin_role=evaluation-admin\n"
+        "bugflow_evaluation_identities=" + json.dumps(identities) + "\n"
+    )
+    done = rendered(values, tmp_path)
+    assert done.returncode == 0, done.stderr
+    lines = (tmp_path / "env" / "api.env").read_text().splitlines()
+    assert "API_CLIENTS=pipeline-1,interactive-1" in lines
+    assert "API_CLIENTS=pipeline-1" not in lines
+    assert "EVALUATION_ADMIN_ROLE=evaluation-admin" in lines
+    assert "EVALUATION_IDENTITIES='" + json.dumps(identities) + "'" in lines
+
+
+def test_compose_preserves_identity_json_as_literal_data(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is not installed")
+    available = subprocess.run(
+        ["docker", "compose", "version"], capture_output=True, check=False
+    )
+    if available.returncode:
+        pytest.skip("Docker Compose is not installed")
+    identities = [
+        {
+            "issuer": "https://idp.example",
+            "subject": "login@example.test",
+            "emails": [
+                "o'connor@example.test",
+                "${COMMIT_ALIAS}@example.test",
+                'quote"and\\slash@example.test',
+            ],
+        }
+    ]
+    values = (ROOT / ".env.example").read_text() + (
+        "bugflow_evaluation_identities=" + json.dumps(identities) + "\n"
+    )
+    done = rendered(values, tmp_path)
+    assert done.returncode == 0, done.stderr
+    compose = tmp_path / "compose.yaml"
+    compose.write_text(
+        yaml.safe_dump(
+            {
+                "name": "evaluation-settings-test",
+                "services": {
+                    "api": {"image": "unused", "env_file": "env/api.env"}
+                },
+            }
+        )
+    )
+    checked = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(compose),
+            "config",
+            "--format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=dict(os.environ, COMMIT_ALIAS="must-not-be-substituted"),
+    )
+    assert checked.returncode == 0, checked.stderr
+    environment = json.loads(checked.stdout)["services"]["api"]["environment"]
+    # Compose escapes literal dollars when serializing reusable configuration.
+    encoded = environment["EVALUATION_IDENTITIES"].replace("$$", "$")
+    assert json.loads(encoded) == identities

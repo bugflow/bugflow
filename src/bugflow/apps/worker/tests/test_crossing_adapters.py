@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from bugflow.apps.shared.submission_source import ForgeSubmissionSource
 from bugflow.apps.worker.conversation import ForgeConversation
 from bugflow.apps.worker.delegated_work import (
     WorkDelegation,
@@ -25,7 +26,6 @@ from bugflow.apps.worker.delegated_work import (
 )
 from bugflow.apps.worker.publication import ForgePublication
 from bugflow.apps.worker.review_scope import DeclaredReviewScope
-from bugflow.apps.worker.submission_source import ForgeSubmissionSource
 from bugflow.apps.worker.worktree import WorkWorktrees
 from bugflow.forge.domain.errors import ForgeRejectedError
 from bugflow.forge.domain.models.pull_request import (

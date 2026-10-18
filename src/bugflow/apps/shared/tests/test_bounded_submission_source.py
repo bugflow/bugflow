@@ -2,7 +2,7 @@
 
 import pytest
 
-from bugflow.apps.worker.submission_source import ForgeBoundedSubmissionSource
+from bugflow.apps.shared.submission_source import ForgeBoundedSubmissionSource
 from bugflow.forge.domain.models.pull_request import PullRequestSnapshot
 from bugflow.forge.infrastructure.in_memory_snapshots import (
     InMemorySnapshotStore,
