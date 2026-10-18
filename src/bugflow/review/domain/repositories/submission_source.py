@@ -11,3 +11,11 @@ class SubmissionSourceRepository(BaseRepository[Submission], Protocol):
         """Return the submission. Raises ``SubmissionNotFoundError`` if
         there is none under the reference."""
         ...
+
+
+class BoundedSubmissionSourceRepository(Protocol):
+    def get_bounded(
+        self, reference: SubmissionRef, max_bytes: int
+    ) -> tuple[Submission, int]:
+        """Return a submission and the byte charge for its stored source."""
+        ...

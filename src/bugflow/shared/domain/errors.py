@@ -33,3 +33,7 @@ class SchemaError(ValueError):
         super().__init__(f"{path}: {message}")
         self.path = path
         self.message = message
+
+
+class ContentTooLargeError(Exception):
+    """Stored content exceeds the caller's remaining byte allowance."""
