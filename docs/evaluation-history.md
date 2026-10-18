@@ -84,6 +84,11 @@ Send the API's accepted bearer token with each request:
 - `GET /api/repositories/{forge}/{owner}/{repo}/evaluations?pr_number=30&pr_number=31&policy_id=ED-02`
 - `GET /api/repositories/{forge}/{owner}/{repo}/pull-requests/30/evaluation?workflow_id=review%2F30&run_id=run-id`
 
+Both routes accept an optional `origin` query parameter for canonical
+repository selection. [Repository origins](repository-origins.md#canonical-evaluation-reads)
+defines its mapping prerequisites, host isolation and unresolved-record
+responses. Omitting the parameter preserves hostless selection.
+
 History requires between 1 and 100 explicit positive PR numbers. Repeated
 numbers are counted once. The optional policy selects a view while preserving
 all observed runs. Detail requires both workflow and run IDs; query parameters

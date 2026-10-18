@@ -5,6 +5,7 @@ from datetime import datetime
 
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -27,8 +28,13 @@ class HistoryScope:
     repo: str
     pr_numbers: tuple[int, ...]
     correlation: Correlation | None = None
+    origin: str | None = None
 
     def __post_init__(self) -> None:
+        if self.origin is not None:
+            canonical = RepositoryOrigin(self.origin)
+            if "/".join(str(canonical).split("/")[1:]) != self.repo:
+                raise ValueError("origin must name the selected repository")
         if not self.forge.strip() or len(self.repo.split("/")) != 2:
             raise ValueError("a forge and owner/repository are required")
         if any(not part.strip() for part in self.repo.split("/")):

@@ -27,3 +27,7 @@ class AssociationConflictError(ValueError):
 
 class AssociationRecordMissingError(ValueError):
     """No retained record has this kind and identifier."""
+
+
+class RepositoryAssociationUnresolvedError(Exception):
+    """A selected historical record has no explicit repository association."""

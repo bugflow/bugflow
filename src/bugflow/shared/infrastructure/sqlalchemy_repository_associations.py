@@ -82,3 +82,15 @@ class SqlAlchemyRepositoryAssociations:
                 )
             ).scalar_one_or_none()
         return None if held is None else RepositoryOrigin(held)
+
+
+def association_exists(
+    kind: RecordKind,
+    record_id: sa.ColumnElement[str],
+    origin: str | None = None,
+) -> sa.ColumnElement[bool]:
+    table = repository_associations
+    predicates = [table.c.kind == kind, table.c.record_id == record_id]
+    if origin is not None:
+        predicates.append(table.c.origin == origin)
+    return sa.exists(sa.select(table.c.record_id).where(*predicates))

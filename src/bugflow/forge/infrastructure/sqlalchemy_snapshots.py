@@ -18,8 +18,14 @@ from bugflow.forge.domain.models.pull_request import (
 )
 from bugflow.shared.domain.errors import ContentTooLargeError
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociationUnresolvedError,
+)
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.serde import from_json, to_json
+from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
+    association_exists,
+)
 
 metadata = sa.MetaData()
 snapshots = sa.Table(
@@ -47,7 +53,11 @@ class SqlAlchemySnapshotStore:
         )
 
     def has_contribution(
-        self, ref: PullRequestRef, emails: frozenset[str]
+        self,
+        ref: PullRequestRef,
+        emails: frozenset[str],
+        *,
+        origin: str | None = None,
     ) -> bool:
         aliases = sorted(email for email in emails if email.strip())
         if not aliases:
@@ -57,14 +67,24 @@ class SqlAlchemySnapshotStore:
         matches = [
             snapshots.c.body.contains(
                 {
-                    "ref": to_json(ref),
+                    "ref": to_json(ref)
+                    if origin is None
+                    else {
+                        "forge": ref.forge,
+                        "number": ref.number,
+                    },
                     "commits": [{role: {"email": email}}],
                 }
             )
             for email in aliases
             for role in ("author", "committer")
         ]
-        query = sa.select(sa.exists().where(sa.or_(*matches)))
+        predicates = [sa.or_(*matches)]
+        if origin is not None:
+            predicates.append(
+                association_exists("snapshot", snapshots.c.snapshot_id, origin)
+            )
+        query = sa.select(sa.exists().where(*predicates))
         with self._engine.connect() as connection:
             return bool(connection.execute(query).scalar_one())
 
@@ -85,6 +105,8 @@ class SqlAlchemySnapshotStore:
         return reference
 
     def get(self, reference: SnapshotRef) -> PullRequestSnapshot:
+        if reference.origin is not None:
+            raise ValueError("canonical snapshots require the bounded reader")
         query = sa.select(snapshots.c.body).where(
             snapshots.c.snapshot_id == reference.snapshot_id
         )
@@ -102,9 +124,31 @@ class SqlAlchemySnapshotStore:
         size = 1024 + sa.func.octet_length(
             sa.func.convert_to(sa.cast(snapshots.c.body, sa.Text), "UTF8")
         )
+        allowed = (
+            sa.true()
+            if reference.origin is None
+            else sa.and_(
+                association_exists(
+                    "snapshot", snapshots.c.snapshot_id, reference.origin
+                ),
+                snapshots.c.body.contains(
+                    {
+                        "ref": {
+                            "forge": reference.ref.forge,
+                            "number": reference.ref.number,
+                        }
+                    }
+                ),
+            )
+        )
+        associated = association_exists("snapshot", snapshots.c.snapshot_id)
         query = sa.select(
             size.label("bytes"),
-            sa.case((size <= max_bytes, snapshots.c.body)).label("body"),
+            allowed.label("allowed"),
+            associated.label("associated"),
+            sa.case(
+                (sa.and_(allowed, size <= max_bytes), snapshots.c.body)
+            ).label("body"),
         ).where(snapshots.c.snapshot_id == reference.snapshot_id)
         with self._engine.connect() as connection:
             row = connection.execute(query).one_or_none()
@@ -112,6 +156,12 @@ class SqlAlchemySnapshotStore:
             raise SnapshotNotFoundError(
                 f"no stored snapshot {reference.snapshot_id}"
             )
+        if reference.origin is not None and not row.associated:
+            raise RepositoryAssociationUnresolvedError(
+                "snapshot has no repository association"
+            )
+        if not row.allowed:
+            raise SnapshotNotFoundError("no stored snapshot in this scope")
         if row.bytes > max_bytes:
             raise ContentTooLargeError("snapshot exceeds the byte allowance")
         return from_json(PullRequestSnapshot, row.body), row.bytes
