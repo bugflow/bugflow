@@ -1,5 +1,6 @@
 """Snapshot reads charge their stored content against the allowance."""
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -18,6 +19,13 @@ from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
 )
 from bugflow.shared.domain.errors import ContentTooLargeError
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociation,
+)
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
+from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
+    SqlAlchemyRepositoryAssociations,
+)
 
 
 @pytest.fixture(params=["memory", "postgres"])
@@ -102,3 +110,71 @@ def test_postgres_suppresses_snapshot_content_before_transfer(
         row = connection.exec_driver_sql(statement, parameters).one()
     assert row.bytes > 4096
     assert row.body is None
+
+
+def test_postgres_suppresses_content_from_another_origin(
+    database_url: str, engine: sa.Engine
+) -> None:
+    store = SqlAlchemySnapshotStore(database_url)
+    reference = store.put(
+        PullRequestSnapshot(
+            ref=PullRequestRef(owner="owner", repo="repo", number=1),
+            title="Private",
+            body="private evidence",
+            head_branch="topic",
+            base_branch="main",
+            commits=(),
+            files=(),
+        )
+    )
+    associations = SqlAlchemyRepositoryAssociations(database_url)
+    try:
+        associations.associate(
+            (
+                RepositoryAssociation(
+                    kind="snapshot",
+                    record_id=reference.snapshot_id,
+                    origin=RepositoryOrigin("one.example/owner/repo"),
+                ),
+            )
+        )
+    finally:
+        associations.close()
+    queries: list[tuple[str, Any]] = []
+
+    def recorded(
+        connection: Any,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any,
+        executemany: bool,
+    ) -> None:
+        queries.append((statement, parameters))
+
+    sa.event.listen(store._engine, "after_cursor_execute", recorded)
+    try:
+        with pytest.raises(SnapshotNotFoundError):
+            store.get_bounded(
+                replace(reference, origin="two.example/owner/repo"), 100_000
+            )
+    finally:
+        sa.event.remove(store._engine, "after_cursor_execute", recorded)
+    assert len(queries) == 1
+    statement, parameters = queries[0]
+    with engine.connect() as connection:
+        row = connection.exec_driver_sql(statement, parameters).one()
+    assert row.body is None
+    assert not row.allowed
+
+
+def test_unbounded_readers_do_not_ignore_a_canonical_selector(
+    store: InMemorySnapshotStore | SqlAlchemySnapshotStore,
+) -> None:
+    reference = SnapshotRef(
+        snapshot_id="any",
+        ref=PullRequestRef(owner="o", repo="r", number=1),
+        origin="one.example/o/r",
+    )
+    with pytest.raises(ValueError, match="bounded"):
+        store.get(reference)

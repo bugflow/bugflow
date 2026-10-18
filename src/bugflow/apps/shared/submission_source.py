@@ -33,6 +33,10 @@ class ForgeSubmissionSource:
         self._snapshots = snapshots
 
     def get(self, reference: SubmissionRef) -> Submission:
+        if reference.origin is not None:
+            raise ValueError(
+                "canonical submissions require the bounded reader"
+            )
         try:
             snapshot = self._snapshots.get(
                 ForgeSnapshotRef(
@@ -54,7 +58,9 @@ class ForgeBoundedSubmissionSource:
         try:
             snapshot, size = self._snapshots.get_bounded(
                 ForgeSnapshotRef(
-                    snapshot_id=reference.snapshot_id, ref=reference.ref
+                    snapshot_id=reference.snapshot_id,
+                    ref=reference.ref,
+                    origin=reference.origin,
                 ),
                 max_bytes,
             )
@@ -66,7 +72,15 @@ class ForgeBoundedSubmissionSource:
 def _submission(
     snapshot: PullRequestSnapshot, reference: SubmissionRef
 ) -> Submission:
-    if snapshot.ref != reference.ref:
+    matches = (
+        snapshot.ref == reference.ref
+        if reference.origin is None
+        else (
+            snapshot.ref.forge == reference.ref.forge
+            and snapshot.ref.number == reference.ref.number
+        )
+    )
+    if not matches:
         raise SubmissionNotFoundError("no submission in this scope")
     return Submission(
         title=snapshot.title,

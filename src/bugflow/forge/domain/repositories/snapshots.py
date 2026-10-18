@@ -12,7 +12,11 @@ from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
 class ContributionReader(Protocol):
     def has_contribution(
-        self, ref: PullRequestRef, emails: frozenset[str]
+        self,
+        ref: PullRequestRef,
+        emails: frozenset[str],
+        *,
+        origin: str | None = None,
     ) -> bool:
         """Whether a retained snapshot names an email as author or committer.
 

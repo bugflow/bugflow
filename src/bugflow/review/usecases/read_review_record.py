@@ -65,6 +65,7 @@ class ReadReviewRecordUseCase:
             repo=f"{request.ref.owner}/{request.ref.repo}",
             pr_numbers=(request.ref.number,),
             correlation=request.correlation,
+            origin=request.origin,
         )
         events = self._journal.entries_for_history(scope, self._limits)
         if not events:
@@ -99,7 +100,9 @@ class ReadReviewRecordUseCase:
                 try:
                     submission, size = self._submissions.get_bounded(
                         SubmissionRef(
-                            snapshot_id=snapshot_id, ref=request.ref
+                            snapshot_id=snapshot_id,
+                            ref=request.ref,
+                            origin=request.origin,
                         ),
                         remaining,
                     )

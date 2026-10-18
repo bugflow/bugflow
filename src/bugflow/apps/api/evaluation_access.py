@@ -21,12 +21,14 @@ class ContributionEvaluationAccess:
         self._aliases = dict(aliases)
         self._contributions = contributions
 
-    def may_read(self, caller: Caller, ref: PullRequestRef) -> bool:
+    def may_read(
+        self, caller: Caller, ref: PullRequestRef, *, origin: str | None = None
+    ) -> bool:
         if self._admin_role and self._admin_role in caller.roles:
             return True
         emails = self._aliases.get((self._issuer, caller.subject), frozenset())
         return bool(emails) and self._contributions.has_contribution(
-            ref, emails
+            ref, emails, origin=origin
         )
 
 

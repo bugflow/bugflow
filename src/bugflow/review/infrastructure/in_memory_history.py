@@ -12,10 +12,21 @@ from bugflow.review.domain.models.history import (
     HistoryScope,
     StoredReviewEvent,
 )
+from bugflow.shared.domain.repositories.repository_associations import (
+    RepositoryAssociations,
+)
+from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociationUnresolvedError,
+)
 
 
 class InMemoryHistory:
-    def __init__(self, events: Sequence[StoredReviewEvent] = ()) -> None:
+    def __init__(
+        self,
+        events: Sequence[StoredReviewEvent] = (),
+        associations: RepositoryAssociations | None = None,
+    ) -> None:
+        self._associations = associations
         # The first stored fact wins, as it does in the journal.
         self.events: dict[UUID, StoredReviewEvent] = {}
         for event in events:
@@ -30,7 +41,6 @@ class InMemoryHistory:
             entry = event.entry
             if (
                 entry.forge != scope.forge
-                or entry.repo != scope.repo
                 or entry.pr_number not in scope.pr_numbers
             ):
                 continue
@@ -39,6 +49,23 @@ class InMemoryHistory:
                 or entry.run_id != scope.correlation.run_id
             ):
                 continue
+            if scope.origin is None:
+                if entry.repo != scope.repo:
+                    continue
+            else:
+                associated = (
+                    self._associations.origin_for(
+                        "journal", str(entry.event_id)
+                    )
+                    if self._associations is not None
+                    else None
+                )
+                if associated is None and entry.repo == scope.repo:
+                    raise RepositoryAssociationUnresolvedError(
+                        "history contains unresolved repository associations"
+                    )
+                if associated is None or str(associated) != scope.origin:
+                    continue
             found.append(event)
             if len(found) > limits.max_events:
                 raise HistoryTooLargeError("history exceeds the event limit")
