@@ -20,3 +20,14 @@ class SnapshotStoreRepository(BaseRepository[PullRequestSnapshot], Protocol):
         """Return the snapshot. Raises ``SnapshotNotFoundError`` if there
         is none under the reference."""
         ...
+
+
+class BoundedSnapshotReader(Protocol):
+    def get_bounded(
+        self, reference: SnapshotRef, max_bytes: int
+    ) -> tuple[PullRequestSnapshot, int]:
+        """Return content and its byte charge, or raise ContentTooLargeError.
+
+        Refuse oversized content before transferring it from storage.
+        """
+        ...

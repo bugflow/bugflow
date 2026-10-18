@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert
 
 from bugflow.review.domain.errors import ExchangeNotFoundError
 from bugflow.review.domain.models.judgement import JudgeExchange
+from bugflow.shared.domain.errors import ContentTooLargeError
 from bugflow.shared.infrastructure.database import engine_url
 
 metadata = sa.MetaData()
@@ -57,3 +58,28 @@ class SqlAlchemyJudgeArchive:
         if row is None:
             raise ExchangeNotFoundError(f"no archived exchange {exchange_id}")
         return JudgeExchange(request=row.request, response=row.response)
+
+    def get_bounded(
+        self, exchange_id: str, max_bytes: int
+    ) -> tuple[JudgeExchange, int]:
+        size: sa.ColumnElement[int] = sa.literal(1024)
+        for column in (exchanges.c.request, exchanges.c.response):
+            size = size + sa.func.octet_length(
+                sa.func.convert_to(sa.cast(column, sa.Text), "UTF8")
+            )
+        query = sa.select(
+            size.label("bytes"),
+            sa.case((size <= max_bytes, exchanges.c.request)).label("request"),
+            sa.case((size <= max_bytes, exchanges.c.response)).label(
+                "response"
+            ),
+        ).where(exchanges.c.exchange_id == exchange_id)
+        with self._engine.connect() as connection:
+            row = connection.execute(query).one_or_none()
+        if row is None:
+            raise ExchangeNotFoundError(f"no archived exchange {exchange_id}")
+        if row.bytes > max_bytes:
+            raise ContentTooLargeError("exchange exceeds the byte allowance")
+        return JudgeExchange(
+            request=row.request, response=row.response
+        ), row.bytes

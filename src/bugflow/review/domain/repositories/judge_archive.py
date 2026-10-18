@@ -20,3 +20,14 @@ class JudgeArchiveRepository(BaseRepository[JudgeExchange], Protocol):
         """Return the exchange. Raises ``ExchangeNotFoundError`` if
         there is none under the id."""
         ...
+
+
+class BoundedJudgeArchiveRepository(Protocol):
+    def get_bounded(
+        self, exchange_id: str, max_bytes: int
+    ) -> tuple[JudgeExchange, int]:
+        """Return content and its byte charge, or raise ContentTooLargeError.
+
+        Refuse oversized content before transferring it from storage.
+        """
+        ...

@@ -5,6 +5,9 @@ it reviews a pull request. [Deploying a server](deploying.md) gives the
 commands and the settings. [What a gnome is](gnomes.md) explains the
 rules a server reviews by, for a person who maintains them.
 
+[Reading recorded evaluations](evaluation-history.md) describes the Python
+readers for journal evidence and retained review content.
+
 ## Three kinds of repository
 
 A review needs three kinds of repository, and each has a different

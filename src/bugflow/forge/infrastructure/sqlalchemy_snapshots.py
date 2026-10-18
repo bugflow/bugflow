@@ -16,6 +16,7 @@ from bugflow.forge.domain.models.pull_request import (
     PullRequestSnapshot,
     SnapshotRef,
 )
+from bugflow.shared.domain.errors import ContentTooLargeError
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.serde import from_json, to_json
 
@@ -71,3 +72,23 @@ class SqlAlchemySnapshotStore:
                 f"no stored snapshot {reference.snapshot_id}"
             )
         return from_json(PullRequestSnapshot, body)
+
+    def get_bounded(
+        self, reference: SnapshotRef, max_bytes: int
+    ) -> tuple[PullRequestSnapshot, int]:
+        size = 1024 + sa.func.octet_length(
+            sa.func.convert_to(sa.cast(snapshots.c.body, sa.Text), "UTF8")
+        )
+        query = sa.select(
+            size.label("bytes"),
+            sa.case((size <= max_bytes, snapshots.c.body)).label("body"),
+        ).where(snapshots.c.snapshot_id == reference.snapshot_id)
+        with self._engine.connect() as connection:
+            row = connection.execute(query).one_or_none()
+        if row is None:
+            raise SnapshotNotFoundError(
+                f"no stored snapshot {reference.snapshot_id}"
+            )
+        if row.bytes > max_bytes:
+            raise ContentTooLargeError("snapshot exceeds the byte allowance")
+        return from_json(PullRequestSnapshot, row.body), row.bytes
