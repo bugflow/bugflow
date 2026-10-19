@@ -14,6 +14,7 @@ class BindLedgerRequest(BaseModel):
     forge: str
     repo: str
     scope: str = ""
+    origin: str | None = None
 
 
 class BoundTo(BaseModel):
@@ -24,6 +25,7 @@ class BoundTo(BaseModel):
     forge: str
     repo: str
     scope: str
+    origin: str | None = None
 
 
 class BindLedgerResponse(BaseModel):
@@ -33,6 +35,7 @@ class BindLedgerResponse(BaseModel):
     forge: str
     repo: str
     scope: str
+    origin: str | None = None
     # False if the ledger was already registered for exactly this
     # repository and scope, so nothing was changed or recorded.
     bound: bool

@@ -8,7 +8,8 @@ Observed evaluation runs associate their journal entries with that origin.
 Authenticated deliveries also associate new delivery, dismissal and merge facts.
 Closing workflows associate their reaction and closing facts with the
 observed source. Stocktakes select and associate repository-wide evidence
-through their configured source.
+through their configured source. Archive declarations accept an explicit
+ledger origin and associate their registration facts.
 Evaluation API reads accept an optional canonical origin and select
 retained records. This release does not implement repository-key enforcement.
 
@@ -42,7 +43,7 @@ host. The parser does not contact a forge or follow redirects.
 |---|---|---|
 | `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries, closing workflows and stocktakes associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
 | `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
-| `archive_bindings` | Ledger UUID, forge, repo and scope | Map the ledger UUID. Keep the existing binding. |
+| `archive_bindings` | Ledger UUID, forge, repo and scope | Explicit declarations associate the ledger UUID. Reads include existing operator mappings. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
 | Policy deployments and activation records | Policy repository and commit | Policy-source provenance remains separate from reviewed-repository access. |
 | Exchanges and write-ups | Exchange/content ids or workflow/run ids | Resolve repository provenance through the selecting journal event; do not infer it from content ids. |
@@ -113,8 +114,9 @@ hostless results. Suspend canonical requests before rolling the API back.
 An operator can test reader readiness with mapped records that share a
 path on two hosts.
 
-Bindings and declarations still need compatible migration paths. Repository-key activation
-requires credential protection and compatible clients in later releases.
+Review declarations still need a compatible migration path. Repository-key
+activation requires credential protection and compatible clients in later
+releases.
 
 ## New snapshot ingestion
 
@@ -193,8 +195,8 @@ to return 409. Retained associations remain intact.
 A newly observed evaluation can be read by its canonical origin without a
 manual per-event mapping. Historical unresolved records can still make a
 repository history request return 409 while a detail request for a fully
-associated evaluation succeeds. Bindings, declarations and
-repository-key enforcement still need their later migration steps.
+associated evaluation succeeds. Review declarations and repository-key
+enforcement still need their later migration steps.
 
 ## Delivery ingestion
 
@@ -270,9 +272,8 @@ so a concurrent conflicting writer cannot commit a mixed batch.
 Migration `0008` and the coordinated drain and worker replacement above
 remain required. Reverting to older closing workers restores hostless
 history selection, so suspend closing collection before rollback while
-retaining all stored associations. Declarations and ledger bindings still
-need their migration steps. This release does
-not enable repository-key enforcement.
+retaining all stored associations. Review declarations still need their
+migration steps. This release does not enable repository-key enforcement.
 
 ## Repository-wide stocktakes
 
@@ -343,3 +344,58 @@ host those records came from. A mapped record from another origin is
 excluded. Absent evaluations retain their 404 response; missing or
 out-of-scope snapshots retain the missing-content representation. The
 existing event and byte limits still apply to canonical reads.
+
+## Archive declarations
+
+Administrators with database access can bind a ledger to an explicit origin:
+
+```sh
+bugflow declare forgejo:team/project --archive LEDGER_UUID \
+  --archive-origin https://forge.example/team/project.git --scope docs
+```
+
+The command canonicalizes the origin and requires its path to match the
+repository argument. It does not derive a host from forge kind, environment
+configuration or client claims. `--archive-origin` requires `--archive` and
+applies only to that ledger. Review-policy and spend declarations in the
+same invocation remain hostless.
+
+The binding store writes the ledger row and its association in one
+transaction. Competing binding saves serialize by ledger id. A registration
+fact carries the same origin. `declare` and `declared` show the stored
+origin, or report it as unresolved. Existing explicit ledger mappings appear
+on readback without changing the binding row. A historical mapping whose
+path differs from the row remains readable; updating it requires a matching
+repository path and the same canonical origin.
+
+An unresolved ledger remains compatible with legacy declarations. An explicit
+origin can resolve it; this does not associate older journal facts. Once an
+origin is known, every update must supply it, including scope changes. An
+omitted or different origin is refused. Two ledgers with equal hostless
+paths on different hosts do not appear as neighbors in registration output.
+The immutable association has no reassignment operation. A repository rename
+or transfer needs the separate historical-access migration before the ledger
+can serve a new origin; this command cannot grant that relationship.
+
+Registration still journals before saving the binding, in separate
+transactions. A competing registration or storage failure can therefore
+leave a journal fact without the corresponding binding update. Read the
+binding back to establish current state. Serialize administrative declarations
+and historical mapping commands; their complete operations are not one
+transaction. No client can establish a ledger origin by uploading a block
+or sending an archive append.
+
+Install migration `0008` before this release. Stop old declaration processes
+before resolving bindings: older code ignores associations and can move the
+hostless row. On rollback, suspend binding changes and retain the association
+table. Existing role-based keeper authorization remains unchanged. Repository
+keys remain disabled.
+
+Archive append/refusal facts still require producer migration. Their stable
+event identifiers outlive individual HTTP requests, so origin assertion must
+preserve retries across request run ids and must not retag old unresolved
+facts. Webhook-reconciliation records also remain independent, unresolved
+operational facts. Policy-deployment records identify the policy source,
+not the reviewed repository. Completion and recovered-write-up records keep
+the dispatch workflow/run scope and inherit its origin only when all its
+retained records have one matching source.
