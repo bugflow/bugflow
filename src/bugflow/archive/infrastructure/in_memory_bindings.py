@@ -1,6 +1,9 @@
 """A store of bindings kept in memory, for tests."""
 
-from bugflow.archive.domain.models.binding import ArchiveBinding
+from bugflow.archive.domain.models.binding import (
+    ArchiveBinding,
+    check_binding_origin,
+)
 
 
 class InMemoryBindings:
@@ -17,4 +20,6 @@ class InMemoryBindings:
         )
 
     def save(self, binding: ArchiveBinding) -> None:
+        previous = self.for_ledger(binding.ledger_id)
+        check_binding_origin(binding, previous.origin if previous else None)
         self._bound[binding.ledger_id] = binding

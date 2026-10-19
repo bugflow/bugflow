@@ -738,3 +738,86 @@ def test_each_command_needs_the_database_url(
 ) -> None:
     assert run(argv, environ={}) == 2
     assert "DATABASE_URL not set" in capsys.readouterr().err
+
+
+def test_archive_origin_command_normalizes_and_refuses_reassignment(
+    shared: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    name, ledger = repo(), str(uuid.uuid4())
+    environ = {"DATABASE_URL": shared}
+    assert (
+        run(
+            [
+                "declare",
+                "forgejo:" + name,
+                "--archive",
+                ledger,
+                "--archive-origin",
+                f"git@ONE.example:{name}.git",
+            ],
+            environ,
+        )
+        == 0
+    )
+    assert f"origin one.example/{name}" in capsys.readouterr().out
+    assert (
+        run(
+            [
+                "declare",
+                "forgejo:" + name,
+                "--archive",
+                ledger,
+                "--archive-origin",
+                f"two.example/{name}",
+                "--profile",
+                "gate",
+            ],
+            environ,
+        )
+        == 2
+    )
+    assert "ledger already has" in capsys.readouterr().err
+    assert run(["declared", "forgejo:" + name], environ) == 0
+    output = capsys.readouterr().out
+    assert f"origin one.example/{name}" in output
+    assert "is on the gate profile" not in output
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["https://host.example/wrong/path", "http://host.example/team/repo"],
+)
+def test_invalid_archive_origin_refuses_before_other_declarations(
+    shared: str, origin: str
+) -> None:
+    name, said = repo(), Said()
+    assert (
+        run_declare(
+            shared,
+            name,
+            archive=str(uuid.uuid4()),
+            archive_origin=origin,
+            profile="gate",
+            out=said.out,
+            err=said.err,
+        )
+        == 2
+    )
+    assert not said.printed
+    assert run_declared(shared, name, out=said.out) == 0
+    assert "nothing is declared" in said.printed
+
+
+def test_archive_origin_requires_archive(shared: str) -> None:
+    said = Said()
+    assert (
+        run_declare(
+            shared,
+            repo(),
+            profile="gate",
+            archive_origin="host.example/team/repo",
+            err=said.err,
+        )
+        == 2
+    )
+    assert "--archive-origin needs --archive" in said.refused

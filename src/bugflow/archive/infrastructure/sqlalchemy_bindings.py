@@ -7,11 +7,24 @@ This table holds the current state. The journal separately records each
 time a ledger was registered.
 """
 
+from typing import Any
+
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
-from bugflow.archive.domain.models.binding import ArchiveBinding
+from bugflow.archive.domain.models.binding import (
+    ArchiveBinding,
+    check_binding_origin,
+)
+from bugflow.shared.domain.values.repository_association import (
+    RepositoryAssociation,
+)
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
+    associate_on_connection,
+    repository_associations,
+)
 
 metadata = sa.MetaData()
 
@@ -37,6 +50,20 @@ def _binding(row: sa.RowMapping) -> ArchiveBinding:
         forge=row["forge"],
         repo=row["repo"],
         scope=row["scope"],
+        origin=row["origin"],
+    )
+
+
+def _query() -> sa.Select[Any]:
+    associations = repository_associations
+    return sa.select(archive_bindings, associations.c.origin).select_from(
+        archive_bindings.outerjoin(
+            associations,
+            sa.and_(
+                associations.c.kind == "ledger",
+                associations.c.record_id == archive_bindings.c.ledger_id,
+            ),
+        )
     )
 
 
@@ -47,15 +74,13 @@ class SqlAlchemyBindings:
         )
 
     def for_ledger(self, ledger_id: str) -> ArchiveBinding | None:
-        query = sa.select(archive_bindings).where(
-            archive_bindings.c.ledger_id == ledger_id
-        )
+        query = _query().where(archive_bindings.c.ledger_id == ledger_id)
         with self._engine.connect() as connection:
             row = connection.execute(query).mappings().first()
         return _binding(row) if row else None
 
     def bindings(self) -> list[ArchiveBinding]:
-        query = sa.select(archive_bindings).order_by(
+        query = _query().order_by(
             archive_bindings.c.forge,
             archive_bindings.c.repo,
             archive_bindings.c.scope,
@@ -85,4 +110,29 @@ class SqlAlchemyBindings:
             )
         )
         with self._engine.begin() as connection:
+            # Serialize binding saves, including competing first registrations.
+            connection.execute(
+                sa.text(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"
+                ),
+                {"key": "archive-binding/" + binding.ledger_id},
+            )
+            held = connection.execute(
+                sa.select(repository_associations.c.origin).where(
+                    repository_associations.c.kind == "ledger",
+                    repository_associations.c.record_id == binding.ledger_id,
+                )
+            ).scalar_one_or_none()
+            check_binding_origin(binding, held)
+            if binding.origin is not None:
+                associate_on_connection(
+                    connection,
+                    (
+                        RepositoryAssociation(
+                            kind="ledger",
+                            record_id=binding.ledger_id,
+                            origin=RepositoryOrigin(binding.origin),
+                        ),
+                    ),
+                )
             connection.execute(statement)

@@ -18,7 +18,9 @@ class BindingRepository(BaseRepository[ArchiveBinding], Protocol):
         ...
 
     def save(self, binding: ArchiveBinding) -> None:
-        """Register the ledger. If it is already registered, replace what it
-        was registered for.
+        """Register or update a ledger, retaining any established origin.
+
+        An explicit origin may resolve a legacy binding. A known origin
+        cannot be omitted or replaced on an update.
         """
         ...

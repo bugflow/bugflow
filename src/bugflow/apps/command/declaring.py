@@ -69,6 +69,7 @@ from bugflow.review.infrastructure.sqlalchemy_withholding import (
     SqlAlchemyWithholding,
 )
 from bugflow.shared.domain.values.budget import Budget
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 from bugflow.shared.infrastructure.system_clock import SystemClock
 
 
@@ -156,6 +157,7 @@ def run_declare(
     build: str | None = None,
     out: TextIO | None = None,
     err: TextIO | None = None,
+    archive_origin: str | None = None,
 ) -> int:
     """Declare what a repository is judged on and dispatches, its
     profile, a boundary, its withheld share and a ledger whose archive
@@ -169,7 +171,8 @@ def run_declare(
     ``archive`` is a ledger id, bound to the repository at ``scope``, a
     path within it, or at its root when ``scope`` is None or ``.``. The
     binding is recorded in the journal as ``archive.bound``, stamped
-    with ``build``.
+    with ``build``. ``archive_origin`` explicitly resolves that ledger;
+    later updates must supply the same origin.
 
     ``zone`` is the timezone a boundary is read in, to refuse one that
     does not read.
@@ -179,6 +182,8 @@ def run_declare(
         forge, repo = _split(repository)
     except ValueError as exc:
         return console.refuse(str(exc))
+    if archive_origin is not None and archive is None:
+        return console.refuse("--archive-origin needs --archive")
     if scope is not None and archive is None:
         return console.refuse(
             "--scope needs --archive: it says which scope of the "
@@ -201,6 +206,9 @@ def run_declare(
         try:
             binding = ArchiveBinding(
                 ledger_id=archive,
+                origin=str(RepositoryOrigin.parse(archive_origin))
+                if archive_origin is not None
+                else None,
                 forge=forge,
                 repo=repo,
                 # A scope's entry in its configuration writes the root
@@ -209,6 +217,12 @@ def run_declare(
             )
         except ValueError as exc:
             return console.refuse(str(exc))
+    if (
+        archive is not None
+        and binding.origin is not None
+        and binding.origin.split("/", 1)[1] != repo
+    ):
+        return console.refuse("ledger origin does not match its repository")
     if (
         policies is not None or processes is not None
     ) and declared_by_deployment(SqlAlchemyPolicyDeployments(database_url)):
@@ -247,19 +261,23 @@ def run_declare(
     withholding = SqlAlchemyWithholding(database_url)
     kept = SqlAlchemyBindings(database_url)
     if archive is not None:
-        bound = BindLedgerUseCase(
-            kept,
-            stamped_journal(database_url, build),
-            SystemClock(),
-            uuid.uuid4().hex,
-        ).execute(
-            BindLedgerRequest(
-                ledger_id=binding.ledger_id,
-                forge=binding.forge,
-                repo=binding.repo,
-                scope=binding.scope,
+        try:
+            bound = BindLedgerUseCase(
+                kept,
+                stamped_journal(database_url, build),
+                SystemClock(),
+                uuid.uuid4().hex,
+            ).execute(
+                BindLedgerRequest(
+                    ledger_id=binding.ledger_id,
+                    forge=binding.forge,
+                    repo=binding.repo,
+                    scope=binding.scope,
+                    origin=binding.origin,
+                )
             )
-        )
+        except ValueError as exc:
+            return console.refuse(str(exc))
         if bound.replaces:
             was = bound.replaces
             console.say(
@@ -322,7 +340,15 @@ def _scope_of(forge: str, repo: str, scope: str) -> str:
 
 def _keeps(binding: ArchiveBinding) -> str:
     where = _scope_of(binding.forge, binding.repo, binding.scope)
-    return f"{where} has the archive of ledger {binding.ledger_id} kept here"
+    source = (
+        f" (origin {binding.origin})"
+        if binding.origin
+        else " (origin unresolved)"
+    )
+    return (
+        f"{where} has the archive of ledger {binding.ledger_id} "
+        f"kept here{source}"
+    )
 
 
 def _judged(where: str, policies: frozenset[str] | tuple[str, ...]) -> str:

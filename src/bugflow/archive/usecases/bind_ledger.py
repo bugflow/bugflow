@@ -10,7 +10,10 @@ replaced and which other ledgers the same scope has.
 """
 
 from bugflow.archive.domain import facts
-from bugflow.archive.domain.models.binding import ArchiveBinding
+from bugflow.archive.domain.models.binding import (
+    ArchiveBinding,
+    check_binding_origin,
+)
 from bugflow.archive.domain.repositories.bindings import BindingRepository
 from bugflow.archive.dtos.bind_ledger import (
     BindLedgerRequest,
@@ -51,15 +54,17 @@ class BindLedgerUseCase:
             forge=request.forge,
             repo=request.repo,
             scope=request.scope,
+            origin=request.origin,
         )
         previous = self._bindings.for_ledger(binding.ledger_id)
+        check_binding_origin(binding, previous.origin if previous else None)
         beside = tuple(
             sorted(
                 other.ledger_id
                 for other in self._bindings.bindings()
                 if other.ledger_id != binding.ledger_id
-                and (other.forge, other.repo, other.scope)
-                == (binding.forge, binding.repo, binding.scope)
+                and (other.forge, other.repo, other.scope, other.origin)
+                == (binding.forge, binding.repo, binding.scope, binding.origin)
             )
         )
         bound = previous != binding
@@ -75,6 +80,7 @@ class BindLedgerUseCase:
             forge=binding.forge,
             repo=binding.repo,
             scope=binding.scope,
+            origin=binding.origin,
             bound=bound,
             replaces=_bound_to(previous) if bound and previous else None,
             beside=beside,
@@ -105,6 +111,8 @@ class BindLedgerUseCase:
             corpus_version=None,
             workflow_id=WORKFLOW_ID,
             run_id=self._run_id,
+            origin=binding.origin,
+            origin_asserted=True,
             payload={
                 "ledger_id": binding.ledger_id,
                 "scope": binding.scope,
@@ -115,4 +123,9 @@ class BindLedgerUseCase:
 
 
 def _bound_to(binding: ArchiveBinding) -> BoundTo:
-    return BoundTo(forge=binding.forge, repo=binding.repo, scope=binding.scope)
+    return BoundTo(
+        forge=binding.forge,
+        repo=binding.repo,
+        scope=binding.scope,
+        origin=binding.origin,
+    )

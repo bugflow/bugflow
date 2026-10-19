@@ -400,8 +400,14 @@ def _declaring_parsers(
         help="the id of a ledger whose archive this server keeps, for "
         "this repository: the UUID in lower case that the ledger's "
         "events carry. The archive host refuses a ledger nobody bound. "
-        "Binding a ledger again to the same place changes nothing; to "
-        "another place moves it, and says so",
+        "Binding a ledger again to the same place changes nothing. "
+        "An unresolved binding can move; a known origin must be retained",
+    )
+    declare.add_argument(
+        "--archive-origin",
+        metavar="ORIGIN",
+        help="explicit repository origin for --archive; accepts canonical, "
+        "HTTPS or SSH spelling. An established ledger origin cannot change",
     )
     declare.add_argument(
         "--scope",
@@ -692,6 +698,7 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
         boundary=args.boundary,
         withhold=args.withhold,
         archive=args.archive,
+        archive_origin=args.archive_origin,
         scope=args.scope,
         zone=zone,
         build=build,
