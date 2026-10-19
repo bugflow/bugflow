@@ -189,6 +189,10 @@ from bugflow.review.usecases.take_stock import TakeStockUseCase
 from bugflow.review.usecases.wait_review import WaitReviewUseCase
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_association import (
+    AssociationConflictError,
+    RepositoryAssociationUnresolvedError,
+)
 from bugflow.work.domain.models.backfill import WatchedRepository
 from bugflow.work.domain.repositories.backfill import (
     ClosedPullRequestFeedRepository,
@@ -990,7 +994,11 @@ class ReviewActivities:
             return self._collect.execute(request)
         except ForgeUnavailableError as exc:
             raise _retryable(exc, exc.retry_after) from exc
-        except ForgeError as exc:
+        except (
+            ForgeError,
+            AssociationConflictError,
+            RepositoryAssociationUnresolvedError,
+        ) as exc:
             raise _non_retryable(exc) from exc
 
     def all(self) -> list[Callable[..., Any]]:

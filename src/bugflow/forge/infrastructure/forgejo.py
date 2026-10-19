@@ -301,14 +301,21 @@ class ForgejoForge:
                 login=str((raw.get("user") or {}).get("login") or ""),
                 reacted_at=forge_time(raw.get("created_at")),
             )
-            for raw in self._send("GET", f"{path}/reactions") or []
+            for raw in self._request(
+                "GET", f"{path}/reactions", follow_redirects=False
+            ).json()
+            or []
         )
 
     def state(self, ref: PullRequestRef) -> PullRequestState:
-        pull = self._send(
-            "GET", f"/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
-        )
+        origin = self._repository_origin(ref.owner, ref.repo)
+        pull = self._request(
+            "GET",
+            f"/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}",
+            follow_redirects=False,
+        ).json()
         return PullRequestState(
+            origin=origin,
             merged=bool(pull.get("merged")),
             head_sha=(pull.get("head") or {}).get("sha") or None,
         )
@@ -368,7 +375,7 @@ class ForgejoForge:
             },
         )
 
-    def _poll_origin(self, owner: str, repo: str) -> str | None:
+    def _repository_origin(self, owner: str, repo: str) -> str | None:
         try:
             return https_origin(self._url, f"{owner}/{repo}")
         except ValueError as exc:
@@ -383,7 +390,7 @@ class ForgejoForge:
             "state": "open" if since is None else "all",
             "sort": "recentupdate",
         }
-        origin = self._poll_origin(owner, repo)
+        origin = self._repository_origin(owner, repo)
         pulls: list[PolledPullRequest] = []
         for batch in self._pages(
             f"/repos/{owner}/{repo}/pulls", params, follow_redirects=False
@@ -428,7 +435,7 @@ class ForgejoForge:
         params: dict[str, int | str] = {
             "since": since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
-        origin = self._poll_origin(owner, repo)
+        origin = self._repository_origin(owner, repo)
         comments: list[PolledComment] = []
         for batch in self._pages(
             f"/repos/{owner}/{repo}/issues/comments",
