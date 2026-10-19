@@ -75,6 +75,7 @@ def delivery_for(pull: PolledPullRequest) -> Delivery:
         action=action,
         repository=f"{ref.owner}/{ref.repo}",
         ref=ref,
+        origin=pull.origin,
         updated_at=pull.updated_at,
     )
 
@@ -95,6 +96,7 @@ def delivery_for_comment(comment: PolledComment) -> Delivery | None:
         action="created",
         repository=f"{ref.owner}/{ref.repo}",
         ref=ref,
+        origin=comment.origin,
         comment=DeliveryComment(
             comment_id=comment.comment_id,
             author=comment.author,

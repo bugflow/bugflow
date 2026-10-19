@@ -21,6 +21,7 @@ class PolledPullRequest:
     body: str
     updated_at: datetime
     closed_at: datetime | None = None
+    origin: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -32,6 +33,7 @@ class PolledComment:
     author: str
     body: str
     updated_at: datetime
+    origin: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

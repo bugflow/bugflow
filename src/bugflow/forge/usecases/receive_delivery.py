@@ -80,6 +80,8 @@ def dismissal_entries(
             ),
             occurred_at=occurred_at,
             event_type=facts.FINDING_DISMISSED,
+            origin=delivery.origin,
+            origin_asserted=True,
             forge=delivery.forge,
             repo=f"{ref.owner}/{ref.repo}",
             pr_number=ref.number,
@@ -119,6 +121,8 @@ def merge_entries(
             ),
             occurred_at=occurred_at,
             event_type=facts.PR_MERGED,
+            origin=delivery.origin,
+            origin_asserted=True,
             forge=delivery.forge,
             repo=f"{ref.owner}/{ref.repo}",
             pr_number=ref.number,
@@ -198,6 +202,8 @@ class ReceiveDeliveryUseCase:
                     event_id=fact_id,
                     occurred_at=self._clock.now(),
                     event_type=facts.DELIVERY_RECEIVED,
+                    origin=delivery.origin,
+                    origin_asserted=True,
                     forge=delivery.forge,
                     repo=delivery.repository or "unknown",
                     pr_number=delivery.ref.number if delivery.ref else None,
@@ -245,5 +251,7 @@ class ReceiveDeliveryUseCase:
             _polled(delivery)
             and delivery.ref is not None
             and delivery.updated_at is not None
-            and self._journal.received_since(delivery.ref, delivery.updated_at)
+            and self._journal.received_since(
+                delivery.ref, delivery.updated_at, origin=delivery.origin
+            )
         )

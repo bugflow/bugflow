@@ -5,6 +5,7 @@ record with an explicit canonical origin. Migration `0008` adds the
 association table. It leaves existing records and access behaviour intact.
 New GitHub and HTTPS Forgejo snapshots retain and associate their origin.
 Observed evaluation runs associate their journal entries with that origin.
+Authenticated deliveries also associate new delivery, dismissal and merge facts.
 Evaluation API reads accept an optional canonical origin and select
 retained records. This release does not implement repository-key enforcement.
 
@@ -36,7 +37,7 @@ host. The parser does not contact a forge or follow redirects.
 
 | Storage | Existing identity | Association treatment |
 |---|---|---|
-| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluation runs associate new entries on insertion. Map historical and independent events by UUID without changing their payloads or identifiers. |
+| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations and canonical deliveries associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
 | `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
 | `archive_bindings` | Ledger UUID, forge, repo and scope | Map the ledger UUID. Keep the existing binding. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
@@ -109,7 +110,7 @@ hostless results. Suspend canonical requests before rolling the API back.
 An operator can test reader readiness with mapped records that share a
 path on two hosts.
 
-Independent delivery, close and repository-wide runs still need an origin
+Independent close-workflow and repository-wide runs still need an origin
 source. Bindings and declarations need compatible migration paths. Repository-key activation requires credential
 protection and compatible clients in later releases.
 
@@ -188,11 +189,53 @@ leaves subsequent journal events unresolved and can cause canonical reads
 to return 409. Retained associations remain intact.
 
 A newly observed evaluation can be read by its canonical origin without a
-manual per-event mapping. This does not resolve deliveries, close records
-or repository-wide runs recorded independently of that evaluation. A
+manual per-event mapping. Independent close-workflow and repository-wide records still need their
+own origin source. A
 repository history request can therefore return 409 while a detail request
 for the fully associated evaluation succeeds. Bindings, declarations and
 repository-key enforcement still need their later migration steps.
+
+## Delivery ingestion
+
+After signature verification, the GitHub ingress route assigns the fixed
+`github.com` endpoint. The Forgejo route uses `FORGEJO_URL`; configure the
+same endpoint on ingress, workers and pollers. The webhook secret must belong
+to the forge configured for that route. Ordinary payload repository URLs
+cannot override this setting. HTTP or absent Forgejo settings leave new
+records unresolved. Unsupported HTTPS path prefixes or credentials in the
+endpoint refuse ingress startup. Events without a repository remain unresolved.
+
+The poller records the endpoint of each successful PR or comment listing.
+All listing pages refuse redirects. Its signed webhook body carries this
+origin in `_bugflow_origin`. The ingress reads that field only for delivery
+ids with the existing `poll-` prefix, and rejects a non-null origin that
+differs from its configured endpoint. Missing or null metadata remains
+explicitly unresolved; it does not acquire the ingress's configured host.
+Poll coverage checks with a known origin count only deliveries associated
+with that same origin. Legacy calls without an origin retain hostless checks.
+
+Delivery, dismissal and merge facts assert their source in the journal's
+existing atomic append. Their ids and payloads stay unchanged. A duplicate
+delivery still returns `duplicate` before starting another evaluation and
+never assigns an origin to an existing unresolved event. Delivery ids remain
+forge-scoped: reuse of a retained id on another host remains a duplicate,
+not a new delivery or a reassignment. Origins do not make operational
+workflow ids or delivery ids host-aware in this release.
+
+An unresolved or conflicting workflow scope returns HTTP 409 and retains
+its existing records. Workflow signalling still precedes journal append,
+so a rejected append can follow a successful signal. Retrying does not
+repair the scope: inspect and explicitly map retained records where the
+evidence supports the mapping. Unknown-source deliveries cannot inherit a
+known run's origin.
+
+Install migration `0008` and drain existing workflows before replacing
+ingress, pollers and workers together. An older poller omits the source
+metadata; its deliveries stay unresolved and can conflict with a canonical
+run. An older ingress discards the poller's metadata. On rollback, retain
+associations; subsequent unresolved records can make canonical history
+return 409. This change does not associate close-workflow output or
+repository-wide review runs, and does not activate repository-key access.
 
 ## Canonical evaluation reads
 
