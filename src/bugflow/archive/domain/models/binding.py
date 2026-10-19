@@ -13,6 +13,11 @@ start a new ledger and have it stored as that repository's archive.
 import re
 from dataclasses import dataclass
 
+from bugflow.shared.domain.values.repository_association import (
+    AssociationConflictError,
+)
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
+
 _LEDGER_ID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
@@ -27,8 +32,11 @@ class ArchiveBinding:
     #: The path of the scope inside the repository, with "/" between
     #: parts. Empty for the repository's top level.
     scope: str = ""
+    origin: str | None = None
 
     def __post_init__(self) -> None:
+        if self.origin is not None:
+            RepositoryOrigin(self.origin)
         if not _LEDGER_ID.fullmatch(self.ledger_id):
             raise ValueError(
                 f"{self.ledger_id!r} is no ledger id: one is a UUID in "
@@ -40,3 +48,16 @@ class ArchiveBinding:
                 f"{self.scope!r} is no scope: one is a path within the "
                 "repository, or empty for its root"
             )
+
+
+def check_binding_origin(binding: ArchiveBinding, held: str | None) -> None:
+    """Keep an established ledger origin across binding updates."""
+    if held is not None and binding.origin != held:
+        raise AssociationConflictError(
+            "ledger already has a repository origin; supply that origin"
+        )
+    if (
+        binding.origin is not None
+        and binding.origin.split("/", 1)[1] != binding.repo
+    ):
+        raise ValueError("ledger origin does not match its repository")
