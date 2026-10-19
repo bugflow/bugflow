@@ -14,20 +14,23 @@ from dataclasses import dataclass
 #: description; ``scope`` adds the commit messages and file paths;
 #: ``commits`` is each commit's message; ``patches`` is the diff. A
 #: document's ``file`` is one document the pull request changes, as the
-#: patch shows it after the change. A scope's ``canon`` is every
-#: document of a scope, which a pull request judge does not render.
+#: patch shows it after the change. A document's ``glossary`` is each
+#: changed document in the same way, then the glossary files of the
+#: deployment in force. A scope's ``canon`` is every document of a
+#: scope, which a pull request judge does not render.
 SUBJECTS = (
     "pull-request/description",
     "pull-request/scope",
     "pull-request/commits",
     "pull-request/patches",
     "document/file",
+    "document/glossary",
     "scope/canon",
 )
 
 #: The subjects a pull request judge renders. A declaration naming a
 #: policy whose subject is not among them is refused.
-JUDGED_SUBJECTS = SUBJECTS[:5]
+JUDGED_SUBJECTS = SUBJECTS[:6]
 
 #: The parts of a pull request, which an ``evidence`` line may name
 #: alone: ``description`` is ``pull-request/description``.

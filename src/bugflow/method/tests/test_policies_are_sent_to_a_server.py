@@ -78,6 +78,28 @@ def test_the_files_a_server_reads_are_posted_with_the_token(
     )
 
 
+@pytest.mark.model(
+    "Glossary",
+    "bugflow deploy-policies sends the files under glossary/.",
+)
+def test_the_glossary_files_are_sent(tmp_path: Path) -> None:
+    glossary = {
+        "glossary/bugflow/docs/words.md": "- **Poller.** A loop.\n",
+        "glossary/clankos/docs/words.txt": "garden: a tree\n",
+        "glossary/notes.org": "* Words\n",
+    }
+    for path, text in (glossary | {"glossary/words.json": "{}\n"}).items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text)
+    stub = StubServer()
+    use_case(laid_out(tmp_path), stub.transport()).execute(request())
+    ((_, sent),) = stub.posts
+    assert sent["files"] == [
+        {"path": path, "text": text}
+        for path, text in sorted((READ | glossary).items())
+    ]
+
+
 def test_it_signs_in_with_its_secret_and_asks_for_three_scopes(
     tmp_path: Path,
 ) -> None:

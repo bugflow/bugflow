@@ -3,8 +3,9 @@
 Each judged policy is judged in a request of its own, with its own
 instructions, its own evidence and its own report schema. A policy's file
 says which evidence the model is shown: the title and description, those
-with the commits and file paths, the commits alone, the patches too, or
-each changed document as its patch shows it after the change.
+with the commits and file paths, the commits alone, the patches too,
+each changed document as its patch shows it after the change, or those
+documents and then the glossary files of the deployment in force.
 
 How much of the diff a policy that reads patches is shown is its snapshot
 fidelity: every patch in one request, one request per file, or each patch cut
@@ -40,6 +41,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import PurePosixPath
 from typing import Any
 
 import httpx2
@@ -191,6 +193,8 @@ EVIDENCE_TAGS = (
     "file",
     "documents",
     "document",
+    "glossary",
+    "words",
 )
 
 
@@ -412,27 +416,48 @@ def _after_the_change(patch: str) -> str:
     return "\n".join(parts)
 
 
-def _documents(snapshot: Submission) -> list[tuple[str, str | None]]:
+def _is_document(path: str) -> bool:
+    """Whether a file is a document: its name ends in ``.org`` or
+    ``.md``."""
+    return path.endswith(DOCUMENT_SUFFIXES)
+
+
+def _is_glossed_document(path: str) -> bool:
+    """Whether a file is a document a glossary policy reads: a document,
+    or a ``.txt`` file under a ``docs`` directory, as a words document
+    may be."""
+    pure = PurePosixPath(path)
+    return _is_document(path) or (
+        pure.suffix == ".txt" and "docs" in pure.parts[:-1]
+    )
+
+
+def _documents(
+    snapshot: Submission, is_document: Callable[[str], bool] = _is_document
+) -> list[tuple[str, str | None]]:
     """Each document the pull request changes, with what the patch shows
     of it after the change, or None where the forge left the patch
     out."""
     return [
         (f.path, None if f.patch is None else _after_the_change(f.patch))
         for f in snapshot.files
-        if f.path.endswith(DOCUMENT_SUFFIXES)
+        if is_document(f.path)
     ]
 
 
-def render_document_evidence(snapshot: Submission) -> str:
+def render_document_evidence(
+    snapshot: Submission, is_document: Callable[[str], bool] = _is_document
+) -> str:
     """Each changed document, as the patch shows it after the change.
 
     The snapshot holds patches and not files, so a document is shown
     as its changed parts, each hunk in place, and the tag says so. A
     pull request that changes no document is said to change none.
+    ``is_document`` says which files are documents.
     """
     rendered: list[str] = []
     budget = DOCUMENT_BUDGET
-    for path, text in _documents(snapshot):
+    for path, text in _documents(snapshot, is_document):
         opening = (
             f'<document path="{_attribute(path)}" '
             'shown="the changed parts, after the change; [...] marks '
@@ -452,16 +477,47 @@ def render_document_evidence(snapshot: Submission) -> str:
     return "<documents>\n" + "\n".join(rendered) + "\n</documents>"
 
 
-def _document_text(snapshot: Submission) -> str:
+def _document_text(
+    snapshot: Submission, is_document: Callable[[str], bool] = _is_document
+) -> str:
     return "\n".join(
-        text for _, text in _documents(snapshot) if text is not None
+        text
+        for _, text in _documents(snapshot, is_document)
+        if text is not None
     )
+
+
+def render_glossary_evidence(
+    snapshot: Submission, glossary: Mapping[str, str]
+) -> str:
+    """Each changed document, as ``render_document_evidence`` shows it,
+    then each glossary file in full, opened by its path.
+
+    A document here is also a ``.txt`` file under a ``docs`` directory.
+    The glossary files come from the deployment in force, not from the
+    pull request.
+    """
+    words = "\n".join(
+        f'<words path="{_attribute(path)}">\n{_text(text.rstrip())}\n</words>'
+        for path, text in glossary.items()
+    )
+    return (
+        render_document_evidence(snapshot, _is_glossed_document)
+        + "\n<glossary>\n"
+        + (words or "this deployment holds no glossary file")
+        + "\n</glossary>"
+    )
+
+
+def _glossed_document_text(snapshot: Submission) -> str:
+    return _document_text(snapshot, _is_glossed_document)
 
 
 # Which renderer shows the model its evidence, and which text a quote must
 # come from, by the subject a policy file's evidence line names, one of
 # JUDGED_SUBJECTS. This is the part of a policy that cannot be written in
-# its file, because it is code.
+# its file, because it is code. The glossary subject is not here: its
+# renderer needs the deployment's glossary files, and ``_wired`` builds it.
 EVIDENCE: dict[
     str,
     tuple[
@@ -485,16 +541,36 @@ EVIDENCE: dict[
     "document/file": (render_document_evidence, _document_text, None),
 }
 
+#: The subject whose evidence holds the glossary files of the
+#: deployment, which the judge is given when it is built.
+GLOSSARY_SUBJECT = "document/glossary"
 
-def _wired(text: PolicyText) -> JudgedPolicy:
-    """Join one policy's prose to the code its evidence line names."""
-    try:
+#: Every subject this judge renders.
+RENDERED = (*EVIDENCE, GLOSSARY_SUBJECT)
+
+
+def _wired(
+    text: PolicyText, glossary: Mapping[str, str] | None = None
+) -> JudgedPolicy:
+    """Join one policy's prose to the code its evidence line names.
+    ``glossary`` is the glossary files a glossary policy is shown."""
+    evidence: Callable[[Submission], str]
+    quotable: Callable[[Submission], str]
+    evidence_at: Callable[[Submission, str, str | None], str] | None
+    if text.evidence == GLOSSARY_SUBJECT:
+        words = dict(glossary or {})
+
+        def evidence(snapshot: Submission) -> str:
+            return render_glossary_evidence(snapshot, words)
+
+        quotable, evidence_at = _glossed_document_text, None
+    elif text.evidence in EVIDENCE:
         evidence, quotable, evidence_at = EVIDENCE[text.evidence]
-    except KeyError:
+    else:
         raise ValueError(
             f"{text.policy_id}: evidence {text.evidence!r} is not one of "
             f"{', '.join(JUDGED_SUBJECTS)}"
-        ) from None
+        )
     return JudgedPolicy(
         policy_id=text.policy_id,
         clauses=text.clauses,
@@ -513,14 +589,20 @@ def _wired(text: PolicyText) -> JudgedPolicy:
     )
 
 
-def wire(texts: Mapping[str, PolicyText]) -> dict[str, JudgedPolicy]:
+def wire(
+    texts: Mapping[str, PolicyText],
+    glossary: Mapping[str, str] | None = None,
+) -> dict[str, JudgedPolicy]:
     """Join parsed policies, by id, each to its evidence renderer.
+    ``glossary`` is the glossary files, by path, that a policy whose
+    subject is ``document/glossary`` is shown.
 
     Raises ``ValueError`` if a policy names evidence this judge cannot
     render.
     """
     return {
-        policy_id: _wired(text) for policy_id, text in sorted(texts.items())
+        policy_id: _wired(text, glossary)
+        for policy_id, text in sorted(texts.items())
     }
 
 
@@ -761,6 +843,7 @@ class LiteLLMJudge:
         temperature: float = 0.0,
         texts: Mapping[str, PolicyText] | None = None,
         source: str = "",
+        glossary: Mapping[str, str] | None = None,
     ) -> None:
         """Build a judge of the policies named, out of the texts given.
 
@@ -768,7 +851,10 @@ class LiteLLMJudge:
         holds them, and ``source`` is what the fingerprint hashes for
         them, as ``source_of`` computes it. The prompts are built from
         the one and the fingerprint from the other, so a fingerprint
-        names the prose that was asked. A judge given no texts judges
+        names the prose that was asked. ``glossary`` is the glossary
+        files of the deployment, by path, which a policy whose subject
+        is ``document/glossary`` is shown; the fingerprint hashes them
+        when such a policy is judged. A judge given no texts judges
         nothing, which is enough to send an archived request again.
 
         ``model`` overrides every class, which is what a measurement
@@ -784,11 +870,20 @@ class LiteLLMJudge:
         """
         if not key:
             raise ValueError("a LiteLLM key is required")
-        self._wired = wire(texts or {})
+        self._wired = wire(texts or {}, glossary)
         self._source = source
         unknown = sorted(set(policies) - set(self._wired))
         if unknown:
             raise ValueError(f"no judged policy named {', '.join(unknown)}")
+        # What the prompts are built from, so what the fingerprint
+        # hashes: none, for a judge of no glossary policy.
+        self._glossary = (
+            dict(glossary or {})
+            if any(
+                (texts or {})[p].evidence == GLOSSARY_SUBJECT for p in policies
+            )
+            else {}
+        )
         if fidelity not in FIDELITIES:
             raise ValueError(
                 f"no snapshot fidelity named {fidelity}; "
@@ -1004,6 +1099,8 @@ class LiteLLMJudge:
             "delimiting": inspect.getsource(delimiting),
             "source": inspect.getsource(sys.modules[__name__]),
         }
+        if self._glossary:
+            identity["glossary"] = self._glossary
         canonical = json.dumps(identity, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()[:12]
 
@@ -1181,7 +1278,7 @@ def _judged_texts_of(
     return {
         policy_id: text
         for policy_id, text in reviewers.policies[agent_id].items()
-        if text.evidence in EVIDENCE and not text.checked
+        if text.evidence in RENDERED and not text.checked
     }
 
 
@@ -1252,4 +1349,5 @@ def judge_from_environment(
         temperature=temperature,
         texts=texts,
         source=source,
+        glossary=None if reviewers is None else reviewers.glossary,
     )

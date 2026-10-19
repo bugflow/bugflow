@@ -19,9 +19,9 @@ import pytest
 from bugflow.apps.worker import litellm_judge
 from bugflow.apps.worker.litellm_judge import (
     DEFAULT_MODEL,
-    EVIDENCE,
     GRADES,
     RATE_LIMIT_WAIT,
+    RENDERED,
     LiteLLMJudge,
     Violation,
     _severity,
@@ -832,7 +832,7 @@ def test_a_judge_given_no_policy_text_judges_nothing() -> None:
 
 
 def test_the_judge_renders_every_subject_a_policy_may_name() -> None:
-    assert set(EVIDENCE) == set(JUDGED_SUBJECTS)
+    assert set(RENDERED) == set(JUDGED_SUBJECTS)
     assert {policy.evidence for policy in TEXTS.values()} == set(
         JUDGED_SUBJECTS
     )
