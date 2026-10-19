@@ -5,6 +5,14 @@
 # is written from this file: see
 # src/bugflow/shared/tests/model_section.py.
 
+# The things the model names, each of which has a line in docs/words.md.
+things = [
+    "gnome", "manifest", "doctrine", "clause", "policy", "subject",
+    "case", "skill", "binding", "declaration", "pace layer",
+    "deployment", "server", "reviewer", "judge", "model class", "check",
+    "finding", "grade", "ceiling", "verdict", "calibration",
+]
+
 [[requirement]]
 group = "Gnome"
 text = "A gnome is one repository."
@@ -241,3 +249,43 @@ text = "The commit status is failure when one of the reviewer's findings fails, 
 group = "Calibration"
 text = "Bugflow has no command that runs a calibration."
 held_by = "nothing"
+
+[[requirement]]
+group = "The words documents"
+text = "clankos's words document is docs/words.txt."
+held_by = "clankos's tests"
+
+[[requirement]]
+group = "The words documents"
+text = "bugflow's words document is docs/words.md."
+
+[[requirement]]
+group = "The words documents"
+text = "A words document gives each word one line."
+
+[[requirement]]
+group = "The words documents"
+text = "A word's line names the document, and the section where there is one, that defines the word."
+
+[[requirement]]
+group = "The words documents"
+text = "The document and section that a word's line names exist."
+
+[[requirement]]
+group = "Words coverage"
+text = "Each thing that clankos's model names has a line in clankos's words document."
+held_by = "clankos's tests"
+
+[[requirement]]
+group = "Words coverage"
+text = "Each thing that bugflow's model names has a line in bugflow's words document."
+
+[[requirement]]
+group = "Words coverage"
+text = "A word that both models name has its line in one words document."
+held_by = "clankos's tests"
+
+[[requirement]]
+group = "Words coverage"
+text = "The other words document links to that line for that word."
+held_by = "clankos's tests"
