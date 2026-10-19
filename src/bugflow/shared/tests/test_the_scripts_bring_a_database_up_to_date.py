@@ -7,14 +7,16 @@ Skipped unless DATABASE_URL names a Postgres server.
 
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 
 import pytest
 import sqlalchemy as sa
 
+from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.migrations import VERSION_TABLE, upgrade
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
-    SqlAlchemyJournal,
+    journal,
     metadata,
 )
 from bugflow.shared.tests.postgres import scratch_database
@@ -62,7 +64,7 @@ def test_a_table_that_is_already_there_keeps_its_rows(empty: str) -> None:
     try:
         metadata.create_all(engine)
         made = entry("already-here")
-        SqlAlchemyJournal(empty).append([made])
+        seed_legacy(engine, made)
 
         upgrade(empty)
 
@@ -79,9 +81,7 @@ def test_columns_that_are_already_there_are_left_alone(empty: str) -> None:
     try:
         metadata.create_all(engine)
         made = entry("named")
-        SqlAlchemyJournal(
-            empty, policy_repository="example-org/policies"
-        ).append([made])
+        seed_legacy(engine, made, "example-org/policies")
 
         upgrade(empty)
 
@@ -90,3 +90,19 @@ def test_columns_that_are_already_there_are_left_alone(empty: str) -> None:
         assert last_run(empty) == [LAST]
     finally:
         engine.dispose()
+
+
+def seed_legacy(
+    engine: sa.Engine, made: JournalEntry, policy_repository: str | None = None
+) -> None:
+    # The current writer requires migration 0008. Seed the old table
+    # directly to verify that upgrading preserves pre-migration rows.
+    values = asdict(made)
+    values.pop("origin")
+    values.pop("origin_asserted")
+    with engine.begin() as connection:
+        connection.execute(
+            journal.insert().values(
+                values | {"policy_repository": policy_repository}
+            )
+        )

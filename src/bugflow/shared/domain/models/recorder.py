@@ -27,7 +27,12 @@ class Recorder:
         correlation: Correlation,
         corpus_version: str | None,
         occurred_at: datetime,
+        *,
+        origin: str | None = None,
+        origin_asserted: bool = False,
     ) -> None:
+        self._origin = origin
+        self._origin_asserted = origin_asserted
         self._ref = ref
         self._correlation = correlation
         self._corpus_version = corpus_version
@@ -67,4 +72,6 @@ class Recorder:
             run_id=self._correlation.run_id,
             payload=payload,
             agent_id=agent_id,
+            origin=self._origin,
+            origin_asserted=self._origin_asserted,
         )

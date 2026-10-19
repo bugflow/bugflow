@@ -4,8 +4,8 @@ Bugflow can inventory retained repository references and associate each
 record with an explicit canonical origin. Migration `0008` adds the
 association table. It leaves existing records and access behaviour intact.
 New GitHub and HTTPS Forgejo snapshots retain and associate their origin.
-Journal ingestion still writes hostless references. Evaluation API reads
-accept an optional canonical origin and use explicit associations to select
+Observed evaluation runs associate their journal entries with that origin.
+Evaluation API reads accept an optional canonical origin and select
 retained records. This release does not implement repository-key enforcement.
 
 ## Canonical form
@@ -36,7 +36,7 @@ host. The parser does not contact a forge or follow redirects.
 
 | Storage | Existing identity | Association treatment |
 |---|---|---|
-| `journal` | `forge`, `repo`, optional PR number; UUID event id | Map each repository-bearing event by its UUID. Keep its payload and identifier. |
+| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluation runs associate new entries on insertion. Map historical and independent events by UUID without changing their payloads or identifiers. |
 | `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
 | `archive_bindings` | Ledger UUID, forge, repo and scope | Map the ledger UUID. Keep the existing binding. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
@@ -82,8 +82,9 @@ Kinds are `journal`, `snapshot` and `ledger`. The primary key is kind plus
 record id, so equal identifiers in different stores remain independent.
 Concurrent mappings cannot replace an association through this command.
 The command has no correction or reassignment operation. Review mappings
-before applying them. Journal ingestion and legacy snapshots remain
-unresolved until explicitly mapped. Canonical reads require associations
+before applying them. Historical events, independent runs without an
+origin assertion and legacy snapshots remain unresolved until explicitly
+mapped. Canonical reads require associations
 for the journal records and snapshots they select.
 
 An association states provenance. It grants no permission, creates no
@@ -108,8 +109,8 @@ hostless results. Suspend canonical requests before rolling the API back.
 An operator can test reader readiness with mapped records that share a
 path on two hosts.
 
-Journal ingestion still needs to retain the origin. Bindings and
-declarations need compatible migration paths. Repository-key activation requires credential
+Independent delivery, close and repository-wide runs still need an origin
+source. Bindings and declarations need compatible migration paths. Repository-key activation requires credential
 protection and compatible clients in later releases.
 
 ## New snapshot ingestion
@@ -145,9 +146,53 @@ canonical reader still selects snapshots through the association table.
 A new canonical snapshot has a new hash and may cause the same PR content
 to be evaluated once more after upgrade.
 
-Snapshot association alone does not make new evaluation history canonical.
-Journal propagation and the declaration/binding transition remain pending.
-Do not enable repository-key enforcement on the strength of this migration.
+Snapshot association alone does not make all evaluation history canonical.
+Independent journal producers and the declaration/binding transition remain
+pending. Do not enable repository-key enforcement on this migration alone.
+
+## Evaluation journal ingestion
+
+Observation asserts the fetched snapshot's origin when recording
+`pr.observed`. New entries inherit that origin only within the same
+workflow id, run id, forge, repository path and PR number. All retained
+entries in that scope must have the same association. An unresolved or
+mixed historical scope supplies no implicit origin. A historical mapping
+to a different path also supplies no provenance for new writes at the old
+path. Entries without a workflow run do not inherit origins.
+
+The writer inserts events and associations in one transaction. PostgreSQL
+serializes writers for each scope, including competing first observations.
+A known origin assertion refuses an unresolved run or a conflicting origin.
+A retry with an explicit origin requires the existing event's scope and
+association to match. It never assigns provenance to a previously
+unresolved event. Any conflict rolls back the entire batch. Legacy retries
+without an assertion retain their existing skip-on-duplicate behaviour.
+Event ids, payloads and the journal schema remain unchanged. The domain
+entry's `origin` and `origin_asserted` fields are metadata, not journal
+columns. An observation with an unknown source origin may start a legacy
+run. It cannot inherit or replace a known origin on a retry.
+
+Publishing and checkout-review reuse select historical evidence through
+the current evaluation's origin. Findings, dismissals and verdicts from
+other origins or unresolved records are excluded. This prevents an old
+finding or verdict from being copied into a new origin's evaluation.
+A current run with only some entries mapped is refused. Before upgrading,
+explicitly map the historical records that should remain eligible for
+carry-forward and verdict reuse. Legacy runs with no known origin retain
+their existing review behaviour.
+
+Run migration `0008` before using this writer. Drain old workflows before
+upgrading or reverting workers. An upgraded observation cannot establish
+provenance retrospectively for an already unresolved run. Reverting writers
+leaves subsequent journal events unresolved and can cause canonical reads
+to return 409. Retained associations remain intact.
+
+A newly observed evaluation can be read by its canonical origin without a
+manual per-event mapping. This does not resolve deliveries, close records
+or repository-wide runs recorded independently of that evaluation. A
+repository history request can therefore return 409 while a detail request
+for the fully associated evaluation succeeds. Bindings, declarations and
+repository-key enforcement still need their later migration steps.
 
 ## Canonical evaluation reads
 

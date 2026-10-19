@@ -60,6 +60,28 @@ def calls(module: str, class_name: str) -> set[str]:
     for node in ast.parse((USECASES / module).read_text()).body:
         if not isinstance(node, ast.ClassDef) or node.name != class_name:
             continue
+        # A per-run journal view retains the journal's port operations.
+        aliases: dict[str, str] = {}
+        for assignment in ast.walk(node):
+            if not isinstance(assignment, ast.Assign):
+                continue
+            value = assignment.value
+            if not (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == "for_run"
+                and value.args
+            ):
+                continue
+            source = value.args[0]
+            if (
+                isinstance(source, ast.Attribute)
+                and isinstance(source.value, ast.Name)
+                and source.value.id == "self"
+            ):
+                for target in assignment.targets:
+                    if isinstance(target, ast.Name):
+                        aliases[target.id] = source.attr
         for call in ast.walk(node):
             if not isinstance(call, ast.Call):
                 continue
@@ -67,6 +89,8 @@ def calls(module: str, class_name: str) -> set[str]:
             if not isinstance(method, ast.Attribute):
                 continue
             held = method.value
+            if isinstance(held, ast.Name) and held.id in aliases:
+                found.add(f"{aliases[held.id]}.{method.attr}")
             if (
                 isinstance(held, ast.Attribute)
                 and isinstance(held.value, ast.Name)

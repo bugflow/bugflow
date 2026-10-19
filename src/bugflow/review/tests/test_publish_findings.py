@@ -1527,3 +1527,52 @@ def test_a_finding_that_quotes_nothing_is_withdrawn_by_silence() -> None:
 
     assert response.carried == ()
     assert "fixed since the last review" in response.comment
+
+
+@pytest.mark.parametrize(
+    "previous_origin",
+    [None, "one.example/orchard/pear-tree", "two.example/orchard/pear-tree"],
+)
+def test_canonical_publication_carries_only_findings_from_its_origin(
+    previous_origin: str | None,
+) -> None:
+    journal = QueryableJournal()
+    forge = RecordingForge()
+    publish = publisher(
+        forge=forge,
+        journal=journal,
+        enabled=True,
+        submissions=Submissions(a=says("Adds a seamless poller.")),
+    )
+    flagged = quoting("seamless poller")
+    before = Recorder(
+        REF, RUN, "corpus-1", FixedClock().now(), origin=previous_origin
+    )
+    journal.append(
+        [
+            before.entry("pr.observed", "observation", {"snapshot_id": "a"}),
+            *before.findings("judged", [flagged]),
+        ]
+    )
+    publish.execute(
+        request(flagged, run=RUN).model_copy(update={"snapshot_id": "a"})
+    )
+    current = Recorder(
+        REF,
+        SECOND,
+        "corpus-1",
+        FixedClock().now(),
+        origin="one.example/orchard/pear-tree",
+    )
+    journal.append(
+        [current.entry("pr.observed", "observation", {"snapshot_id": "a"})]
+    )
+    result = publish.execute(
+        request(run=SECOND).model_copy(update={"snapshot_id": "a"})
+    )
+    if previous_origin == "one.example/orchard/pear-tree":
+        assert result.carried == (flagged,)
+    else:
+        assert result.carried == ()
+        assert result.resolved == ()
+        assert "seamless poller" not in result.comment

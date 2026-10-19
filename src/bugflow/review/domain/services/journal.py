@@ -29,6 +29,8 @@ class HistoryService(Protocol):
 
 
 class JournalService(RecordingService, Protocol):
+    """Read entries with their associated origin, or None if unresolved."""
+
     def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
         """Return every entry one workflow run recorded, oldest first."""
         ...

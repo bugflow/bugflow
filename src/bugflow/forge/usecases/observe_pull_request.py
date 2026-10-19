@@ -76,6 +76,8 @@ class ObservePullRequestUseCase:
             request.correlation,
             corpus.version,
             self._clock.now(),
+            origin=snapshot.origin,
+            origin_asserted=True,
         )
         self._journal.append(
             [

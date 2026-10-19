@@ -26,6 +26,7 @@ from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
 )
 from bugflow.review.tests.journal import QueryableJournal
 from bugflow.shared.domain.models.journal_entry import JournalEntry, event_id
+from bugflow.shared.domain.models.recorder import Recorder
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -183,3 +184,29 @@ def test_a_repositorys_entries_of_one_type_come_back_oldest_first(
     found = queries.events_for_repository("github", repo, ACTION_TAKEN)
 
     assert [e.payload["key"] for e in found] == ["2", "3"]
+
+
+def test_queries_return_the_origin_associated_with_each_entry(
+    journals: Journals,
+) -> None:
+    writer, reader = journals
+    repo, ref = a_repository()
+    run = new_run()
+
+    origin = "one.example/" + repo
+    observed = Recorder(
+        ref, run, "v1", datetime(2026, 10, 19, tzinfo=UTC), origin=origin
+    ).entry("pr.observed", "head", {})
+    writer.append([observed])
+    subsequent = replace(
+        observed, event_id=uuid4(), event_type=ACTION_TAKEN, origin=None
+    )
+    writer.append([subsequent])
+    assert {entry.origin for entry in reader.entries_for_run(run)} == {origin}
+    assert (
+        reader.events_for_pull_request(ref, ACTION_TAKEN)[0].origin == origin
+    )
+    assert (
+        reader.events_for_repository(ref.forge, repo, ACTION_TAKEN)[0].origin
+        == origin
+    )
