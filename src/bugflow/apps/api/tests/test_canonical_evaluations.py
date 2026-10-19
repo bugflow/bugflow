@@ -26,11 +26,17 @@ from bugflow.forge.domain.models.pull_request import (
     CommitSnapshot,
     PullRequestSnapshot,
 )
+from bugflow.forge.dtos.observe_pull_request import ObservePullRequestRequest
 from bugflow.forge.infrastructure.in_memory_snapshots import (
     InMemorySnapshotStore,
 )
 from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
     SqlAlchemySnapshotStore,
+)
+from bugflow.forge.tests.journal import QueryableJournal
+from bugflow.forge.tests.test_observe_pull_request import Clock, Regime
+from bugflow.forge.usecases.observe_pull_request import (
+    ObservePullRequestUseCase,
 )
 from bugflow.review.domain.models.history import (
     HistoryLimits,
@@ -54,6 +60,7 @@ from bugflow.shared.domain.values.repository_association import (
     RepositoryAssociation,
 )
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
+from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 from bugflow.shared.infrastructure.in_memory_repository_associations import (
     InMemoryRepositoryAssociations,
 )
@@ -467,3 +474,95 @@ def test_a_new_origin_does_not_inherit_an_old_name(reading: Reading) -> None:
             headers=bearer("nobody"),
         )
         assert response.status_code == 403
+
+
+def test_observed_evaluation_is_canonical_without_manual_mapping(
+    reading: Reading,
+) -> None:
+    class Forge:
+        def fetch_snapshot(self, ref: PullRequestRef) -> PullRequestSnapshot:
+            return PullRequestSnapshot(
+                ref=ref,
+                origin=ONE,
+                title="Canonical observation",
+                body="content",
+                head_branch="topic",
+                base_branch="main",
+                files=(),
+                commits=(
+                    CommitSnapshot(
+                        sha="head",
+                        message="Change",
+                        author=Authorship(email="person@example.com"),
+                    ),
+                ),
+            )
+
+    writer = reading.writer or InMemoryJournal(
+        associations=reading.associations
+    )
+    run = Correlation(workflow_id="new-canonical-evaluation", run_id="run")
+    observed = ObservePullRequestUseCase(
+        Forge(),  # type: ignore[arg-type]
+        Regime(),
+        reading.snapshots,
+        writer,
+        QueryableJournal(),
+        Clock(),
+    ).execute(ObservePullRequestRequest(ref=REF, correlation=run))
+    later = Recorder(REF, run, "v1", NOW).entry(
+        "judge.invoked", "judge", {"status": "skipped: no judge configured"}
+    )
+    writer.append([later])
+    # A separate delivery has no observation from which to inherit origin.
+    delivery = Recorder(
+        REF,
+        Correlation(workflow_id="delivery", run_id="delivery-run"),
+        None,
+        NOW,
+    ).entry("delivery.received", "delivery", {})
+    writer.append([delivery])
+    if isinstance(writer, InMemoryJournal):
+        assert isinstance(reading.history, InMemoryHistory)
+        for entry in writer.entries:
+            reading.history.events[entry.event_id] = StoredReviewEvent(
+                entry=entry
+            )
+    with reading.client() as client:
+        params = {
+            "workflow_id": run.workflow_id,
+            "run_id": run.run_id,
+            "origin": ONE,
+        }
+        detail = client.get(
+            PREFIX + "/pull-requests/7/evaluation",
+            params=params,
+            headers=bearer("nobody"),
+        )
+        assert detail.status_code == 200
+        assert (
+            detail.json()["submissions"][observed.snapshot.snapshot_id][
+                "title"
+            ]
+            == "Canonical observation"
+        )
+        assert (
+            str(
+                reading.associations.origin_for("journal", str(later.event_id))
+            )
+            == ONE
+        )
+        wrong = client.get(
+            PREFIX + "/pull-requests/7/evaluation",
+            params=params | {"origin": TWO},
+            headers=bearer("admin"),
+        )
+        assert wrong.status_code == 404
+        history = client.get(
+            PREFIX + "/evaluations",
+            params={"pr_number": 7, "origin": ONE},
+            headers=bearer("nobody"),
+        )
+        assert (
+            history.status_code == 409
+        )  # The independent delivery is unresolved.

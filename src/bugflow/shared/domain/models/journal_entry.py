@@ -15,6 +15,7 @@ from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
 from bugflow.shared.domain.values.correlation import Correlation
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 # Never change this. Every id is made from it, so a new value would
 # give every existing fact a different id.
@@ -52,6 +53,16 @@ class JournalEntry:
     #: Which build of the software recorded the fact. The journal's
     #: adapter fills this in; code that creates an entry leaves it None.
     build: str | None = None
+    #: Provenance retained separately from the immutable journal row.
+    #: A writer treats a supplied value as an assertion to verify.
+    origin: str | None = None
+    #: An observation can explicitly assert that its origin is unknown.
+    #: This must not inherit an earlier observation's known origin.
+    origin_asserted: bool = False
+
+    def __post_init__(self) -> None:
+        if self.origin is not None:
+            RepositoryOrigin(self.origin)
 
 
 def fact_id(*parts: str) -> UUID:

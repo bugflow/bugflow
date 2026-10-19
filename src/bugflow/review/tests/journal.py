@@ -1,6 +1,8 @@
 """A journal for tests that can also answer the questions the review
 context asks of it."""
 
+from dataclasses import replace
+
 from bugflow.review.domain.facts import ACTION_TAKEN
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
@@ -14,7 +16,7 @@ class QueryableJournal(InMemoryJournal):
 
     def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
         return [
-            e
+            replace(e, origin=self._origin(e.event_id))
             for e in self.entries
             if (e.workflow_id, e.run_id)
             == (correlation.workflow_id, correlation.run_id)
@@ -40,7 +42,7 @@ class QueryableJournal(InMemoryJournal):
         key = (ref.forge, f"{ref.owner}/{ref.repo}", ref.number)
         return sorted(
             (
-                e
+                replace(e, origin=self._origin(e.event_id))
                 for e in self.entries
                 if e.event_type == event_type
                 and (e.forge, e.repo, e.pr_number) == key
@@ -53,7 +55,7 @@ class QueryableJournal(InMemoryJournal):
     ) -> list[JournalEntry]:
         return sorted(
             (
-                e
+                replace(e, origin=self._origin(e.event_id))
                 for e in self.entries
                 if e.event_type == event_type
                 and (e.forge, e.repo) == (forge, repo)

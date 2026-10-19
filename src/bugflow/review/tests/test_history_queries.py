@@ -58,7 +58,10 @@ def event(
 
 
 def columns(stored: StoredReviewEvent) -> dict[str, Any]:
-    return asdict(stored.entry) | {
+    values = asdict(stored.entry)
+    values.pop("origin")  # Provenance is stored in the association table.
+    values.pop("origin_asserted")
+    return values | {
         "recorded_at": stored.recorded_at,
         "policy_repository": stored.policy_repository,
         "policy_commit": stored.policy_commit,
@@ -218,7 +221,10 @@ def test_preflight_and_fetch_share_a_snapshot_despite_a_late_commit(
     with engine.connect() as writer:
         transaction = writer.begin()
         # This transaction's recorded_at precedes the history read.
-        writer.execute(sa.insert(journal).values(asdict(late.entry)))
+        values = asdict(late.entry)
+        values.pop("origin")
+        values.pop("origin_asserted")
+        writer.execute(sa.insert(journal).values(values))
 
         def after_query(
             connection: Any,

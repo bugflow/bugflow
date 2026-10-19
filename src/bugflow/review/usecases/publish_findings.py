@@ -80,6 +80,7 @@ from bugflow.review.domain.services.publication import (
     CommitState,
     PublicationService,
 )
+from bugflow.review.domain.services.scoped_journal import for_run
 from bugflow.review.domain.values.commentary import Seen, worth_saying
 from bugflow.review.domain.values.passage import (
     passages,
@@ -396,6 +397,7 @@ class PublishFindingsUseCase:
 
     def _carried(
         self,
+        journal: JournalService,
         request: PublishFindingsRequest,
         current: Sequence[Finding],
         text: str | None,
@@ -416,14 +418,10 @@ class PublishFindingsUseCase:
             return []
         corpus_of_run = {
             e.run_id: e.corpus_version
-            for e in self._journal.events_for_pull_request(
-                request.ref, PR_OBSERVED
-            )
+            for e in journal.events_for_pull_request(request.ref, PR_OBSERVED)
         }
         latest: dict[tuple[str, str, str], tuple[str | None, Finding]] = {}
-        for e in self._journal.events_for_pull_request(
-            request.ref, FINDING_RAISED
-        ):
+        for e in journal.events_for_pull_request(request.ref, FINDING_RAISED):
             f = Finding.from_payload(e.payload)
             latest[_identity(f)] = (corpus_of_run.get(e.run_id), f)
         carried: list[Finding] = []
@@ -442,6 +440,7 @@ class PublishFindingsUseCase:
 
     def _rewritten(
         self,
+        journal: JournalService,
         request: PublishFindingsRequest,
         previous: Sequence[Finding],
         text: str | None,
@@ -453,7 +452,7 @@ class PublishFindingsUseCase:
             return []
         already = {
             _identity(Finding.from_payload(e.payload))
-            for e in self._journal.events_for_pull_request(
+            for e in journal.events_for_pull_request(
                 request.ref, FINDING_REWRITTEN
             )
         }
@@ -466,24 +465,24 @@ class PublishFindingsUseCase:
         return list(gone.values())
 
     def _previous_findings(
-        self, request: PublishFindingsRequest
+        self, journal: JournalService, request: PublishFindingsRequest
     ) -> tuple[Correlation | None, list[Finding]]:
         """The last evaluation before this one that published, and the
         findings it raised.
         """
-        previous = self._journal.latest_acted_run(
+        previous = journal.latest_acted_run(
             request.ref, excluding=request.correlation
         )
         if previous is None:
             return None, []
         return previous, [
             Finding.from_payload(e.payload)
-            for e in self._journal.entries_for_run(previous)
+            for e in journal.entries_for_run(previous)
             if e.event_type == FINDING_RAISED
         ]
 
     def _standing(
-        self, request: PublishFindingsRequest
+        self, journal: JournalService, request: PublishFindingsRequest
     ) -> set[tuple[str, str, str]]:
         """The findings that every evaluation of the present text raised,
         by identity.
@@ -498,9 +497,7 @@ class PublishFindingsUseCase:
         if request.head_sha is None:
             return {_identity(f) for f in request.findings}
         read_by: dict[str, str] = {}
-        for entry in self._journal.events_for_pull_request(
-            request.ref, PR_OBSERVED
-        ):
+        for entry in journal.events_for_pull_request(request.ref, PR_OBSERVED):
             snapshot = entry.payload.get("snapshot_id")
             read_by[entry.run_id] = (
                 str(snapshot) if snapshot else entry.commit_sha or ""
@@ -515,7 +512,7 @@ class PublishFindingsUseCase:
                 read=read_by.get(entry.run_id) or "",
                 finding=Finding.from_payload(entry.payload),
             )
-            for entry in self._journal.events_for_pull_request(
+            for entry in journal.events_for_pull_request(
                 request.ref, FINDING_RAISED
             )
         ]
@@ -524,20 +521,20 @@ class PublishFindingsUseCase:
         return {_identity(f) for f in worth_saying(history, read=here)}
 
     def _observed(
-        self, run: Correlation | None
+        self, journal: JournalService, run: Correlation | None
     ) -> tuple[str | None, str | None]:
         """The submission an earlier evaluation read and the corpus version
         it ran under.
         """
         if run is None:
             return None, None
-        for e in self._journal.entries_for_run(run):
+        for e in journal.entries_for_run(run):
             if e.event_type == PR_OBSERVED:
                 return e.payload.get("snapshot_id"), e.corpus_version
         return None, None
 
     def _spoken(
-        self, ref: PullRequestRef, agent_id: str
+        self, journal: JournalService, ref: PullRequestRef, agent_id: str
     ) -> list[dict[str, object]]:
         """The records of the comments this reviewer has had posted on the
         pull request, oldest first. A comment that was worked out and not
@@ -545,7 +542,7 @@ class PublishFindingsUseCase:
         """
         return [
             e.payload
-            for e in self._journal.events_for_pull_request(ref, ACTION_TAKEN)
+            for e in journal.events_for_pull_request(ref, ACTION_TAKEN)
             if e.payload.get("action") == "review_comment"
             and e.payload.get("agent_id") == agent_id
             and e.payload.get("performed") is True
@@ -557,13 +554,14 @@ class PublishFindingsUseCase:
         """Work out what to say, write it if publishing is on, and record
         what was done.
         """
-        previous, previous_findings = self._previous_findings(request)
+        journal = for_run(self._journal, request.ref, request.correlation)
+        previous, previous_findings = self._previous_findings(journal, request)
         resolved = resolved_since(
             previous_findings, request.findings, request.answered
         )
         dismissals = [
             Dismissal.from_payload(e.payload)
-            for e in self._journal.events_for_pull_request(
+            for e in journal.events_for_pull_request(
                 request.ref, FINDING_DISMISSED
             )
         ]
@@ -593,7 +591,7 @@ class PublishFindingsUseCase:
         ]
         text = self._text(request)
         carried = self._carried(
-            request, current, text, dismissed_policies, kept_back
+            journal, request, current, text, dismissed_policies, kept_back
         )
         counted = [*current, *carried]
         label = review_label(
@@ -608,7 +606,7 @@ class PublishFindingsUseCase:
 
         # What is new since the last evaluation that published, and
         # what is gone since it.
-        stands = self._standing(request)
+        stands = self._standing(journal, request)
         previously = {_identity(f) for f in previous_findings}
         earlier = [*previous_findings, *carried]
         raised = tuple(
@@ -628,7 +626,7 @@ class PublishFindingsUseCase:
 
         # The same text read again under a new corpus: the review
         # changed and the pull request did not.
-        snapshot, corpus = self._observed(previous)
+        snapshot, corpus = self._observed(journal, previous)
         rejudged = (
             request.snapshot_id is not None
             and snapshot == request.snapshot_id
@@ -636,6 +634,7 @@ class PublishFindingsUseCase:
         )
         said = [
             *self._findings_reviewers(
+                journal,
                 request,
                 counted,
                 raised,
@@ -646,7 +645,9 @@ class PublishFindingsUseCase:
                 rejudged,
                 spoken_of=stands | previously | still,
             ),
-            *self._checkout_reviewers(request, governing, enforcement),
+            *self._checkout_reviewers(
+                journal, request, governing, enforcement
+            ),
         ]
 
         enabled = enforcement.publishes and request.publish
@@ -732,7 +733,9 @@ class PublishFindingsUseCase:
             entries += recorder.resolutions(previous, resolved)
             entries += recorder.rewritten(
                 previous,
-                self._rewritten(request, [*previous_findings, *carried], text),
+                self._rewritten(
+                    journal, request, [*previous_findings, *carried], text
+                ),
             )
         # A withheld warning is recorded once, at the evaluation where
         # it would first have been shown.
@@ -744,7 +747,7 @@ class PublishFindingsUseCase:
                 if _identity(f) not in previously and _identity(f) in stands
             ],
         )
-        self._journal.append(entries)
+        journal.append(entries)
 
         bodies = [one.body for one in said if one.body]
         return PublishFindingsResponse(
@@ -791,6 +794,7 @@ class PublishFindingsUseCase:
 
     def _findings_reviewers(
         self,
+        journal: JournalService,
         request: PublishFindingsRequest,
         counted: Sequence[Finding],
         raised: Sequence[Finding],
@@ -824,7 +828,7 @@ class PublishFindingsUseCase:
             new = [f for f in raised if self._owner(f) == agent_id]
             gone = [f for f in fixed if self._owner(f) == agent_id]
             unanswered = sorted(set(request.unavailable) & set(policies))
-            spoken = self._spoken(request.ref, agent_id)
+            spoken = self._spoken(journal, request.ref, agent_id)
             first = not spoken
             verdict = (
                 verdict_for(
@@ -913,6 +917,7 @@ class PublishFindingsUseCase:
 
     def _checkout_reviewers(
         self,
+        journal: JournalService,
         request: PublishFindingsRequest,
         governing: frozenset[str],
         enforcement: Enforcement,
@@ -930,7 +935,7 @@ class PublishFindingsUseCase:
             if verdict.head_sha != request.head_sha:
                 continue
             agent_id = verdict.agent_id
-            spoken = self._spoken(request.ref, agent_id)
+            spoken = self._spoken(journal, request.ref, agent_id)
             last = spoken[-1] if spoken else None
             speaks = (
                 last is None
