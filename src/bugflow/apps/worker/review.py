@@ -39,7 +39,11 @@ from temporalio.client import Client
 
 from bugflow.apps.shared.boundaries import refuse_without_a_boundary
 from bugflow.apps.shared.deploying import checks_from
-from bugflow.apps.shared.forges import forge_tokens, forgejo_settings
+from bugflow.apps.shared.forges import (
+    forge_tokens,
+    forgejo_settings,
+    repository_endpoints,
+)
 from bugflow.apps.shared.journals import build_sha, review_journal
 from bugflow.apps.shared.policies import ReviewersInForce, reviewers_in_force
 from bugflow.apps.worker.activities import (
@@ -376,6 +380,7 @@ def activities_from_environment(
     objects = object_store_from_environment(environ)
     return ReviewActivities(
         forge=forge,
+        repository_endpoints=repository_endpoints(environ),
         # The same forges answer for a closed conversation.
         conversation=forge,
         doctrine=FixedDoctrine(judged_doctrine(reviewers)),

@@ -69,7 +69,7 @@ def calls(module: str, class_name: str) -> set[str]:
             if not (
                 isinstance(value, ast.Call)
                 and isinstance(value.func, ast.Name)
-                and value.func.id == "for_run"
+                and value.func.id in {"for_run", "for_repository_run"}
                 and value.args
             ):
                 continue

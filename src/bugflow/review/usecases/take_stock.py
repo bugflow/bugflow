@@ -15,6 +15,10 @@ from bugflow.review.domain.models.stocktake import (
     stocktake_range,
 )
 from bugflow.review.domain.services.journal import JournalService
+from bugflow.review.domain.services.repository_journal import (
+    RepositoryJournal,
+    for_repository_origin,
+)
 from bugflow.review.dtos.take_stock import TakeStockRequest, TakeStockResponse
 from bugflow.shared.domain.models.journal_entry import JournalEntry, event_id
 from bugflow.shared.domain.services.clock import ClockService
@@ -26,22 +30,27 @@ class TakeStockUseCase:
         self._clock = clock
 
     def execute(self, request: TakeStockRequest) -> TakeStockResponse:
+        journal = for_repository_origin(
+            self._journal,
+            request.forge,
+            request.repo,
+            request.correlation,
+            request.origin,
+        )
         now = self._clock.now()
         taken = stocktake_range(
             now=now,
-            mark=self._mark(request),
+            mark=self._mark(request, journal),
             merged=[
                 Merged(
                     pull_request=entry.pr_number or 0,
                     head_sha=entry.commit_sha or "",
                     merged_at=entry.occurred_at,
                 )
-                for entry in self._journal.events_for_repository(
-                    request.forge, request.repo, PR_MERGED
-                )
+                for entry in journal.events(PR_MERGED)
             ],
         )
-        self._journal.append(
+        journal.append(
             [
                 JournalEntry(
                     event_id=event_id(
@@ -81,7 +90,9 @@ class TakeStockUseCase:
             head_sha=taken.head_sha,
         )
 
-    def _mark(self, request: TakeStockRequest) -> Mark | None:
+    def _mark(
+        self, request: TakeStockRequest, journal: RepositoryJournal
+    ) -> Mark | None:
         """The layer's latest mark on the repository, or None if it has
         left none.
 
@@ -90,9 +101,7 @@ class TakeStockUseCase:
         """
         marks = [
             entry
-            for entry in self._journal.events_for_repository(
-                request.forge, request.repo, STOCKTAKE_TAKEN
-            )
+            for entry in journal.events(STOCKTAKE_TAKEN)
             if entry.payload.get("layer") == request.layer
         ]
         if not marks:

@@ -91,6 +91,7 @@ class AgentTask:
     #: and the commit to read it at. Used by a runner that can fetch a
     #: repository itself. Empty otherwise.
     repository: str = ""
+    origin: str | None = None
     commit: str = ""
     #: The commit under review, when ``commit`` is a different one. A
     #: runner given the base commit fetches this one and compares.

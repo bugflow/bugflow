@@ -526,3 +526,47 @@ def test_a_setting_that_cannot_be_used_stops_a_worker_that_reviews(
         parts_from_environment(
             {"DATABASE_URL": database_url, "PERIODS_TIMEZONE": "Nowhere/None"}
         )
+
+
+@pytest.mark.parametrize(
+    "environ, forge, expected",
+    [
+        ({"FORGE_TOKEN": "token"}, "github", "github.com/o/r"),
+        (
+            {
+                "FORGEJO_URL": "https://FORGE.test:8443",
+                "FORGEJO_TOKEN": "token",
+            },
+            "forgejo",
+            "forge.test:8443/o/r",
+        ),
+        (
+            {"FORGEJO_URL": "http://forge.test", "FORGEJO_TOKEN": "token"},
+            "forgejo",
+            None,
+        ),
+        ({}, "github", None),
+    ],
+)
+def test_stocktake_source_comes_from_worker_configuration(
+    database_url: str,
+    environ: dict[str, str],
+    forge: str,
+    expected: str | None,
+) -> None:
+    from bugflow.apps.shared.journals import review_journal
+    from bugflow.review.dtos.take_stock import TakeStockRequest
+    from bugflow.shared.domain.values.correlation import Correlation
+
+    run = Correlation(workflow_id="stocktake", run_id="source")
+    built = activities_from_environment(
+        {"DATABASE_URL": database_url, **environ}, in_force(database_url)
+    )
+    built.take_stock(
+        TakeStockRequest(
+            forge=forge, repo="o/r", layer="weekly", correlation=run
+        )
+    )
+    entries = review_journal(database_url, None).entries_for_run(run)
+    assert len(entries) == 1
+    assert entries[0].origin == expected
