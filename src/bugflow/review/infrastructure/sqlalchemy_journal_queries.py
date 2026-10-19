@@ -28,6 +28,7 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
 )
 from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
     association_exists,
+    repository_associations,
 )
 
 
@@ -201,6 +202,17 @@ class SqlAlchemyJournalQueries:
     def _entries(
         self, query: sa.Select[tuple[object, ...]]
     ) -> list[JournalEntry]:
+        associations = repository_associations
+        query = query.add_columns(associations.c.origin).select_from(
+            journal.outerjoin(
+                associations,
+                sa.and_(
+                    associations.c.kind == "journal",
+                    associations.c.record_id
+                    == sa.cast(journal.c.event_id, sa.Text),
+                ),
+            )
+        )
         with self._engine.connect() as connection:
             rows = connection.execute(query).mappings().all()
         return [from_columns(JournalEntry, row) for row in rows]

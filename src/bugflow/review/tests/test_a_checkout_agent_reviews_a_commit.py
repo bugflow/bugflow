@@ -43,6 +43,7 @@ from bugflow.review.usecases.grade_review import GradeReviewUseCase
 from bugflow.review.usecases.wait_review import WaitReviewUseCase
 from bugflow.shared.domain.models.call_record import CallRecord
 from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.shared.domain.models.recorder import Recorder
 from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -495,3 +496,28 @@ def test_a_grader_that_is_down_raises_after_its_calls_are_recorded() -> None:
     (entry,) = journal.entries
     assert entry.event_type == LLM_CALLED
     assert entry.payload["call_id"] == "c-failed"
+
+
+@pytest.mark.parametrize(
+    "previous_origin",
+    [None, "one.example/orchard/pear-tree", "two.example/orchard/pear-tree"],
+)
+def test_canonical_dispatch_reuses_only_a_verdict_from_its_origin(
+    previous_origin: str | None,
+) -> None:
+    journal, runner = QueryableJournal(), FakeRunner()
+    before = Recorder(REF, RUN_1, "safety-2", NOW, origin=previous_origin)
+    journal.append([before.entry("pr.observed", "head", {})])
+    dispatch(journal, runner)
+    grade(journal, FakeGrader(Grading(status="warn", detail="old host")))
+    current = Recorder(
+        REF, RUN_2, "safety-2", NOW, origin="one.example/orchard/pear-tree"
+    )
+    journal.append([current.entry("pr.observed", "head", {})])
+    result = dispatch(journal, runner, correlation=RUN_2)
+    if previous_origin == "one.example/orchard/pear-tree":
+        assert result.reused is not None
+        assert len(runner.tasks) == 1
+    else:
+        assert result.reused is None
+        assert len(runner.tasks) == 2

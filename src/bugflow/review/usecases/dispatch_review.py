@@ -19,6 +19,7 @@ from bugflow.review.domain.models.recorder import Recorder
 from bugflow.review.domain.models.review import ReviewVerdict
 from bugflow.review.domain.services.delegated_work import DelegatedWorkService
 from bugflow.review.domain.services.journal import JournalService
+from bugflow.review.domain.services.scoped_journal import for_run
 from bugflow.review.domain.services.worktree import WorktreeService
 from bugflow.review.dtos.dispatch_review import (
     DispatchReviewRequest,
@@ -204,9 +205,10 @@ class DispatchReviewUseCase:
         workflow run's id and the verdict, taking the latest if there
         are several. Returns None if there is none.
         """
+        journal = for_run(self._journal, request.ref, request.correlation)
         dispatched_in = {
             e.run_id
-            for e in self._journal.events_for_pull_request(
+            for e in journal.events_for_pull_request(
                 request.ref, AGENT_DISPATCHED
             )
             if e.payload.get("step") == "dispatched"
@@ -216,7 +218,7 @@ class DispatchReviewUseCase:
         }
         graded = [
             e
-            for e in self._journal.events_for_pull_request(
+            for e in journal.events_for_pull_request(
                 request.ref, REVIEW_GRADED
             )
             if e.payload.get("agent_id") == request.agent_id
