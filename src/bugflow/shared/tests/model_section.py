@@ -70,9 +70,9 @@ def section() -> str:
         if "held_by" in requirement:
             holder = requirement["held_by"]
             text += (
-                " Not tested: nothing holds it."
+                " Not tested here: nothing holds it."
                 if holder == "nothing"
-                else f" Not tested: held by {holder}."
+                else f" Not tested here: held by {holder}."
             )
         lines.append(
             textwrap.fill(
