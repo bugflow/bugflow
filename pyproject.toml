@@ -89,6 +89,9 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["src", "deployments"]
+markers = [
+    "model(group, requirement): the test holds a requirement of docs/model.toml",
+]
 
 # The rules of docs/ADRs/001-code-layout.md, held by lint-imports.
 [tool.importlinter]

@@ -72,6 +72,18 @@ def test_an_unwrapped_body_is_left_alone() -> None:
     assert unwrap("One line.\n\n- An item.") == "One line.\n\n- An item."
 
 
+@pytest.mark.model(
+    "Gnome",
+    "A policy's header names its subject.",
+)
+@pytest.mark.model(
+    "Gnome",
+    "A policy's header names its model class.",
+)
+@pytest.mark.model(
+    "Gnome",
+    "A policy's header may name a grade ceiling.",
+)
 @pytest.mark.parametrize(
     ("before", "after", "message"),
     [
@@ -79,6 +91,7 @@ def test_an_unwrapped_body_is_left_alone() -> None:
         ("subject: description\n", "", "no subject line"),
         ("graded: yes", "graded: sort of", "not yes or no"),
         ("model_class: medium", "mood: medium", "not a policy"),
+        ("model_class: medium\n", "", "no model_class line"),
         ("clause: RULE-1 the first clause", "clause: RULE-1", "an id and a"),
         ("\n=== calibration\n", "\n", "no === calibration"),
         ("subject: description", "subject: a\nsubject: b", "two subject"),
@@ -99,6 +112,10 @@ def test_a_malformed_policy_names_its_file(
         load_policy(path)
 
 
+@pytest.mark.model(
+    "Gnome",
+    "A policy's header names the clauses it judges by.",
+)
 def test_a_policy_with_no_clause_line_is_refused(tmp_path: Path) -> None:
     text = WHOLE.replace("clause: RULE-1 the first clause\n", "").replace(
         "clause: RULE-2 the second clause\n", ""
@@ -170,6 +187,10 @@ def test_a_policy_is_judged_unless_it_says_a_check_answers_it(
     assert (policy.implemented, policy.checked) == ("check", True)
 
 
+@pytest.mark.model(
+    "Gnome",
+    "A policy whose header names no ceiling may grade a finding fail.",
+)
 def test_a_policy_may_fail_unless_its_ceiling_says_otherwise(
     tmp_path: Path,
 ) -> None:

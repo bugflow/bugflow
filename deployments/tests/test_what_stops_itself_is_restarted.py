@@ -48,6 +48,10 @@ def services(environment: str) -> dict[str, Any]:
     return loaded
 
 
+@pytest.mark.model(
+    "Deployment",
+    "The worker and the ingress stop when another deployment is in force.",
+)
 def test_the_programs_that_stop_themselves_are_the_ones_named_here() -> None:
     calling = {
         str(path.relative_to(APPS))
@@ -58,6 +62,11 @@ def test_the_programs_that_stop_themselves_are_the_ones_named_here() -> None:
     assert calling == set(STOPS_ITSELF)
 
 
+@pytest.mark.model(
+    "Deployment",
+    "Compose starts the worker and the ingress again when they stop, and "
+    "they read the deployment in force.",
+)
 @pytest.mark.parametrize("environment", ENVIRONMENTS)
 @pytest.mark.parametrize("service", RESTARTED)
 def test_each_is_started_again_when_it_stops(

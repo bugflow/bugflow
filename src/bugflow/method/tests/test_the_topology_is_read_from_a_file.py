@@ -41,6 +41,10 @@ def written(tmp_path: Path, text: str) -> Path:
     return path
 
 
+@pytest.mark.model(
+    "Binding",
+    "A binding's pace-layers.toml pairs processes with cadences.",
+)
 def test_a_layer_holds_the_processes_the_file_gives_it(
     tmp_path: Path,
 ) -> None:

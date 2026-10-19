@@ -70,6 +70,10 @@ def edited(note: str) -> dict[str, str]:
     return READ | {"prose/reviewer.md": MANIFEST + note}
 
 
+@pytest.mark.model(
+    "Deployment",
+    "The API stores each deployment.",
+)
 def test_a_deployment_is_stored_put_in_force_and_recorded() -> None:
     fixture = Fixture()
     answered = fixture.deploy.execute(request())
@@ -128,6 +132,10 @@ def test_putting_a_commit_back_in_force_is_a_fact_of_its_own() -> None:
     assert len({e.event_id for e in fixture.journal.entries}) == 3
 
 
+@pytest.mark.model(
+    "Parsing",
+    "A run with --check stores nothing.",
+)
 def test_a_check_stores_nothing_and_records_nothing() -> None:
     fixture = Fixture()
     answered = fixture.deploy.execute(request(check_only=True))
@@ -147,6 +155,14 @@ def test_a_check_says_which_deployment_is_in_force() -> None:
     assert fixture.deployments.held(REPOSITORY, "c2") is None
 
 
+@pytest.mark.model(
+    "Parsing",
+    "The API runs the parser on every deployment.",
+)
+@pytest.mark.model(
+    "Parsing",
+    "A deployment with a problem in any file stores nothing.",
+)
 def test_files_that_do_not_parse_are_refused_and_nothing_changes() -> None:
     fixture = Fixture()
     fixture.deploy.execute(request("c1"))

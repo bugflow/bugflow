@@ -2,6 +2,10 @@
 doctrine's clauses, corpus versions, failing statuses, withheld
 warnings, a write-up's note and its key."""
 
+from typing import get_args
+
+import pytest
+
 from bugflow.review.domain.errors import (
     GraderUnavailableError,
     JudgeTemporarilyUnavailableError,
@@ -13,7 +17,11 @@ from bugflow.review.domain.models.enforcement import Enforcement, fails
 from bugflow.review.domain.models.finding import Finding
 from bugflow.review.domain.models.grading import author_note
 from bugflow.review.domain.models.judgement import JudgeExchange
-from bugflow.review.domain.models.review import ReviewVerdict, project
+from bugflow.review.domain.models.review import (
+    ReviewStatus,
+    ReviewVerdict,
+    project,
+)
 from bugflow.review.domain.models.submission import (
     Submission,
     SubmissionCommit,
@@ -176,3 +184,8 @@ def test_an_unavailable_judge_or_grader_carries_its_calls() -> None:
     assert later.retry_after is None and later.calls == ()
     assert isinstance(later, JudgeUnavailableError)
     assert GraderUnavailableError("no").calls == ()
+
+
+@pytest.mark.model("Verdict", "A verdict is pass, warn or fail.")
+def test_a_verdict_is_pass_warn_or_fail() -> None:
+    assert get_args(ReviewStatus) == ("pass", "warn", "fail")
