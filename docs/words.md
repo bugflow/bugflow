@@ -36,9 +36,10 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
   answers a policy in code; a garden's lint runs it. A server's checks
   are its own code, given a policy by the manifest's `checks` line.
   [What a gnome is](gnomes.md), "What a server makes of a gnome".
-- **Skill.** The folder, `skills/<skill>/`, that an agent reads to
-  write or tidy to the doctrine, with a copy of the doctrine and the
-  policies in its `references/`. [What a gnome is](gnomes.md).
+- **Skill.** ClankOS's word, in its
+  [words](https://github.com/ClankaOperatingSystem/clankos/blob/master/docs/words.txt).
+  A gnome's skill, `skills/<skill>/`, holds a copy of the doctrine and
+  the policies in its `references/`. [What a gnome is](gnomes.md).
 - **Manifest.** `manifest.md`: the gnome's id and the lists of its
   subjects, policies and checks. [The policy package](policy-package.md),
   "The manifest".
@@ -49,6 +50,9 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 
 ## A server and what it says
 
+- **Server.** One running composition of bugflow: the API, the
+  worker, the ingress and their database, judging pull requests by the
+  deployment in force. [What is deployed where](architecture.md).
 - **Reviewer.** What a server calls a gnome's directory in a
   deployment: a manifest, policies and a doctrine, whose findings make
   one verdict, named by the manifest's `agent_id`. Not a process:
@@ -73,9 +77,12 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 - **Grade.** How bad a finding is, `warn` or `fail`. A policy's
   `ceiling` is the worst grade its findings may carry.
   [The policy package](policy-package.md), "A policy file".
+- **Ceiling.** The worst grade a policy's findings may carry, `warn`
+  or `fail`, named in its header; a policy that names none may fail.
+  [The policy package](policy-package.md), "A policy file".
 - **Verdict.** A reviewer's result for one commit, `pass`, `warn` or
-  `fail`: the worst grade among its findings, written as a commit
-  status. [What a gnome is](gnomes.md), "What a server makes of a
+  `fail`: the worst grade among its findings. The reviewer's commit
+  status is set from the findings. [What a gnome is](gnomes.md), "What a server makes of a
   gnome".
 
 ## How rules reach a server
