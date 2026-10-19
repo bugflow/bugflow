@@ -35,11 +35,18 @@ class QueryableJournal(InMemoryJournal):
             }
         )
 
-    def received_since(self, ref: PullRequestRef, since: datetime) -> bool:
+    def received_since(
+        self,
+        ref: PullRequestRef,
+        since: datetime,
+        *,
+        origin: str | None = None,
+    ) -> bool:
         return any(
             e.event_type == "delivery.received"
             and (e.forge, e.repo, e.pr_number)
             == (ref.forge, f"{ref.owner}/{ref.repo}", ref.number)
             and e.occurred_at >= since
+            and (origin is None or self._origin(e.event_id) == origin)
             for e in self.entries
         )

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -46,6 +47,20 @@ class Delivery:
     #: When the forge last changed the pull request. Used to notice that
     #: a polled change was already delivered by a webhook.
     updated_at: datetime | None = None
+    origin: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.origin is not None:
+            origin = RepositoryOrigin(self.origin)
+            if str(origin).split("/", 1)[1] != self.repository:
+                raise ValueError("delivery origin does not match repository")
+            if self.ref is not None and (
+                self.ref.forge != self.forge
+                or f"{self.ref.owner}/{self.ref.repo}" != self.repository
+            ):
+                raise ValueError(
+                    "delivery reference does not match repository"
+                )
 
 
 def forge_time(text: object) -> datetime | None:

@@ -381,14 +381,19 @@ class GitHubForge:
             "direction": "desc",
             "per_page": PER_PAGE,
         }
+        origin = str(
+            RepositoryOrigin.parse(f"https://github.com/{owner}/{repo}")
+        )
         pulls: list[PolledPullRequest] = []
         for page in range(1, MAX_PAGES + 1):
-            batch = self._get(path, params | {"page": page})
+            batch = self._get(
+                path, params | {"page": page}, follow_redirects=False
+            )
             for payload in batch:
                 pull = polled_from_payload(owner, repo, payload)
                 if since is not None and pull.updated_at < since:
                     return pulls
-                pulls.append(pull)
+                pulls.append(replace(pull, origin=origin))
             if len(batch) < PER_PAGE:
                 break
         return pulls
@@ -421,13 +426,18 @@ class GitHubForge:
             "since": since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "per_page": PER_PAGE,
         }
+        origin = str(
+            RepositoryOrigin.parse(f"https://github.com/{owner}/{repo}")
+        )
         comments: list[PolledComment] = []
         for page in range(1, MAX_PAGES + 1):
-            batch = self._get(path, params | {"page": page})
+            batch = self._get(
+                path, params | {"page": page}, follow_redirects=False
+            )
             for payload in batch:
                 comment = polled_comment_from_payload(owner, repo, payload)
                 if comment is not None:
-                    comments.append(comment)
+                    comments.append(replace(comment, origin=origin))
             if len(batch) < PER_PAGE:
                 break
         return comments
