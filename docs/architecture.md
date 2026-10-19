@@ -164,7 +164,7 @@ database must each be given the new name.
 ## The things, and who enforces each
 
 What a gnome, a binding, a deployment and a server are made of, what
-contains or points at what, and which code holds each to its form.
+contains or points at what, and the requirements on each.
 [Words](words.md) gives each word one line and says where it is
 defined. A gnome is also a methodology to a ClankOS garden, which
 installs its skill and runs its checks; `clankos-run help model`
@@ -174,9 +174,9 @@ commit a binding pins a gnome at is the ref a garden declares it at.
 ```mermaid
 flowchart TD
     subgraph gnome["A gnome: one repository"]
-        manifest["manifest.md:<br/>id, subjects, policies, checks"]
+        manifest["manifest.md:<br/>id, policies, checks"]
         doctrine["doctrine/: clauses"]
-        policy["policies/: one question each,<br/>its clauses, subject, class, ceiling"]
+        policy["policies/: one question each,<br/>its clauses, subject, class,<br/>and a ceiling or none"]
         case["cases/: clean and seeded,<br/>each with its answer"]
         skill["skills/: SKILL.md,<br/>references/ (copies), scripts/check-*"]
         manifest -- lists --> policy
@@ -196,7 +196,7 @@ flowchart TD
         judge["judge: a model,<br/>one policy at a time"]
         check["check: the server's own code"]
         finding["findings: words at fault,<br/>one clause, a grade"]
-        verdict["verdict: pass, warn or fail,<br/>as a commit status"]
+        verdict["verdict: pass, warn or fail;<br/>a commit status from the findings"]
         deployment --> reviewer
         reviewer --> judge
         reviewer --> check
@@ -210,18 +210,117 @@ flowchart TD
     gnome -. "declared at a ref" .-> garden
 ```
 
-| Thing | Its form is held by |
-|---|---|
-| A gnome's files: manifest, doctrine, policies, cases | The policy package parser, which the API runs on every deployment and the binding's pipeline runs with `--check` before a merge. A file with a problem stores nothing and reports every problem |
-| The copies in a skill's `references/` | The gnome's own tests, which fail when a copy differs from its original. The server reads the originals and never a copy |
-| A skill's `scripts/check-*` | Not this server. A garden's lint runs them |
-| The binding's two files | The same parser, as part of a deployment |
-| The deployment in force | The API, which stores each deployment and puts the latest in force; the worker and the ingress re-read it within 15 seconds |
-| A reviewer's id, subjects and the policies it may ask | The manifest, read at deployment; a declared policy the worker cannot answer is left out |
-| A finding's clause | The policy's header: a judge may cite only the clauses the policy lists |
-| A grade's ceiling, and the model class | The policy's header, read by the worker when it asks |
-| A verdict | The worker, which takes the worst grade among a reviewer's findings on one commit |
-| Calibration | Nothing here. This repository has no command that runs one |
+Each requirement below is held by the tests marked with it, or names
+what holds it instead.
+
+<!-- Written from docs/model.toml: python -m bugflow.shared.tests.model_section -->
+
+**Gnome**
+
+- A gnome is one repository. Not tested: nothing holds it.
+- A gnome's manifest.md gives its id, its policies and its checks.
+- A gnome's doctrine/ holds its clauses.
+- A gnome's policies/ holds its policies.
+- A policy asks one question. Not tested: held by the gnome's author.
+- A policy's header names the clauses it judges by.
+- A policy's header names its subject.
+- A policy's header names its model class.
+- A policy's header may name a grade ceiling.
+- A policy whose header names no ceiling may grade a finding fail.
+- A gnome's cases/ holds clean cases and seeded cases. Not tested: held
+  by each gnome's own tests.
+- Each case tests one policy and gives its answer. Not tested: held by
+  each gnome's own tests.
+
+**Parsing**
+
+- The policy package parser reads each reviewer's manifest, doctrine and
+  policies, and the binding's two files.
+- The parser refuses a file that a server does not read, such as a case.
+- The API runs the parser on every deployment.
+- bugflow deploy-policies sends the API only the files that a server
+  reads.
+- bugflow deploy-policies with --check asks the API to parse the files.
+- A run with --check stores nothing.
+- The binding's pipeline runs bugflow deploy-policies with --check on a
+  pull request. Not tested: held by the binding's pipeline.
+- A deployment with a problem in any file stores nothing.
+- The parser reports the problem in each file that has one.
+
+**Skill**
+
+- A gnome's skills/ holds a skill with SKILL.md, references/ and
+  scripts/check-*. Not tested: held by each gnome's own tests.
+- A skill's references/ holds copies of the gnome's doctrine and
+  policies. Not tested: held by each gnome's own tests.
+- A gnome's own tests fail when a copy differs from its original. Not
+  tested: held by each gnome's own tests.
+- The server reads a reviewer's originals and passes over a skill's
+  copies.
+- A reviewer with no originals and one skill is read from that skill's
+  references/.
+- The server never runs a skill's scripts/check-*.
+
+**Binding**
+
+- A binding is one repository. Not tested: nothing holds it.
+- A binding holds a copy of each gnome at a pinned commit. Not tested:
+  held by the binding's pipeline.
+- A binding's declarations.toml pairs policies with repositories.
+- A binding's pace-layers.toml pairs processes with cadences.
+- The commit a binding pins a gnome at is the ref a garden declares it
+  at. Not tested: held by the maintainer of the binding and the garden.
+
+**Deployment**
+
+- The binding's pipeline runs bugflow deploy-policies when a change to
+  the binding is merged. Not tested: held by the binding's pipeline.
+- The API stores each deployment.
+- The API puts the latest deployment in force.
+- The worker and the ingress look every 15 seconds for another
+  deployment in force.
+- The worker and the ingress stop when another deployment is in force.
+- Compose starts the worker and the ingress again when they stop, and
+  they read the deployment in force.
+
+**Reviewer**
+
+- A server has a reviewer for each gnome, named by the gnome's id.
+- A reviewer's id and policies are read from the manifest at deployment.
+- A deployment that declares a policy this server cannot answer is
+  refused.
+- A policy that the worker cannot answer is held and not judged.
+
+**Judge, check and finding**
+
+- A judge is a model that answers one policy at a time.
+- A check is the server's own code.
+- A finding names the words at fault, one clause and a grade.
+- A judge may cite only the clauses that its policy lists.
+- A finding's grade is no higher than its policy's ceiling.
+- The worker asks a judge of the model class that the policy's header
+  names.
+- JUDGE_MODEL, when it is set, names the model for every class.
+
+**Verdict**
+
+- A verdict is pass, warn or fail.
+- A reviewer's verdict is fail when one of its findings fails.
+- A reviewer with no failing finding and an unanswered policy has no
+  verdict.
+- A reviewer's verdict is otherwise warn when one of its findings warns,
+  and pass when none does.
+- Each reviewer sets a commit status on the head commit, named by its
+  id.
+- The commit status is failure when one of the reviewer's findings
+  fails, and success otherwise.
+
+**Calibration**
+
+- Bugflow has no command that runs a calibration. Not tested: nothing
+  holds it.
+
+<!-- End of the section written from docs/model.toml -->
 
 ## Present limits
 
