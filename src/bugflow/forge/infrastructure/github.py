@@ -316,12 +316,21 @@ class GitHubForge:
                 login=str((raw.get("user") or {}).get("login") or ""),
                 reacted_at=forge_time(raw.get("created_at")),
             )
-            for raw in self._get(f"{path}/reactions") or []
+            for raw in self._get(f"{path}/reactions", follow_redirects=False)
+            or []
         )
 
     def state(self, ref: PullRequestRef) -> PullRequestState:
-        pull = self._get(f"/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}")
+        pull = self._get(
+            f"/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}",
+            follow_redirects=False,
+        )
         return PullRequestState(
+            origin=str(
+                RepositoryOrigin.parse(
+                    f"https://github.com/{ref.owner}/{ref.repo}"
+                )
+            ),
             merged=bool(pull.get("merged")),
             head_sha=(pull.get("head") or {}).get("sha") or None,
         )

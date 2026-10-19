@@ -6,12 +6,14 @@ from uuid import UUID
 from bugflow.review.domain.facts import ACTION_TAKEN
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.shared.domain.models.journal_provenance import resolve_origin
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_association import (
     AssociationConflictError,
     RepositoryAssociationUnresolvedError,
 )
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
 
 def for_run(
@@ -37,6 +39,34 @@ def for_run(
     origin = next(iter(origins))
     assert origin is not None
     return OriginJournal(journal, ref, origin)
+
+
+def for_origin(
+    journal: JournalService,
+    ref: PullRequestRef,
+    run: Correlation,
+    origin: str | None,
+) -> JournalService:
+    """Check an observed source before reusing historical evidence."""
+    repo = f"{ref.owner}/{ref.repo}"
+    if origin is not None:
+        RepositoryOrigin(origin)
+        if origin.split("/", 1)[1] != repo:
+            raise ValueError("observed origin does not match repository")
+    if not run.workflow_id or not run.run_id:
+        raise ValueError("observed origin requires a workflow run")
+    retained = (
+        entry.origin
+        for entry in journal.entries_for_run(run)
+        if (entry.forge, entry.repo, entry.pr_number)
+        == (ref.forge, repo, ref.number)
+    )
+    resolve_origin(
+        (run.workflow_id, run.run_id, ref.forge, repo, ref.number),
+        (origin,),
+        retained,
+    )
+    return journal if origin is None else OriginJournal(journal, ref, origin)
 
 
 class OriginJournal:

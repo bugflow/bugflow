@@ -36,4 +36,6 @@ class ForgeConversation:
 
     def state(self, ref: PullRequestRef) -> Closing:
         state = self._forge.state(ref)
-        return Closing(merged=state.merged, head_sha=state.head_sha)
+        return Closing(
+            merged=state.merged, head_sha=state.head_sha, origin=state.origin
+        )

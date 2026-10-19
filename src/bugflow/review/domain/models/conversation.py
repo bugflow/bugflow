@@ -4,6 +4,8 @@ pull request has closed."""
 from dataclasses import dataclass
 from datetime import datetime
 
+from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
+
 
 @dataclass(frozen=True, kw_only=True)
 class Reaction:
@@ -24,3 +26,8 @@ class Closing:
     merged: bool
     #: Its last commit when it closed, if known.
     head_sha: str | None = None
+    origin: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.origin is not None:
+            RepositoryOrigin(self.origin)

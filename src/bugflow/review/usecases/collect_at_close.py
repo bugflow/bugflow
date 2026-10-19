@@ -22,6 +22,7 @@ from bugflow.review.domain.models.finding import Finding
 from bugflow.review.domain.models.recorder import Recorder
 from bugflow.review.domain.services.conversation import ConversationService
 from bugflow.review.domain.services.journal import JournalService
+from bugflow.review.domain.services.scoped_journal import for_origin
 from bugflow.review.dtos.collect_at_close import (
     CollectAtCloseRequest,
     CollectAtCloseResponse,
@@ -48,10 +49,21 @@ class CollectAtCloseUseCase:
         what was recorded.
         """
         ref = request.ref
-        recorder = Recorder(ref, request.correlation, None, self._clock.now())
+        closing = self._conversation.state(ref)
+        journal = for_origin(
+            self._journal, ref, request.correlation, closing.origin
+        )
+        recorder = Recorder(
+            ref,
+            request.correlation,
+            None,
+            self._clock.now(),
+            origin=closing.origin,
+            origin_asserted=True,
+        )
         entries: list[JournalEntry] = []
-        drew_on = self._reviewers_by_comment(request)
-        for comment_id, posted in self._posted(request).items():
+        drew_on = self._reviewers_by_comment(request, journal)
+        for comment_id, posted in self._posted(request, journal).items():
             for reaction in self._conversation.reactions(ref, comment_id):
                 entries.append(
                     recorder.entry(
@@ -77,8 +89,7 @@ class CollectAtCloseUseCase:
                         },
                     )
                 )
-        closing = self._conversation.state(ref)
-        outstanding = self._outstanding(request)
+        outstanding = self._outstanding(request, journal)
         entries.append(
             recorder.entry(
                 PR_CLOSED,
@@ -106,15 +117,13 @@ class CollectAtCloseUseCase:
         )
 
     def _posted(
-        self, request: CollectAtCloseRequest
+        self, request: CollectAtCloseRequest, journal: JournalService
     ) -> dict[int, JournalEntry]:
         """Each comment that was posted, by its id, with the journal entry
         that recorded posting it.
         """
         posted: dict[int, JournalEntry] = {}
-        for e in self._journal.events_for_pull_request(
-            request.ref, ACTION_TAKEN
-        ):
+        for e in journal.events_for_pull_request(request.ref, ACTION_TAKEN):
             comment_id = e.payload.get("comment_id")
             if (
                 e.payload.get("action") == "review_comment"
@@ -125,13 +134,11 @@ class CollectAtCloseUseCase:
         return posted
 
     def _reviewers_by_comment(
-        self, request: CollectAtCloseRequest
+        self, request: CollectAtCloseRequest, journal: JournalService
     ) -> dict[int, list[str]]:
         """The reviewers that had a part in each posted comment, sorted."""
         drew_on: dict[int, set[str]] = {}
-        for e in self._journal.events_for_pull_request(
-            request.ref, ACTION_TAKEN
-        ):
+        for e in journal.events_for_pull_request(request.ref, ACTION_TAKEN):
             comment_id = e.payload.get("comment_id")
             agent_id = e.payload.get("agent_id")
             if (
@@ -146,18 +153,20 @@ class CollectAtCloseUseCase:
             for comment_id, agents in drew_on.items()
         }
 
-    def _outstanding(self, request: CollectAtCloseRequest) -> list[Finding]:
+    def _outstanding(
+        self, request: CollectAtCloseRequest, journal: JournalService
+    ) -> list[Finding]:
         """The findings the last evaluation that published raised. Each
         evaluation records every finding it holds, so these are what was
         still standing.
         """
-        last = self._journal.latest_acted_run(
+        last = journal.latest_acted_run(
             request.ref, excluding=request.correlation
         )
         if last is None:
             return []
         return [
             Finding.from_payload(e.payload)
-            for e in self._journal.entries_for_run(last)
+            for e in journal.entries_for_run(last)
             if e.event_type == FINDING_RAISED
         ]

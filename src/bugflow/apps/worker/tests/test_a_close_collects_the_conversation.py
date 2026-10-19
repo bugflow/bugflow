@@ -42,8 +42,11 @@ class NoForge:
 
 
 class Conversing:
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(
+        self, error: Exception | None = None, origin: str | None = None
+    ) -> None:
         self._error = error
+        self._origin = origin
 
     def reactions(
         self, ref: PullRequestRef, comment_id: int
@@ -53,7 +56,9 @@ class Conversing:
         return (Reaction(content="+1", login="a-reader", reacted_at=AT),)
 
     def state(self, ref: PullRequestRef) -> PullRequestState:
-        return PullRequestState(merged=True, head_sha="c" * 40)
+        return PullRequestState(
+            merged=True, head_sha="c" * 40, origin=self._origin
+        )
 
 
 def activities(
@@ -135,3 +140,23 @@ def test_no_forge_that_reads_a_conversation_fails_it_for_good_too() -> None:
 
     assert raised.value.non_retryable
     assert built.collecting.startswith("not collecting at close")
+
+
+@pytest.mark.parametrize("origin", [None, "other.test/example-org/widgets"])
+def test_provenance_refusal_is_not_automatically_retried(
+    origin: str | None,
+) -> None:
+    journal = QueryableJournal()
+    held = Recorder(REF, CLOSING, None, AT, origin=origin).entry(
+        "delivery.received", "delivery", {}
+    )
+    journal.append([held])
+    built = activities(
+        journal, Conversing(origin="github.com/example-org/widgets")
+    )
+    with pytest.raises(ApplicationError) as raised:
+        built.collect_at_close(
+            CollectAtCloseRequest(ref=REF, correlation=CLOSING)
+        )
+    assert raised.value.non_retryable
+    assert [e.event_id for e in journal.entries] == [held.event_id]
