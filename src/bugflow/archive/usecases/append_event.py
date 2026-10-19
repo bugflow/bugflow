@@ -16,7 +16,10 @@ application provided a way to ask.
 from bugflow.archive.domain import facts
 from bugflow.archive.domain.admission import admitted
 from bugflow.archive.domain.errors import ArchiveRefusedError
-from bugflow.archive.domain.models.binding import ArchiveBinding
+from bugflow.archive.domain.models.binding import (
+    ArchiveBinding,
+    check_binding_origin,
+)
 from bugflow.archive.domain.models.description import Description
 from bugflow.archive.domain.repositories.bindings import BindingRepository
 from bugflow.archive.domain.services.archive_access import (
@@ -68,6 +71,10 @@ class AppendEventUseCase:
             request.ledger_id,
         )
         try:
+            check_binding_origin(binding, binding.origin)
+        except ValueError as exc:
+            raise ArchiveRefusedError("entry", str(exc)) from exc
+        try:
             answer = self._keeping.append(
                 request.ledger_id,
                 request.name,
@@ -78,15 +85,11 @@ class AppendEventUseCase:
                 request.following,
             )
         except ArchiveRefusedError as refusal:
-            self._journal.append([self._refused(binding, request, refusal)])
+            self._record(self._refused(binding, request, refusal))
             raise
-        # Written even when the event was already stored. The id is made
-        # from the event, so the journal still ends up with one entry.
-        # And if the entry could not be written the first time, the
-        # client's retry writes it.
-        self._journal.append(
-            [self._sealed(binding, request, answer.description)]
-        )
+        # A keeper retry repairs a missing fact, but cannot retag a fact
+        # retained before the ledger acquired an origin.
+        self._record(self._sealed(binding, request, answer.description))
         if answer.appended and self._indexing is not None:
             # So the new files can be searched straight away. If this
             # request is lost, the scheduled catch-up covers it.
@@ -103,14 +106,19 @@ class AppendEventUseCase:
             appended=answer.appended,
         )
 
+    def _record(self, entry: JournalEntry) -> None:
+        if not self._journal.has_event(entry.event_id):
+            self._journal.append([entry])
+
     def _sealed(
         self,
         binding: ArchiveBinding,
         request: AppendEventRequest,
         kept: Description,
     ) -> JournalEntry:
+        identifier = facts.sealed_id(request.ledger_id, request.name)
         return JournalEntry(
-            event_id=facts.sealed_id(request.ledger_id, request.name),
+            event_id=identifier,
             occurred_at=self._clock.now(),
             event_type=facts.SEALED,
             forge=binding.forge,
@@ -119,7 +127,11 @@ class AppendEventUseCase:
             commit_sha=None,
             corpus_version=None,
             workflow_id=WORKFLOW_ID,
-            run_id=self._run_id,
+            # The host's process id can serve ledgers on different hosts.
+            # A canonical fact needs its own scope, stable across retries.
+            run_id=str(identifier) if binding.origin else self._run_id,
+            origin=binding.origin,
+            origin_asserted=True,
             payload={
                 "ledger_id": request.ledger_id,
                 "scope": binding.scope,
@@ -142,10 +154,11 @@ class AppendEventUseCase:
         refusal: ArchiveRefusedError,
     ) -> JournalEntry:
         when = self._clock.now()
+        identifier = facts.refused_id(
+            request.ledger_id, request.name, refusal.kind, when
+        )
         return JournalEntry(
-            event_id=facts.refused_id(
-                request.ledger_id, request.name, refusal.kind, when
-            ),
+            event_id=identifier,
             occurred_at=when,
             event_type=facts.REFUSED,
             forge=binding.forge,
@@ -154,7 +167,11 @@ class AppendEventUseCase:
             commit_sha=None,
             corpus_version=None,
             workflow_id=WORKFLOW_ID,
-            run_id=self._run_id,
+            # The host's process id can serve ledgers on different hosts.
+            # A canonical fact needs its own scope, stable across retries.
+            run_id=str(identifier) if binding.origin else self._run_id,
+            origin=binding.origin,
+            origin_asserted=True,
             payload={
                 "ledger_id": request.ledger_id,
                 "scope": binding.scope,
