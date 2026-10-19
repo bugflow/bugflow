@@ -30,6 +30,7 @@ class Task:
     inputs: str | None = None
     #: A repository the runner may fetch, and the commit to read it at.
     repository: str = ""
+    origin: str | None = None
     commit: str = ""
     #: The commit under review, when ``commit`` is its base.
     head: str = ""

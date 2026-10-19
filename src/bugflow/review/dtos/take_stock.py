@@ -13,6 +13,7 @@ class TakeStockRequest(BaseModel):
     forge: str
     # The repository as the journal names it: "owner/name".
     repo: str
+    origin: str | None = None
     # The name of the layer that is taking stock.
     layer: str
     correlation: Correlation

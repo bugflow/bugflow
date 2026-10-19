@@ -7,7 +7,8 @@ New GitHub and HTTPS Forgejo snapshots retain and associate their origin.
 Observed evaluation runs associate their journal entries with that origin.
 Authenticated deliveries also associate new delivery, dismissal and merge facts.
 Closing workflows associate their reaction and closing facts with the
-observed source.
+observed source. Stocktakes select and associate repository-wide evidence
+through their configured source.
 Evaluation API reads accept an optional canonical origin and select
 retained records. This release does not implement repository-key enforcement.
 
@@ -39,7 +40,7 @@ host. The parser does not contact a forge or follow redirects.
 
 | Storage | Existing identity | Association treatment |
 |---|---|---|
-| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries and closing workflows associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
+| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries, closing workflows and stocktakes associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
 | `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
 | `archive_bindings` | Ledger UUID, forge, repo and scope | Map the ledger UUID. Keep the existing binding. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
@@ -112,8 +113,7 @@ hostless results. Suspend canonical requests before rolling the API back.
 An operator can test reader readiness with mapped records that share a
 path on two hosts.
 
-Independent repository-wide runs still need an origin source. Bindings and
-declarations need compatible migration paths. Repository-key activation
+Bindings and declarations still need compatible migration paths. Repository-key activation
 requires credential protection and compatible clients in later releases.
 
 ## New snapshot ingestion
@@ -191,9 +191,9 @@ leaves subsequent journal events unresolved and can cause canonical reads
 to return 409. Retained associations remain intact.
 
 A newly observed evaluation can be read by its canonical origin without a
-manual per-event mapping. Independent repository-wide records still need
-their own origin source. A repository history request can therefore return
-409 while a detail request for the fully associated evaluation succeeds. Bindings, declarations and
+manual per-event mapping. Historical unresolved records can still make a
+repository history request return 409 while a detail request for a fully
+associated evaluation succeeds. Bindings, declarations and
 repository-key enforcement still need their later migration steps.
 
 ## Delivery ingestion
@@ -235,8 +235,7 @@ ingress, pollers and workers together. An older poller omits the source
 metadata; its deliveries stay unresolved and can conflict with a canonical
 run. An older ingress discards the poller's metadata. On rollback, retain
 associations; subsequent unresolved records can make canonical history
-return 409. Repository-wide review runs still need provenance, and
-repository-key access remains disabled.
+return 409. Repository-key access remains disabled.
 
 ## Closing workflow ingestion
 
@@ -271,9 +270,47 @@ so a concurrent conflicting writer cannot commit a mixed batch.
 Migration `0008` and the coordinated drain and worker replacement above
 remain required. Reverting to older closing workers restores hostless
 history selection, so suspend closing collection before rollback while
-retaining all stored associations. Repository-wide producers, declarations
-and ledger bindings still need their migration steps. This release does
+retaining all stored associations. Declarations and ledger bindings still
+need their migration steps. This release does
 not enable repository-key enforcement.
+
+## Repository-wide stocktakes
+
+The worker resolves each new stocktake's source from its configured forge
+endpoints. Configured GitHub credentials select the fixed github.com
+adapter. A configured Forgejo URL and token select that endpoint; only
+HTTPS supplies a canonical origin. Missing settings and HTTP sources retain
+legacy, unresolved behaviour. This is a binding for a new run, not an
+inference about retained events or a live repository-existence check.
+An explicit request origin must agree with the worker's configured endpoint.
+
+Canonical stocktakes select both prior layer marks and merge facts through
+that origin before deriving the commit range. Foreign and unresolved
+records are excluded. Map historical evidence explicitly before it should
+contribute to a canonical range. The new mark asserts the source in a
+repository-wide scope with no PR number. An unresolved run cannot gain an
+origin on retry, and a known run cannot change or lose its origin.
+
+Dispatch, collection and grading recover the source from that retained run.
+A partially mapped or conflicting run is refused before contacting the
+runner or grader. The source is asserted on their journal batches, including
+refusals, findings and model calls. Event ids and payloads remain unchanged.
+Legacy runs with no source retain hostless selection and unresolved output.
+
+The delegated task carries the run's origin across the work-context boundary.
+Before creating a managed session, the adapter requires its configured clone
+endpoint and repository path to resolve to the same origin. A mismatch or
+an unsupported endpoint refuses dispatch. The resource URL still comes from
+the runner's configuration; the source assertion does not choose a new host
+or grant credentials. This checks the requested mount URL, not the remote
+provider's internal clone implementation.
+
+Install migration `0008`, drain stocktake workflows and replace the worker
+set together. Older workers can discard task provenance or select hostless
+marks. Before rollback, suspend stocktake schedules and drain existing runs.
+Retain all associations. Declarations, spend bindings and operational workflow
+ids still use their existing hostless keys pending the configuration and
+binding migration. Do not enable repository-key enforcement on this tranche.
 
 ## Canonical evaluation reads
 

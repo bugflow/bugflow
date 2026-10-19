@@ -54,6 +54,7 @@ from jsonschema import Draft202012Validator
 
 from bugflow.shared.domain.services.object_store import ObjectStoreService
 from bugflow.shared.domain.values.budget import Budget
+from bugflow.shared.domain.values.repository_origin import https_origin
 from bugflow.work.domain.errors import (
     AgentTemporarilyUnavailableError,
     AgentUnavailableError,
@@ -236,6 +237,17 @@ class ManagedAgent:
                 "a managed session mounts a repository at a commit, and "
                 "this task names none"
             )
+        if task.origin is not None:
+            try:
+                origin = https_origin(self._clone_url, task.repository)
+            except ValueError as exc:
+                raise AgentUnavailableError(
+                    "clone endpoint has no canonical origin"
+                ) from exc
+            if origin != task.origin:
+                raise AgentUnavailableError(
+                    "clone endpoint differs from the task origin"
+                )
         pinned = self._pin()
         try:
             session = self._client.beta.sessions.create(
