@@ -2,8 +2,8 @@
 
 A deployment is a set of text files held in the database. This module
 parses them into what a worker reads: reviewers, each reviewer's
-policies and doctrine, the pace layers, and what each repository
-declares.
+policies and doctrine, the pace layers, what each repository
+declares, and the glossary files.
 
 Every problem in a deployment is collected and reported in one
 ``PolicyDeploymentError``, so a sender sees all of them in one attempt.
@@ -11,7 +11,7 @@ Every problem in a deployment is collected and reported in one
 
 import tomllib
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from bugflow.method.domain.errors import PolicyDeploymentError
@@ -34,6 +34,10 @@ TOPOLOGY = "pace-layers.toml"
 #: The file beside the reviewers that says what each repository is
 #: reviewed for. Optional.
 DECLARATIONS = "declarations.toml"
+#: The directory of words documents the binding copies in. Optional.
+GLOSSARY = "glossary"
+#: The names a glossary file may have.
+GLOSSARY_SUFFIXES = (".md", ".txt", ".org")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -77,6 +81,13 @@ class ParsedDeployment:
     #: server's declarations as they are. An empty tuple is a file that
     #: declares no repository.
     declared: tuple[RepositoryDeclaration, ...] | None = None
+    #: The text of each file under glossary/, by path, in path order.
+    glossary: Mapping[str, str] = field(default_factory=dict)
+
+
+def _in_glossary(path: str) -> bool:
+    """Whether the path is under the glossary directory."""
+    return PurePosixPath(path).parts[0] == GLOSSARY
 
 
 def _kind(path: str) -> tuple[str, str, str] | None:
@@ -88,9 +99,11 @@ def _kind(path: str) -> tuple[str, str, str] | None:
     agent's directory, or the ``references`` directory of one of its
     skills, which holds a copy. A manifest's place is the agent's
     directory. The files beside the reviewers belong to no agent and
-    are handled apart.
+    are handled apart, and so are the glossary files.
     """
     parts = PurePosixPath(path).parts
+    if parts[0] == GLOSSARY:
+        return None
     if len(parts) == 2 and parts[1] in MANIFESTS:
         return parts[0], "manifest", parts[0]
     if not parts[-1].endswith(".md"):
@@ -117,24 +130,34 @@ def parse_deployment(
     this server has, and ``subjects`` the subjects it renders, if the
     caller knows them.
 
-    Raises ``PolicyDeploymentError`` listing every problem found: a
-    path the server does not read, a manifest or policy or topology
-    that does not parse, two agents with one id, two manifests in one
-    directory, two policies with one id in one agent, policy or
-    doctrine files in a directory that has no manifest, policy or
-    doctrine files of one agent in two skills and none in its own
-    directory, and a
-    declaration naming a policy or process the deployment does not
-    hold, a checked policy no manifest gives a check, or a policy whose
-    subject this server does not render.
+    Raises ``PolicyDeploymentError`` listing every problem found: a path
+    the server does not read, a glossary file of another name, a
+    manifest or policy or topology that does not parse, two agents with
+    one id, two manifests in one directory, two policies with one id in
+    one agent, policy or doctrine files in a directory that has no
+    manifest, policy or doctrine files of one agent in two skills and
+    none in its own directory, and a declaration naming a policy or
+    process the deployment does not hold, a checked policy no manifest
+    gives a check, or a policy whose subject this server does not
+    render.
     """
     problems: list[str] = []
     by_directory: dict[str, DomainSpecificReviewAgent] = {}
     agents: dict[str, DomainSpecificReviewAgent] = {}
     manifests: dict[str, str] = {}
     layers: dict[str, PaceLayer] = {}
+    glossary: dict[str, str] = {}
 
     for one in deployment.files:
+        if _in_glossary(one.path):
+            if one.path.endswith(GLOSSARY_SUFFIXES):
+                glossary[one.path] = one.text
+            else:
+                problems.append(
+                    f"{one.path}: a glossary file ends in "
+                    f"{', '.join(GLOSSARY_SUFFIXES)}"
+                )
+            continue
         if one.path == TOPOLOGY:
             try:
                 layers = parse_topology(Path(one.path), one.text)
@@ -249,6 +272,7 @@ def parse_deployment(
         },
         layers=layers,
         declared=declared,
+        glossary=glossary,
     )
 
 

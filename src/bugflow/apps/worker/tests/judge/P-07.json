@@ -1,0 +1,64 @@
+{
+  "messages": [
+    {
+      "content": "<doctrine>\n**EX-6. Marketing register.** No \"robust\", \"seamless\".\n**EX-16. Padding.** \"In order to\" is \"to\".\n</doctrine>\n\nYou assess each changed document against the glossary that follows it.",
+      "role": "system"
+    },
+    {
+      "content": "<documents>\n<document path=\"README.md\" shown=\"the changed parts, after the change; [...] marks lines left out\" text=\"omitted by the forge\"/>\n</documents>\n<glossary>\n<words path=\"glossary/example/docs/words.txt\">\nPoller: a loop that asks a forge.\n</words>\n</glossary>",
+      "role": "user"
+    }
+  ],
+  "model": "medium",
+  "response_format": {
+    "json_schema": {
+      "name": "judge_report",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "violations": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "clause": {
+                  "enum": [
+                    "EX-8"
+                  ],
+                  "type": "string"
+                },
+                "explanation": {
+                  "type": "string"
+                },
+                "quote": {
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "fail",
+                    "warn"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "clause",
+                "quote",
+                "explanation",
+                "severity"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "violations"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    "type": "json_schema"
+  },
+  "temperature": 0
+}

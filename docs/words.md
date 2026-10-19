@@ -95,6 +95,10 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 - **Declaration.** A line of `declarations.toml`: one policy turned on
   for one repository. [The policy package](policy-package.md), "The
   binding".
+- **Glossary.** The words documents of ClankOS and bugflow, copied into
+  a binding under `glossary/` and sent with its deployment; a policy
+  whose subject is `document/glossary` reads them.
+  [The policy package](policy-package.md), "Subjects".
 - **Pace layer.** A group of the server's processes that run at one
   cadence, on an event or on a clock, declared in `pace-layers.toml`.
   [The policy package](policy-package.md), "The binding".

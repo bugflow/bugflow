@@ -143,6 +143,23 @@ above.
 Not measured.
 """
 
+#: Reads each changed document, then the glossary files.
+GLOSSED = """\
+policy_id: P-07
+subject: document
+summary: A document uses the glossary's words
+model_class: medium
+evidence: document/glossary
+quotable_name: document
+graded: yes
+quotes_code: no
+clause: EX-8 a document uses the glossary's words
+---
+You assess each changed document against the glossary that follows it.
+=== calibration
+Not measured.
+"""
+
 #: The example policies' files, by name, in filename order.
 FILES = {
     "P-01-voice.md": PLAINLY,
@@ -151,6 +168,7 @@ FILES = {
     "P-04-honesty.md": HONESTY,
     "P-05-why.md": CAPPED,
     "P-06-documents.md": DOCUMENTS,
+    "P-07-glossary.md": GLOSSED,
 }
 
 #: The parsed policies, by id, as a deployment holds them.
@@ -162,8 +180,13 @@ TEXTS = {
 #: What a judge's fingerprint hashes for them.
 SOURCE = source_of(FILES.values())
 
+#: The glossary files of a deployment, by path, in path order.
+GLOSSARY = {
+    "glossary/example/docs/words.txt": "Poller: a loop that asks a forge.\n",
+}
+
 #: The policies as the judge reads them.
-POLICIES = wire(TEXTS)
+POLICIES = wire(TEXTS, GLOSSARY)
 
 
 def a_judge(**settings: Any) -> LiteLLMJudge:
@@ -171,6 +194,7 @@ def a_judge(**settings: Any) -> LiteLLMJudge:
     judge's own keyword arguments. The proxy is not asked which model
     serves each name unless ``served`` is given as None."""
     settings.setdefault("served", {})
+    settings.setdefault("glossary", GLOSSARY)
     return LiteLLMJudge(URL, KEY, texts=TEXTS, source=SOURCE, **settings)
 
 

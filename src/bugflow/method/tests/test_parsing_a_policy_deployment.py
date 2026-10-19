@@ -256,3 +256,45 @@ def test_every_problem_is_reported_at_once() -> None:
     assert "notes.txt" in said
     assert "prose/reviewer.md" in said
     assert "pace-layers.toml" in said
+
+
+@pytest.mark.model(
+    "Glossary",
+    "A deployment may hold the words documents under glossary/.",
+)
+def test_the_glossary_files_are_kept_in_path_order() -> None:
+    files = READ | {
+        "glossary/clankos/docs/words.txt": "garden: a tree\n",
+        "glossary/bugflow/docs/words.md": "- **Poller.** A loop.\n",
+        "glossary/notes.org": "* Words\n",
+    }
+    parsed = parse_deployment(deployment(files))
+    assert parsed.glossary == {
+        "glossary/bugflow/docs/words.md": "- **Poller.** A loop.\n",
+        "glossary/clankos/docs/words.txt": "garden: a tree\n",
+        "glossary/notes.org": "* Words\n",
+    }
+    assert list(parsed.glossary) == sorted(parsed.glossary)
+    assert list(parsed.agents) == ["prose"]
+
+
+def test_a_deployment_with_no_glossary_has_an_empty_one() -> None:
+    assert parse_deployment(deployment(READ)).glossary == {}
+
+
+def test_a_glossary_file_of_another_name_is_refused() -> None:
+    files = READ | {"glossary/clankos/words.json": "{}\n"}
+    with pytest.raises(
+        PolicyDeploymentError,
+        match=r"glossary/clankos/words\.json: a glossary file ends in",
+    ):
+        parse_deployment(deployment(files))
+
+
+def test_a_glossary_file_is_not_read_as_a_reviewers_file() -> None:
+    """A path under glossary/ is a glossary file whatever its
+    directories are called."""
+    files = READ | {"glossary/policies/P-09-example.md": "words\n"}
+    parsed = parse_deployment(deployment(files))
+    assert list(parsed.agents) == ["prose"]
+    assert list(parsed.glossary) == ["glossary/policies/P-09-example.md"]

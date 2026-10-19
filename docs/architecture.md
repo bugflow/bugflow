@@ -51,8 +51,9 @@ flowchart LR
 1. A maintainer changes a gnome in the gnome's own repository.
 2. The binding moves its pin to the new commit and copies the gnome in.
 3. When that is merged, the binding's pipeline sends the server the
-   files it reads: the two binding files and, of each reviewer, the
-   manifest, the doctrine and the policies.
+   files it reads: the two binding files, the glossary files under
+   `glossary/`, and, of each reviewer, the manifest, the doctrine and
+   the policies.
 4. The API parses the files. If any file has a problem it stores
    nothing and reports every problem. Otherwise it stores the files as
    a policy deployment and puts it in force.
@@ -218,7 +219,7 @@ what holds it instead.
 The things: gnome, manifest, doctrine, clause, policy, subject, case,
 skill, binding, declaration, pace layer, deployment, server, reviewer,
 judge, model class, check, finding, grade, ceiling, verdict,
-calibration.
+calibration, glossary.
 
 **Gnome**
 
@@ -348,6 +349,17 @@ calibration.
   tested here: held by clankos's tests.
 - The other words document links to that line for that word. Not tested
   here: held by clankos's tests.
+
+**Glossary**
+
+- A deployment may hold the words documents under glossary/.
+- bugflow deploy-policies sends the files under glossary/.
+- A policy whose subject is document/glossary is shown the changed
+  documents and then the glossary files.
+- A document of document/glossary is a .org or .md file, or a .txt file
+  under docs/.
+- A declaration of a policy whose subject is document/glossary is
+  accepted.
 
 <!-- End of the section written from docs/model.toml -->
 

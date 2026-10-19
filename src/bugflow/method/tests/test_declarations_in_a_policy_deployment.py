@@ -9,6 +9,7 @@ from bugflow.method.domain.models.policy_deployment import (
     DeployedFile,
     PolicyDeployment,
 )
+from bugflow.method.domain.models.policy_text import JUDGED_SUBJECTS
 from bugflow.method.infrastructure.policy_deployment_parsing import (
     RepositoryDeclaration,
     parse_deployment,
@@ -197,3 +198,30 @@ def test_a_server_that_does_not_know_its_subjects_refuses_no_subject() -> None:
     parsed = parse_deployment(deployment(declarations, HOLDING_BOTH))
     assert parsed.declared is not None
     assert parsed.declared[0].policies == ("P-01", "P-04")
+
+
+@pytest.mark.model(
+    "Glossary",
+    "A declaration of a policy whose subject is document/glossary is "
+    "accepted.",
+)
+def test_declaring_a_policy_that_reads_the_glossary_is_accepted() -> None:
+    glossed = POLICY.replace("policy_id: P-01", "policy_id: P-05").replace(
+        "evidence: description", "evidence: document/glossary"
+    )
+    declarations = DECLARATIONS.replace(
+        'policies = ["P-01", "P-02"]', 'policies = ["P-01", "P-05"]'
+    )
+    parsed = parse_deployment(
+        deployment(
+            declarations,
+            {
+                f"{REFERENCES}/policies/P-05-glossary.md": glossed,
+                "glossary/clankos/docs/words.txt": "garden: a tree\n",
+            },
+        ),
+        checks=("em-dash",),
+        subjects=JUDGED_SUBJECTS,
+    )
+    assert parsed.declared is not None
+    assert parsed.declared[0].policies == ("P-01", "P-05")

@@ -1,15 +1,16 @@
 """The reviewers a program runs with, from the policy deployment in
 force.
 
-A program needs the same things whichever deployment they come from:
-the reviewers, each reviewer's policies and doctrine, the pace layers,
-and the texts that feed a corpus version. ``ReviewersInForce`` holds
-them, and ``reviewers_in_force`` builds one from the deployment the
-database says is in force, parsed with the checks this server has.
+A program needs the same things whichever deployment they come from: the
+reviewers, each reviewer's policies and doctrine, the pace layers, the
+glossary files, and the texts that feed a corpus version.
+``ReviewersInForce`` holds them, and ``reviewers_in_force`` builds one
+from the deployment the database says is in force, parsed with the
+checks this server has.
 """
 
 from collections.abc import Collection, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bugflow.method.domain.models.doctrine import Doctrine
 from bugflow.method.domain.models.pace_layer import PaceLayer
@@ -49,6 +50,8 @@ class ReviewersInForce:
     layers: Mapping[str, PaceLayer]
     #: Which deployment the reviewers were built from.
     deployed_from: DeployedFrom
+    #: The text of each file under glossary/, by path, in path order.
+    glossary: Mapping[str, str] = field(default_factory=dict)
 
     def doctrine_of(self, agent_id: str) -> DoctrineRepository:
         """Return the doctrine that reviewer cites, or an empty one
@@ -85,6 +88,7 @@ def deployed_reviewers(
             if agent_id in parsed.doctrine
         },
         layers=parsed.layers,
+        glossary=parsed.glossary,
         deployed_from=DeployedFrom(
             repository=deployment.repository,
             commit=deployment.commit,
