@@ -222,20 +222,21 @@ calibration.
 
 **Gnome**
 
-- A gnome is one repository. Not tested: nothing holds it.
+- A gnome is one repository. Not tested here: nothing holds it.
 - A gnome's manifest.md gives its id, its policies and its checks.
 - A gnome's doctrine/ holds its clauses.
 - A gnome's policies/ holds its policies.
-- A policy asks one question. Not tested: held by the gnome's author.
+- A policy asks one question. Not tested here: held by the gnome's
+  author.
 - A policy's header names the clauses it judges by.
 - A policy's header names its subject.
 - A policy's header names its model class.
 - A policy's header may name a grade ceiling.
 - A policy whose header names no ceiling may grade a finding fail.
-- A gnome's cases/ holds clean cases and seeded cases. Not tested: held
+- A gnome's cases/ holds clean cases and seeded cases. Not tested here:
+  held by each gnome's own tests.
+- Each case tests one policy and gives its answer. Not tested here: held
   by each gnome's own tests.
-- Each case tests one policy and gives its answer. Not tested: held by
-  each gnome's own tests.
 
 **Parsing**
 
@@ -248,18 +249,18 @@ calibration.
 - bugflow deploy-policies with --check asks the API to parse the files.
 - A run with --check stores nothing.
 - The binding's pipeline runs bugflow deploy-policies with --check on a
-  pull request. Not tested: held by the binding's pipeline.
+  pull request. Not tested here: held by the binding's pipeline.
 - A deployment with a problem in any file stores nothing.
 - The parser reports the problem in each file that has one.
 
 **Skill**
 
 - A gnome's skills/ holds a skill with SKILL.md, references/ and
-  scripts/check-*. Not tested: held by each gnome's own tests.
+  scripts/check-*. Not tested here: held by each gnome's own tests.
 - A skill's references/ holds copies of the gnome's doctrine and
-  policies. Not tested: held by each gnome's own tests.
+  policies. Not tested here: held by each gnome's own tests.
 - A gnome's own tests fail when a copy differs from its original. Not
-  tested: held by each gnome's own tests.
+  tested here: held by each gnome's own tests.
 - The server reads a reviewer's originals and passes over a skill's
   copies.
 - A reviewer with no originals and one skill is read from that skill's
@@ -268,18 +269,20 @@ calibration.
 
 **Binding**
 
-- A binding is one repository. Not tested: nothing holds it.
-- A binding holds a copy of each gnome at a pinned commit. Not tested:
-  held by the binding's pipeline.
+- A binding is one repository. Not tested here: nothing holds it.
+- A binding holds a copy of each gnome at a pinned commit. Not tested
+  here: held by the binding's pipeline.
 - A binding's declarations.toml pairs policies with repositories.
 - A binding's pace-layers.toml pairs processes with cadences.
 - The commit a binding pins a gnome at is the ref a garden declares it
-  at. Not tested: held by the maintainer of the binding and the garden.
+  at. Not tested here: held by the maintainer of the binding and the
+  garden.
 
 **Deployment**
 
 - The binding's pipeline runs bugflow deploy-policies when a change to
-  the binding is merged. Not tested: held by the binding's pipeline.
+  the binding is merged. Not tested here: held by the binding's
+  pipeline.
 - The API stores each deployment.
 - The API puts the latest deployment in force.
 - The worker and the ingress look every 15 seconds for another
@@ -322,12 +325,12 @@ calibration.
 
 **Calibration**
 
-- Bugflow has no command that runs a calibration. Not tested: nothing
-  holds it.
+- Bugflow has no command that runs a calibration. Not tested here:
+  nothing holds it.
 
 **The words documents**
 
-- clankos's words document is docs/words.txt. Not tested: held by
+- clankos's words document is docs/words.txt. Not tested here: held by
   clankos's tests.
 - bugflow's words document is docs/words.md.
 - A words document gives each word one line.
@@ -338,13 +341,13 @@ calibration.
 **Words coverage**
 
 - Each thing that clankos's model names has a line in clankos's words
-  document. Not tested: held by clankos's tests.
+  document. Not tested here: held by clankos's tests.
 - Each thing that bugflow's model names has a line in bugflow's words
   document.
 - A word that both models name has its line in one words document. Not
-  tested: held by clankos's tests.
-- The other words document links to that line for that word. Not tested:
-  held by clankos's tests.
+  tested here: held by clankos's tests.
+- The other words document links to that line for that word. Not tested
+  here: held by clankos's tests.
 
 <!-- End of the section written from docs/model.toml -->
 
