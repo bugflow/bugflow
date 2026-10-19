@@ -18,6 +18,8 @@ and the gnomes it pins.
 
     pace-layers.toml                  binding: the processes and when they run
     declarations.toml                 binding: what each repository is reviewed for
+    glossary/**                       binding: the words documents it copies in,
+                                      each a .md, .txt or .org file
     <reviewer>/manifest.md            gnome: the reviewer's id, subjects, policies, checks
     <reviewer>/doctrine/*.md          gnome: the doctrine, read in filename order
     <reviewer>/policies/*.md          gnome: one policy each
@@ -40,11 +42,11 @@ garden installs a skill and reads the copy in its `references/`. The
 gnome's format tests compare each copy with the original and fail if
 they differ.
 
-A server reads the two binding files and, of each reviewer, the manifest,
-the doctrine and the policies. A deployment holding a file of any other
-path is refused. `bugflow deploy-policies DIRECTORY` sends only the files
-a server reads, so a repository holds its cases, scripts, skill
-instructions, notes and pipeline beside them.
+A server reads the two binding files, the glossary files and, of each
+reviewer, the manifest, the doctrine and the policies. A deployment
+holding a file of any other path is refused. `bugflow deploy-policies
+DIRECTORY` sends only the files a server reads, so a repository holds
+its cases, scripts, skill instructions, notes and pipeline beside them.
 
 Older gnomes keep their files in other places, and a server still
 reads them. `reviewer.md` is read the same way as `manifest.md`. A
@@ -147,11 +149,14 @@ policy for one consumer that another skips.
 | `pull-request/scope` | the title, the description, the commit messages and each changed file's path with its line counts | the same, without the counts |
 | `pull-request/patches` | all of that and each file's patch | the same, patches included |
 | `document/file` | each document the pull request changes, as the patch shows it after the change: the added and kept lines of each hunk, in order, with a line saying which parts are shown | the same |
+| `document/glossary` | each document the pull request changes, as for `document/file`, then each glossary file of the deployment in force, in full, opened by a line naming its path | the changed documents |
 | `scope/canon` | every document of a scope | not rendered by a pull request judge |
 
-A document is a file whose name ends in `.org` or `.md`. A pull request
-that changes none has nothing for a `document/file` policy to read, and
-the policy reports nothing.
+A document is a file whose name ends in `.org` or `.md`. For
+`document/glossary`, a `.txt` file under a `docs/` directory is a
+document too. A pull request that changes none has nothing for a
+`document/file` or `document/glossary` policy to read, and the policy
+reports nothing.
 
 ## The doctrine
 

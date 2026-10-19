@@ -10,7 +10,7 @@ things = [
     "gnome", "manifest", "doctrine", "clause", "policy", "subject",
     "case", "skill", "binding", "declaration", "pace layer",
     "deployment", "server", "reviewer", "judge", "model class", "check",
-    "finding", "grade", "ceiling", "verdict", "calibration",
+    "finding", "grade", "ceiling", "verdict", "calibration", "glossary",
 ]
 
 [[requirement]]
@@ -289,3 +289,23 @@ held_by = "clankos's tests"
 group = "Words coverage"
 text = "The other words document links to that line for that word."
 held_by = "clankos's tests"
+
+[[requirement]]
+group = "Glossary"
+text = "A deployment may hold the words documents under glossary/."
+
+[[requirement]]
+group = "Glossary"
+text = "bugflow deploy-policies sends the files under glossary/."
+
+[[requirement]]
+group = "Glossary"
+text = "A policy whose subject is document/glossary is shown the changed documents and then the glossary files."
+
+[[requirement]]
+group = "Glossary"
+text = "A document of document/glossary is a .org or .md file, or a .txt file under docs/."
+
+[[requirement]]
+group = "Glossary"
+text = "A declaration of a policy whose subject is document/glossary is accepted."
