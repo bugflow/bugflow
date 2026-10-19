@@ -38,6 +38,10 @@ def headings(document: Path) -> set[str]:
     }
 
 
+@pytest.mark.model(
+    "The words documents",
+    "The document and section that a word's line names exist.",
+)
 @pytest.mark.parametrize("document", DOCUMENTS, ids=lambda d: d.name)
 def test_each_relative_link_names_a_file(document: Path) -> None:
     missing = [
@@ -48,6 +52,10 @@ def test_each_relative_link_names_a_file(document: Path) -> None:
     assert missing == [], f"{document.name}: not there: {missing}"
 
 
+@pytest.mark.model(
+    "The words documents",
+    "The document and section that a word's line names exist.",
+)
 def test_each_section_the_words_name_is_a_heading() -> None:
     words = REPOSITORY / "docs" / "words.md"
     wrong = []

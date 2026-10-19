@@ -26,6 +26,13 @@ def requirements() -> list[dict[str, str]]:
     return found
 
 
+def things() -> list[str]:
+    """The things the model names, in order."""
+    with REQUIREMENTS.open("rb") as file:
+        found: list[str] = tomllib.load(file)["things"]
+    return found
+
+
 def marks() -> list[tuple[str, str, Path]]:
     """The group and requirement of each pytest.mark.model in the tests,
     with the file that holds it, read without running the tests."""
@@ -43,8 +50,17 @@ def marks() -> list[tuple[str, str, Path]]:
 
 
 def section() -> str:
-    """The section's Markdown: each group and its requirements."""
-    lines = [BEGIN]
+    """The section's Markdown: the things, then each group and its
+    requirements."""
+    lines = [
+        BEGIN,
+        "\n",
+        textwrap.fill(
+            "The things: " + ", ".join(things()) + ".",
+            72,
+        )
+        + "\n",
+    ]
     group = None
     for requirement in requirements():
         if requirement["group"] != group:

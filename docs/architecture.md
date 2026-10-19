@@ -215,6 +215,11 @@ what holds it instead.
 
 <!-- Written from docs/model.toml: python -m bugflow.shared.tests.model_section -->
 
+The things: gnome, manifest, doctrine, clause, policy, subject, case,
+skill, binding, declaration, pace layer, deployment, server, reviewer,
+judge, model class, check, finding, grade, ceiling, verdict,
+calibration.
+
 **Gnome**
 
 - A gnome is one repository. Not tested: nothing holds it.
@@ -319,6 +324,27 @@ what holds it instead.
 
 - Bugflow has no command that runs a calibration. Not tested: nothing
   holds it.
+
+**The words documents**
+
+- clankos's words document is docs/words.txt. Not tested: held by
+  clankos's tests.
+- bugflow's words document is docs/words.md.
+- A words document gives each word one line.
+- A word's line names the document, and the section where there is one,
+  that defines the word.
+- The document and section that a word's line names exist.
+
+**Words coverage**
+
+- Each thing that clankos's model names has a line in clankos's words
+  document. Not tested: held by clankos's tests.
+- Each thing that bugflow's model names has a line in bugflow's words
+  document.
+- A word that both models name has its line in one words document. Not
+  tested: held by clankos's tests.
+- The other words document links to that line for that word. Not tested:
+  held by clankos's tests.
 
 <!-- End of the section written from docs/model.toml -->
 
