@@ -167,6 +167,10 @@ def test_a_deployment_with_one_policy_is_judged_on_it() -> None:
     assert judge.model_for("P-01") == "small"
 
 
+@pytest.mark.model(
+    "Reviewer",
+    "A policy that the worker cannot answer is held and not judged.",
+)
 def test_a_policy_the_judge_cannot_answer_is_held_and_not_judged() -> None:
     """A gnome may hold a policy that reads a whole scope, and a file for
     a policy a check answers, both for a garden. The worker starts, and
@@ -191,6 +195,11 @@ def test_a_policy_the_judge_cannot_answer_is_held_and_not_judged() -> None:
     assert judge.policies == ("P-01",)
 
 
+@pytest.mark.model(
+    "Judge, check and finding",
+    "The worker asks a judge of the model class that the policy's header "
+    "names.",
+)
 def test_a_policy_is_judged_by_its_classs_model() -> None:
     judge = judge_from_environment(
         {
@@ -205,6 +214,10 @@ def test_a_policy_is_judged_by_its_classs_model() -> None:
     assert judge.model_for("P-03") == "a-large-model"
 
 
+@pytest.mark.model(
+    "Judge, check and finding",
+    "JUDGE_MODEL, when it is set, names the model for every class.",
+)
 def test_judge_model_overrides_every_class() -> None:
     judge = judge_from_environment(
         {

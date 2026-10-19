@@ -58,6 +58,10 @@ def test_repeating_the_call_changes_nothing() -> None:
     assert len(server.journal.entries) == 1
 
 
+@pytest.mark.model(
+    "Parsing",
+    "A run with --check stores nothing.",
+)
 def test_a_check_through_the_api_stores_nothing() -> None:
     server = Server()
     answered = server.client.post(
@@ -91,6 +95,10 @@ def test_a_call_without_a_token_is_refused() -> None:
     assert basic.status_code == 401
 
 
+@pytest.mark.model(
+    "Parsing",
+    "The API runs the parser on every deployment.",
+)
 def test_files_that_do_not_parse_answer_422_with_every_problem() -> None:
     server = Server()
     broken = body(

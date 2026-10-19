@@ -31,6 +31,14 @@ def write(directory: Path, name: str, text: str = MANIFEST) -> Path:
     return agent
 
 
+@pytest.mark.model(
+    "Gnome",
+    "A gnome's manifest.md gives its id, its policies and its checks.",
+)
+@pytest.mark.model(
+    "Reviewer",
+    "A reviewer's id and policies are read from the manifest at deployment.",
+)
 def test_a_manifest_gives_the_reviewers_fields_and_its_prose() -> None:
     agent = parse_agent(Path("safety/reviewer.md"), MANIFEST)
 
@@ -108,6 +116,10 @@ def with_checks(checks: str) -> str:
     return MANIFEST.replace("---\n", f"checks: {checks}\n---\n", 1)
 
 
+@pytest.mark.model(
+    "Gnome",
+    "A gnome's manifest.md gives its id, its policies and its checks.",
+)
 def test_a_reviewer_says_which_policy_a_check_answers() -> None:
     agent = parse_agent(
         Path("a/reviewer.md"), with_checks("em-dash S-02 RULE-21")

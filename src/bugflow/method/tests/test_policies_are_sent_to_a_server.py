@@ -51,6 +51,11 @@ def request(check_only: bool = False) -> SendPoliciesRequest:
     )
 
 
+@pytest.mark.model(
+    "Parsing",
+    "bugflow deploy-policies sends the API only the files that a server "
+    "reads.",
+)
 def test_the_files_a_server_reads_are_posted_with_the_token(
     tmp_path: Path,
 ) -> None:
@@ -87,6 +92,10 @@ def test_it_signs_in_with_its_secret_and_asks_for_three_scopes(
     ]
 
 
+@pytest.mark.model(
+    "Parsing",
+    "bugflow deploy-policies with --check asks the API to parse the files.",
+)
 def test_a_check_is_asked_for_and_answers_what_is_in_force(
     tmp_path: Path,
 ) -> None:
