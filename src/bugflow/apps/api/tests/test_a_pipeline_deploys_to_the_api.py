@@ -133,6 +133,10 @@ def test_a_check_stores_nothing(
     assert "nothing stored; in force: nothing" in said
 
 
+@pytest.mark.model(
+    "Parsing",
+    "bugflow deploy-policies with --check asks the API to parse the files.",
+)
 def test_files_the_server_refuses_fail_the_pipeline_with_the_reasons(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -194,6 +194,11 @@ def label_for(*findings: Finding, unavailable: tuple[str, ...] = ()) -> str:
     return review_label(HEAD, AGENTS, GOVERNING, findings, unavailable)
 
 
+@pytest.mark.model(
+    "Verdict",
+    "A reviewer's verdict is otherwise warn when one of its findings "
+    "warns, and pass when none does.",
+)
 def test_the_worst_severity_an_agent_raised_decides_the_label() -> None:
     assert label_for(finding("warn"), finding("fail")) == "review:escalate"
     assert label_for(finding("info"), finding("warn")) == "review:pass"
@@ -205,6 +210,11 @@ def test_a_warn_does_not_hold_a_pull_request() -> None:
     assert label_for(finding("warn")) == "review:pass"
 
 
+@pytest.mark.model(
+    "Verdict",
+    "A reviewer with no failing finding and an unanswered policy has no "
+    "verdict.",
+)
 def test_an_agent_that_could_not_answer_leaves_it_in_progress() -> None:
     assert label_for(unavailable=("C-03",)) == "review:wip"
     assert label_for(finding("warn"), unavailable=("P-01",)) == "review:wip"
@@ -508,6 +518,11 @@ def test_the_journal_counts_the_dismissed_findings() -> None:
     assert summary.payload["dismissed_count"] == 1
 
 
+@pytest.mark.model(
+    "Verdict",
+    "The commit status is failure when one of the reviewer's findings "
+    "fails, and success otherwise.",
+)
 def test_only_a_failing_finding_fails_the_commit_status() -> None:
     assert commit_status_for([finding("fail"), finding("warn")]) == (
         "failure",
@@ -520,6 +535,14 @@ def test_only_a_failing_finding_fails_the_commit_status() -> None:
     assert commit_status_for([finding("info")]) == ("success", "no findings")
 
 
+@pytest.mark.model(
+    "Reviewer",
+    "A server has a reviewer for each gnome, named by the gnome's id.",
+)
+@pytest.mark.model(
+    "Verdict",
+    "Each reviewer sets a commit status on the head commit, named by its id.",
+)
 def test_publishing_sets_the_commit_status_on_the_head_commit() -> None:
     forge = RecordingForge()
     journal = QueryableJournal()
@@ -631,6 +654,10 @@ def test_a_policy_the_judge_could_not_answer_is_not_a_pass() -> None:
     assert remove == MANAGED_LABELS - {"review:wip"}
 
 
+@pytest.mark.model(
+    "Verdict",
+    "A reviewer's verdict is fail when one of its findings fails.",
+)
 def test_a_fail_outranks_an_unanswered_policy() -> None:
     assert label_for(finding("fail"), unavailable=UNANSWERED) == (
         "review:escalate"

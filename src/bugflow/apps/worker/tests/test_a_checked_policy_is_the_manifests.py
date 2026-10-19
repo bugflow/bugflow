@@ -6,6 +6,8 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+
 from bugflow.apps.worker import activities as module
 from bugflow.apps.worker.activities import Checked, ReviewActivities
 from bugflow.apps.worker.tests.activities import (
@@ -79,6 +81,10 @@ class Built:
         )
 
 
+@pytest.mark.model(
+    "Judge, check and finding",
+    "A check is the server's own code.",
+)
 def test_a_checked_policy_is_answered_under_the_manifests_ids() -> None:
     built = Built()
 

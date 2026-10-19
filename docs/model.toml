@@ -1,0 +1,243 @@
+# The requirements of the model in docs/architecture.md, in order.
+# A test that holds one is marked with pytest.mark.model, giving its
+# group and its requirement as written here; one that no test here
+# holds says what holds it. The model section of docs/architecture.md
+# is written from this file: see
+# src/bugflow/shared/tests/model_section.py.
+
+[[requirement]]
+group = "Gnome"
+text = "A gnome is one repository."
+held_by = "nothing"
+
+[[requirement]]
+group = "Gnome"
+text = "A gnome's manifest.md gives its id, its policies and its checks."
+
+[[requirement]]
+group = "Gnome"
+text = "A gnome's doctrine/ holds its clauses."
+
+[[requirement]]
+group = "Gnome"
+text = "A gnome's policies/ holds its policies."
+
+[[requirement]]
+group = "Gnome"
+text = "A policy asks one question."
+held_by = "the gnome's author"
+
+[[requirement]]
+group = "Gnome"
+text = "A policy's header names the clauses it judges by."
+
+[[requirement]]
+group = "Gnome"
+text = "A policy's header names its subject."
+
+[[requirement]]
+group = "Gnome"
+text = "A policy's header names its model class."
+
+[[requirement]]
+group = "Gnome"
+text = "A policy's header may name a grade ceiling."
+
+[[requirement]]
+group = "Gnome"
+text = "A policy whose header names no ceiling may grade a finding fail."
+
+[[requirement]]
+group = "Gnome"
+text = "A gnome's cases/ holds clean cases and seeded cases."
+held_by = "each gnome's own tests"
+
+[[requirement]]
+group = "Gnome"
+text = "Each case tests one policy and gives its answer."
+held_by = "each gnome's own tests"
+
+[[requirement]]
+group = "Parsing"
+text = "The policy package parser reads each reviewer's manifest, doctrine and policies, and the binding's two files."
+
+[[requirement]]
+group = "Parsing"
+text = "The parser refuses a file that a server does not read, such as a case."
+
+[[requirement]]
+group = "Parsing"
+text = "The API runs the parser on every deployment."
+
+[[requirement]]
+group = "Parsing"
+text = "bugflow deploy-policies sends the API only the files that a server reads."
+
+[[requirement]]
+group = "Parsing"
+text = "bugflow deploy-policies with --check asks the API to parse the files."
+
+[[requirement]]
+group = "Parsing"
+text = "A run with --check stores nothing."
+
+[[requirement]]
+group = "Parsing"
+text = "The binding's pipeline runs bugflow deploy-policies with --check on a pull request."
+held_by = "the binding's pipeline"
+
+[[requirement]]
+group = "Parsing"
+text = "A deployment with a problem in any file stores nothing."
+
+[[requirement]]
+group = "Parsing"
+text = "The parser reports the problem in each file that has one."
+
+[[requirement]]
+group = "Skill"
+text = "A gnome's skills/ holds a skill with SKILL.md, references/ and scripts/check-*."
+held_by = "each gnome's own tests"
+
+[[requirement]]
+group = "Skill"
+text = "A skill's references/ holds copies of the gnome's doctrine and policies."
+held_by = "each gnome's own tests"
+
+[[requirement]]
+group = "Skill"
+text = "A gnome's own tests fail when a copy differs from its original."
+held_by = "each gnome's own tests"
+
+[[requirement]]
+group = "Skill"
+text = "The server reads a reviewer's originals and passes over a skill's copies."
+
+[[requirement]]
+group = "Skill"
+text = "A reviewer with no originals and one skill is read from that skill's references/."
+
+[[requirement]]
+group = "Skill"
+text = "The server never runs a skill's scripts/check-*."
+
+[[requirement]]
+group = "Binding"
+text = "A binding is one repository."
+held_by = "nothing"
+
+[[requirement]]
+group = "Binding"
+text = "A binding holds a copy of each gnome at a pinned commit."
+held_by = "the binding's pipeline"
+
+[[requirement]]
+group = "Binding"
+text = "A binding's declarations.toml pairs policies with repositories."
+
+[[requirement]]
+group = "Binding"
+text = "A binding's pace-layers.toml pairs processes with cadences."
+
+[[requirement]]
+group = "Binding"
+text = "The commit a binding pins a gnome at is the ref a garden declares it at."
+held_by = "the maintainer of the binding and the garden"
+
+[[requirement]]
+group = "Deployment"
+text = "The binding's pipeline runs bugflow deploy-policies when a change to the binding is merged."
+held_by = "the binding's pipeline"
+
+[[requirement]]
+group = "Deployment"
+text = "The API stores each deployment."
+
+[[requirement]]
+group = "Deployment"
+text = "The API puts the latest deployment in force."
+
+[[requirement]]
+group = "Deployment"
+text = "The worker and the ingress look every 15 seconds for another deployment in force."
+
+[[requirement]]
+group = "Deployment"
+text = "The worker and the ingress stop when another deployment is in force."
+
+[[requirement]]
+group = "Deployment"
+text = "Compose starts the worker and the ingress again when they stop, and they read the deployment in force."
+
+[[requirement]]
+group = "Reviewer"
+text = "A server has a reviewer for each gnome, named by the gnome's id."
+
+[[requirement]]
+group = "Reviewer"
+text = "A reviewer's id and policies are read from the manifest at deployment."
+
+[[requirement]]
+group = "Reviewer"
+text = "A deployment that declares a policy this server cannot answer is refused."
+
+[[requirement]]
+group = "Reviewer"
+text = "A policy that the worker cannot answer is held and not judged."
+
+[[requirement]]
+group = "Judge, check and finding"
+text = "A judge is a model that answers one policy at a time."
+
+[[requirement]]
+group = "Judge, check and finding"
+text = "A check is the server's own code."
+
+[[requirement]]
+group = "Judge, check and finding"
+text = "A finding names the words at fault, one clause and a grade."
+
+[[requirement]]
+group = "Judge, check and finding"
+text = "A judge may cite only the clauses that its policy lists."
+
+[[requirement]]
+group = "Judge, check and finding"
+text = "A finding's grade is no higher than its policy's ceiling."
+
+[[requirement]]
+group = "Judge, check and finding"
+text = "The worker asks a judge of the model class that the policy's header names."
+
+[[requirement]]
+group = "Judge, check and finding"
+text = "JUDGE_MODEL, when it is set, names the model for every class."
+
+[[requirement]]
+group = "Verdict"
+text = "A verdict is pass, warn or fail."
+
+[[requirement]]
+group = "Verdict"
+text = "A reviewer's verdict is fail when one of its findings fails."
+
+[[requirement]]
+group = "Verdict"
+text = "A reviewer with no failing finding and an unanswered policy has no verdict."
+
+[[requirement]]
+group = "Verdict"
+text = "A reviewer's verdict is otherwise warn when one of its findings warns, and pass when none does."
+
+[[requirement]]
+group = "Verdict"
+text = "Each reviewer sets a commit status on the head commit, named by its id."
+
+[[requirement]]
+group = "Verdict"
+text = "The commit status is failure when one of the reviewer's findings fails, and success otherwise."
+
+[[requirement]]
+group = "Calibration"
+text = "Bugflow has no command that runs a calibration."
+held_by = "nothing"

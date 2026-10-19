@@ -81,6 +81,11 @@ def test_a_deployment_names_its_repository_and_its_commit() -> None:
         PolicyDeployment(repository="", commit="c1", files=())
 
 
+@pytest.mark.model(
+    "Parsing",
+    "bugflow deploy-policies sends the API only the files that a server "
+    "reads.",
+)
 def test_a_directory_is_read_as_the_files_a_server_reads(
     tmp_path: Path,
 ) -> None:
@@ -100,6 +105,10 @@ def test_a_server_never_sent_a_deployment_has_none_in_force() -> None:
     assert held.history() == []
 
 
+@pytest.mark.model(
+    "Deployment",
+    "The API puts the latest deployment in force.",
+)
 def test_the_deployment_sent_last_is_in_force() -> None:
     held = InMemoryPolicyDeployments()
     assert held.deploy(deployment("c1")) is True

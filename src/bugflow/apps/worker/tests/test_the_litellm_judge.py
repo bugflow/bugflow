@@ -196,6 +196,10 @@ def test_a_violation_with_no_grade_is_a_warning() -> None:
     assert _severity(graded("EX-4")) == "warn"
 
 
+@pytest.mark.model(
+    "Judge, check and finding",
+    "A finding's grade is no higher than its policy's ceiling.",
+)
 def test_a_fail_under_a_warn_ceiling_is_a_warning() -> None:
     """The model still grades; the policy reports no worse than it is
     trusted to."""
@@ -221,6 +225,10 @@ def test_the_fingerprint_follows_the_model() -> None:
     )
 
 
+@pytest.mark.model(
+    "Judge, check and finding",
+    "A finding names the words at fault, one clause and a grade.",
+)
 def test_each_violation_is_its_own_finding_in_clause_order() -> None:
     """One finding a violation, so each carries its own grade and each is
     fixed, and thanked for, on its own."""
@@ -502,6 +510,10 @@ def test_the_exchange_holds_the_request_sent_and_the_response_read() -> None:
     assert assessment.exchange.response == fake.body
 
 
+@pytest.mark.model(
+    "Judge, check and finding",
+    "A judge may cite only the clauses that its policy lists.",
+)
 def test_a_violation_of_a_clause_the_policy_does_not_judge_is_dropped() -> (
     None
 ):
@@ -512,6 +524,10 @@ def test_a_violation_of_a_clause_the_policy_does_not_judge_is_dropped() -> (
     assert "not a clause P-01 judges" in dropped
 
 
+@pytest.mark.model(
+    "Judge, check and finding",
+    "A judge is a model that answers one policy at a time.",
+)
 def test_a_judge_judges_only_the_policies_it_was_given() -> None:
     judge = judge_with(FakeLiteLLM())
     assert judge.policies == ("P-01",)

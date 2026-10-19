@@ -67,6 +67,10 @@ def test_a_deployment_without_the_file_declares_nothing() -> None:
     assert parse_deployment(deployment(None)).declared is None
 
 
+@pytest.mark.model(
+    "Binding",
+    "A binding's declarations.toml pairs policies with repositories.",
+)
 def test_the_file_is_parsed_into_a_declaration_for_each_repository() -> None:
     assert parse_deployment(deployment()).declared == (
         RepositoryDeclaration(
@@ -160,6 +164,11 @@ def test_a_policy_this_server_cannot_answer_may_be_held_and_not_declared() -> (
     assert sorted(parsed.policies["prose"]) == ["P-01", "P-03", "P-04"]
 
 
+@pytest.mark.model(
+    "Reviewer",
+    "A deployment that declares a policy this server cannot answer is "
+    "refused.",
+)
 @pytest.mark.parametrize(
     ("policy_id", "problem"),
     [

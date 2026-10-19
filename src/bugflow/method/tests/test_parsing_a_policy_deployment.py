@@ -34,6 +34,23 @@ def deployment(files: dict[str, str]) -> PolicyDeployment:
     )
 
 
+@pytest.mark.model(
+    "Gnome",
+    "A gnome's doctrine/ holds its clauses.",
+)
+@pytest.mark.model(
+    "Gnome",
+    "A gnome's policies/ holds its policies.",
+)
+@pytest.mark.model(
+    "Parsing",
+    "The policy package parser reads each reviewer's manifest, doctrine "
+    "and policies, and the binding's two files.",
+)
+@pytest.mark.model(
+    "Reviewer",
+    "A server has a reviewer for each gnome, named by the gnome's id.",
+)
 def test_a_valid_deployment_parses_into_its_four_parts() -> None:
     parsed = parse_deployment(deployment(READ))
     assert list(parsed.agents) == ["prose"]
@@ -56,6 +73,11 @@ def test_a_manifest_named_manifest_is_read_as_one_named_reviewer() -> None:
     assert list(parsed.policies["prose"]) == ["P-01"]
 
 
+@pytest.mark.model(
+    "Skill",
+    "A reviewer with no originals and one skill is read from that skill's"
+    " references/.",
+)
 def test_a_reviewer_with_the_files_in_its_one_skill_is_read_from_it() -> None:
     files = {
         path.replace(f"{REFERENCES}/policies", f"{SKILL}/policies").replace(
@@ -69,6 +91,11 @@ def test_a_reviewer_with_the_files_in_its_one_skill_is_read_from_it() -> None:
     assert parsed.prose == parse_deployment(deployment(READ)).prose
 
 
+@pytest.mark.model(
+    "Skill",
+    "The server reads a reviewer's originals and passes over a skill's "
+    "copies.",
+)
 def test_a_skills_copy_of_the_files_is_not_read() -> None:
     stale = "**EX-9.** A stale copy.\n"
     files = READ | {f"{SKILL}/doctrine/01-voice.md": stale}
@@ -85,6 +112,10 @@ def test_a_deployment_with_no_files_parses_to_nothing() -> None:
     assert parsed.declared is None
 
 
+@pytest.mark.model(
+    "Gnome",
+    "A gnome's doctrine/ holds its clauses.",
+)
 def test_doctrine_files_are_joined_in_filename_order() -> None:
     files = READ | {f"{REFERENCES}/doctrine/00-first.md": "**EX-0.** First.\n"}
     parsed = parse_deployment(deployment(files))
@@ -115,6 +146,14 @@ def test_a_check_the_server_names_is_accepted_and_another_refused() -> None:
         parse_deployment(deployment(files), checks=("spelling",))
 
 
+@pytest.mark.model(
+    "Parsing",
+    "The parser refuses a file that a server does not read, such as a case.",
+)
+@pytest.mark.model(
+    "Skill",
+    "The server never runs a skill's scripts/check-*.",
+)
 @pytest.mark.parametrize(
     ("files", "problem"),
     [
@@ -201,6 +240,10 @@ def test_a_deployment_that_does_not_parse_is_refused(
     assert problem in str(refused.value)
 
 
+@pytest.mark.model(
+    "Parsing",
+    "The parser reports the problem in each file that has one.",
+)
 def test_every_problem_is_reported_at_once() -> None:
     files = {
         "notes.txt": "x",

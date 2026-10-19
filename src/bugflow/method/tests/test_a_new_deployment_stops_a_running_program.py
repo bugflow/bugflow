@@ -2,6 +2,7 @@
 is put in force, so that its next start reads the new one."""
 
 import asyncio
+import inspect
 
 import pytest
 from opentelemetry.instrumentation.utils import is_instrumentation_enabled
@@ -12,6 +13,7 @@ from bugflow.method.domain.models.policy_deployment import (
     PutInForce,
 )
 from bugflow.method.infrastructure.deployment_watch import (
+    DEPLOYMENT_POLL_SECONDS,
     DeployedFrom,
     changed_since,
     stop_on_new_deployment,
@@ -138,6 +140,10 @@ def test_a_check_is_not_traced() -> None:
     assert traced == [False]
 
 
+@pytest.mark.model(
+    "Deployment",
+    "The worker and the ingress stop when another deployment is in force.",
+)
 def test_the_program_is_stopped_once_and_told_why() -> None:
     async def scenario() -> tuple[int, list[str]]:
         held = InMemoryPolicyDeployments()
@@ -206,3 +212,14 @@ def test_a_program_stopping_for_another_reason_ends_the_wait() -> None:
     done, stops = asyncio.run(scenario())
     assert done is True
     assert stops == []
+
+
+@pytest.mark.model(
+    "Deployment",
+    "The worker and the ingress look every 15 seconds for another "
+    "deployment in force.",
+)
+def test_the_watch_looks_every_15_seconds() -> None:
+    interval = inspect.signature(stop_on_new_deployment).parameters["interval"]
+    assert DEPLOYMENT_POLL_SECONDS == 15.0
+    assert interval.default == DEPLOYMENT_POLL_SECONDS
