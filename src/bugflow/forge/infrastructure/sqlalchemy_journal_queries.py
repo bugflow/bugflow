@@ -24,8 +24,7 @@ from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
 
 
 class SqlAlchemyJournalQueries:
-    """The three queries declared in
-    ``forge/domain/services/journal_history.py``."""
+    """Answer the journal questions declared by the forge context."""
 
     def __init__(self, database_url: str) -> None:
         self._engine = sa.create_engine(
@@ -53,6 +52,27 @@ class SqlAlchemyJournalQueries:
         query = (
             sa.select(journal.c.forge, journal.c.repo)
             .where(journal.c.event_type == event_type)
+            .distinct()
+            .order_by(journal.c.forge, journal.c.repo)
+        )
+        with self._engine.connect() as connection:
+            rows = connection.execute(query).all()
+        return [(row.forge, row.repo) for row in rows]
+
+    def repositories_with_origin(
+        self, event_type: str, origin_endpoint: str
+    ) -> list[tuple[str, str]]:
+        prefix = origin_endpoint.rstrip("/") + "/"
+        query = (
+            sa.select(journal.c.forge, journal.c.repo)
+            .where(
+                journal.c.event_type == event_type,
+                association_exists(
+                    "journal",
+                    sa.cast(journal.c.event_id, sa.Text),
+                    sa.func.concat(prefix, journal.c.repo),
+                ),
+            )
             .distinct()
             .order_by(journal.c.forge, journal.c.repo)
         )

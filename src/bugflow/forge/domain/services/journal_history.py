@@ -25,12 +25,10 @@ class PullRequestJournalService(Protocol):
 
 
 class JournalRepositoriesService(Protocol):
-    """Answers a question about repositories, where the others here are
-    about one pull request. Used when reconciling webhooks."""
+    """Answers which repositories the webhook reconciler remembers."""
 
     def repositories_with(self, event_type: str) -> list[tuple[str, str]]:
-        """Every (forge, repository) pair the journal has an entry of
-        that type for."""
+        """Every (forge, repository) pair with that event type."""
         ...
 
 
@@ -47,4 +45,14 @@ class DeliveryJournalService(RecordingService, Protocol):
     ) -> bool:
         """Whether a delivery for the pull request was received at or
         after ``since``."""
+        ...
+
+
+class OriginJournalRepositoriesService(Protocol):
+    """Lists only repositories explicitly retained for one endpoint."""
+
+    def repositories_with_origin(
+        self, event_type: str, origin_endpoint: str
+    ) -> list[tuple[str, str]]:
+        """Return records whose origin host and path match the journal row."""
         ...
