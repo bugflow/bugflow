@@ -32,6 +32,7 @@ class ReconcileWebhooksRequest(BaseModel):
     secret: str
     correlation: Correlation
     events: frozenset[str] = EVENTS
+    origin_endpoint: str | None = None
 
 
 class ReconcileWebhooksResponse(BaseModel):
