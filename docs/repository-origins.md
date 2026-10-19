@@ -9,7 +9,8 @@ Authenticated deliveries also associate new delivery, dismissal and merge facts.
 Closing workflows associate their reaction and closing facts with the
 observed source. Stocktakes select and associate repository-wide evidence
 through their configured source. Archive declarations accept an explicit
-ledger origin and associate their registration facts.
+ledger origin and associate their registration facts. Archive appends and
+refusals associate new facts with the admitted ledger binding.
 Evaluation API reads accept an optional canonical origin and select
 retained records. This release does not implement repository-key enforcement.
 
@@ -41,7 +42,7 @@ host. The parser does not contact a forge or follow redirects.
 
 | Storage | Existing identity | Association treatment |
 |---|---|---|
-| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries, closing workflows and stocktakes associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
+| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries, closing workflows, stocktakes and bound archive operations associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
 | `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
 | `archive_bindings` | Ledger UUID, forge, repo and scope | Explicit declarations associate the ledger UUID. Reads include existing operator mappings. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
@@ -391,11 +392,41 @@ hostless row. On rollback, suspend binding changes and retain the association
 table. Existing role-based keeper authorization remains unchanged. Repository
 keys remain disabled.
 
-Archive append/refusal facts still require producer migration. Their stable
-event identifiers outlive individual HTTP requests, so origin assertion must
-preserve retries across request run ids and must not retag old unresolved
-facts. Webhook-reconciliation records also remain independent, unresolved
-operational facts. Policy-deployment records identify the policy source,
+Webhook-reconciliation records remain independent, unresolved operational
+facts. Policy-deployment records identify the policy source,
 not the reviewed repository. Completion and recovered-write-up records keep
 the dispatch workflow/run scope and inherit its origin only when all its
 retained records have one matching source.
+
+## Archive append provenance
+
+After the existing role and binding checks, archive append uses the ledger's
+retained origin for new `archive.sealed` and `archive.refused` facts. Client
+claims cannot choose the source. Unknown bindings produce explicitly
+unresolved facts. A historical mapping with a path that differs from its
+binding row refuses append before the keeper writes anything; an operator
+must align the binding with that origin first.
+
+The archive host's run id identifies the process and can cover several
+ledgers. Canonical archive facts instead use the existing event UUID as
+their journal run id. This isolates equal repository paths on different
+hosts and gives retries a stable scope across processes. Event UUIDs,
+payloads and retained rows are unchanged. New unresolved facts retain the
+legacy process run id.
+
+The keeper still checks every append, including duplicates. Journaling skips
+an already retained fact without modifying its association. Resolving a
+ledger cannot retag an earlier unresolved append fact. Explicit historical
+mapping remains necessary for those records. If two requests both observe a
+missing canonical fact, their stable scopes let the journal deduplicate them.
+
+Keeper storage still precedes journaling. If the keeper succeeds and the
+journal fails, a retry records the missing fact with the binding's origin.
+The binding must remain stable during this recovery. Stop append traffic
+while resolving legacy bindings or changing historical mappings. A journal
+failure does not roll back keeper storage.
+
+Install migration `0008` and replace archive hosts together after draining
+append traffic. Older hosts can record unresolved facts. Before rolling back,
+suspend appends to canonical ledgers and retain all associations. Repository
+key enforcement remains disabled and keeper role checks are unchanged.
