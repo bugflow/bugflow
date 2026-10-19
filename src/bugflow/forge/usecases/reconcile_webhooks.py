@@ -18,6 +18,7 @@ Two rules:
 """
 
 from collections.abc import Sequence
+from typing import cast
 
 from bugflow.forge.domain import facts
 from bugflow.forge.domain.errors import ForgeError, ForgeRejectedError
@@ -26,6 +27,7 @@ from bugflow.forge.domain.repositories.webhook_admin import (
 )
 from bugflow.forge.domain.services.journal_history import (
     JournalRepositoriesService,
+    OriginJournalRepositoriesService,
 )
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.dtos.reconcile_webhooks import (
@@ -36,6 +38,10 @@ from bugflow.forge.dtos.reconcile_webhooks import (
 from bugflow.shared.domain.models.journal_entry import JournalEntry, event_id
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.services.recording import RecordingService
+from bugflow.shared.domain.values.repository_origin import (
+    RepositoryOrigin,
+    https_origin,
+)
 
 EVENT = facts.WEBHOOK_RECONCILED
 
@@ -61,6 +67,11 @@ class ReconcileWebhooksUseCase:
     def execute(
         self, request: ReconcileWebhooksRequest
     ) -> ReconcileWebhooksResponse:
+        if request.origin_endpoint is not None:
+            # A path prefix cannot identify one repository on this forge.
+            RepositoryOrigin.parse(
+                request.origin_endpoint.rstrip("/") + "/owner/repo"
+            )
         declared = tuple(dict.fromkeys(request.repositories))
         outcomes = [self._declare(r, request) for r in declared]
         outcomes.extend(
@@ -213,7 +224,18 @@ class ReconcileWebhooksUseCase:
         """
         known = set(declared)
         dropped = []
-        for forge, full_name in self._remembered.repositories_with(EVENT):
+        if request.origin_endpoint is None:
+            remembered = self._remembered.repositories_with(EVENT)
+        else:
+            # A service without origin-aware history cannot safely authorize
+            # cleanup from hostless records.
+            origin_history = cast(
+                OriginJournalRepositoriesService, self._remembered
+            )
+            remembered = origin_history.repositories_with_origin(
+                EVENT, request.origin_endpoint
+            )
+        for forge, full_name in remembered:
             # The journal may hold a forge name this version does not know.
             # Parsing it, and skipping it if that fails, keeps one odd entry
             # from stopping the run.
@@ -255,6 +277,13 @@ class ReconcileWebhooksUseCase:
                 corpus_version=None,
                 workflow_id=request.correlation.workflow_id,
                 run_id=request.correlation.run_id,
+                origin=https_origin(
+                    request.origin_endpoint,
+                    f"{o.repository.owner}/{o.repository.repo}",
+                )
+                if request.origin_endpoint is not None
+                else None,
+                origin_asserted=True,
                 payload={
                     "outcome": o.outcome,
                     "detail": o.detail,

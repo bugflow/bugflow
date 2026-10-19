@@ -64,7 +64,7 @@ class SqlAlchemyRepositoryAssociations:
 def association_exists(
     kind: RecordKind,
     record_id: sa.ColumnElement[str],
-    origin: str | None = None,
+    origin: sa.ColumnElement[str] | str | None = None,
 ) -> sa.ColumnElement[bool]:
     table = repository_associations
     predicates = [table.c.kind == kind, table.c.record_id == record_id]

@@ -10,7 +10,8 @@ Closing workflows associate their reaction and closing facts with the
 observed source. Stocktakes select and associate repository-wide evidence
 through their configured source. Archive declarations accept an explicit
 ledger origin and associate their registration facts. Archive appends and
-refusals associate new facts with the admitted ledger binding.
+refusals use that binding. Webhook reconciliation records the configured
+GitHub origin and cleans up only history associated with that host and path.
 Evaluation API reads accept an optional canonical origin and select
 retained records. This release does not implement repository-key enforcement.
 
@@ -42,7 +43,8 @@ host. The parser does not contact a forge or follow redirects.
 
 | Storage | Existing identity | Association treatment |
 |---|---|---|
-| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries, closing workflows, stocktakes and bound archive operations associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
+| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries, closing workflows, stocktakes, bound archive operations and configured
+webhook reconciliation associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
 | `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
 | `archive_bindings` | Ledger UUID, forge, repo and scope | Explicit declarations associate the ledger UUID. Reads include existing operator mappings. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
@@ -430,3 +432,23 @@ Install migration `0008` and replace archive hosts together after draining
 append traffic. Older hosts can record unresolved facts. Before rolling back,
 suspend appends to canonical ledgers and retain all associations. Repository
 key enforcement remains disabled and keeper role checks are unchanged.
+
+## Webhook reconciliation
+
+The webhook command supports GitHub, whose public repository endpoint is
+fixed at `https://github.com`. New `webhook.reconciled` facts assert that
+origin. The receiver URL and GitHub token do not select the repository host.
+
+When reconciling a declared list, cleanup considers remembered repositories
+only when a retained association matches both `github.com` and the exact
+repository path in the journal row. Other-host, unresolved and path-mismatched
+history cannot trigger hook removal. A history adapter without this query
+returns no cleanup candidates. Existing command callers that omit an origin
+endpoint retain the legacy hostless behavior.
+
+Install migration `0008` and deploy the origin-aware journal query with the
+command. Earlier webhook facts remain unresolved until mapped. They do not
+authorize cleanup after this change, so an old hook can remain until an
+operator maps its source. The operation still uses GitHub credentials and
+preserves the existing webhook URL match rule. Repository-key enforcement is
+disabled.

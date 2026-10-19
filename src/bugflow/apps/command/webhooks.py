@@ -48,6 +48,7 @@ class HookSettings:
     url: str
     secret: str
     token: GitHubTokens
+    origin_endpoint: str = "https://github.com"
 
     @classmethod
     def from_environment(cls, environ: Mapping[str, str]) -> "HookSettings":
@@ -122,6 +123,7 @@ def run_webhooks(
             correlation=Correlation(
                 workflow_id="webhooks/sync", run_id=uuid.uuid4().hex
             ),
+            origin_endpoint=settings.origin_endpoint,
         )
     )
     _report(response, settings.url, out)
