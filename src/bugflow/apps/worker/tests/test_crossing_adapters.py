@@ -456,3 +456,18 @@ def test_a_review_scope_says_what_is_held_and_what_a_repository_asked() -> (
 def test_a_server_with_no_declarations_reviews_for_all_it_holds() -> None:
     scope = DeclaredReviewScope(("P-01", "P-02"), None)
     assert scope.scope_for("github", "o/r").reviewed_for == ("P-01", "P-02")
+
+
+def test_delegation_preserves_repository_origin() -> None:
+    agent = FakeDelegatedWork()
+    delegation = WorkDelegation(agent)
+    delegation.dispatch(
+        Task(
+            instructions="review",
+            repository="o/r",
+            origin="forge.test/o/r",
+            commit="head",
+        )
+    )
+    assert agent.dispatched is not None
+    assert agent.dispatched.origin == "forge.test/o/r"

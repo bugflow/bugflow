@@ -31,6 +31,9 @@ from bugflow.review.domain.models.grading import (
 from bugflow.review.domain.services.delegated_work import DelegatedWorkService
 from bugflow.review.domain.services.grader import GraderService
 from bugflow.review.domain.services.journal import JournalService
+from bugflow.review.domain.services.repository_journal import (
+    for_repository_run,
+)
 from bugflow.review.dtos.review_range import (
     CollectRangeReviewRequest,
     CollectRangeReviewResponse,
@@ -101,8 +104,11 @@ class DispatchRangeReviewUseCase:
         so that a review that was not allowed can be told from one whose
         runner failed.
         """
+        journal = for_repository_run(
+            self._journal, request.forge, request.repo, request.correlation
+        )
         if request.refusal:
-            self._journal.append(
+            journal.append(
                 [self._refused(request, request.refusal, self._clock.now())]
             )
             return DispatchRangeReviewResponse(
@@ -112,6 +118,7 @@ class DispatchRangeReviewUseCase:
             instructions=request.instructions,
             inputs=None,
             repository=request.repo,
+            origin=journal.origin,
             # The review compares the commit the last stocktake got
             # to with the last one merged since. A layer's first
             # stocktake has no base, and reads the files as they are.
@@ -124,13 +131,13 @@ class DispatchRangeReviewUseCase:
         try:
             handle = self._agent.dispatch(task)
         except AgentUnavailableError as exc:
-            self._journal.append(
+            journal.append(
                 [self._unavailable(request, str(exc), self._clock.now())]
             )
             return DispatchRangeReviewResponse(
                 handle=None, reason=f"the agent did not run: {exc}"
             )
-        self._journal.append(
+        journal.append(
             [
                 self._dispatched(
                     request, handle.runner, handle.remote_id, self._clock.now()
@@ -257,6 +264,9 @@ class CollectRangeReviewUseCase:
     def execute(
         self, request: CollectRangeReviewRequest
     ) -> CollectRangeReviewResponse:
+        journal = for_repository_run(
+            self._journal, request.forge, request.repo, request.correlation
+        )
         try:
             run = self._agent.collect(request.handle)
         except AgentUnavailableError as exc:
@@ -272,7 +282,7 @@ class CollectRangeReviewUseCase:
                 run=run, reason="the run has not finished"
             )
         now = self._clock.now()
-        self._journal.append(
+        journal.append(
             [
                 self._reviewed(request, run, now),
                 *self._found(request, run, now),
@@ -388,6 +398,9 @@ class GradeRangeReviewUseCase:
         """Raises ``GraderUnavailableError`` if the grader cannot be asked.
         The calls it made are recorded first.
         """
+        journal = for_repository_run(
+            self._journal, request.forge, request.repo, request.correlation
+        )
         write_up = str(request.run.artifact.get("write_up") or "")
         try:
             grading = self._grader.grade(
@@ -400,12 +413,10 @@ class GradeRangeReviewUseCase:
                 )
             )
         except GraderUnavailableError as exc:
-            self._journal.append(
-                self._called(request, exc.calls, self._clock.now())
-            )
+            journal.append(self._called(request, exc.calls, self._clock.now()))
             raise
         now = self._clock.now()
-        self._journal.append(
+        journal.append(
             [
                 *self._called(request, grading.calls, now),
                 self._graded(request, grading, now),

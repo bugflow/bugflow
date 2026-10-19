@@ -41,3 +41,13 @@ def forgejo_settings(environ: Mapping[str, str]) -> tuple[str, str] | None:
     url = environ.get("FORGEJO_URL")
     token = environ.get("FORGEJO_TOKEN")
     return (url, token) if url and token else None
+
+
+def repository_endpoints(environ: Mapping[str, str]) -> dict[str, str]:
+    """The configured sources for new repository-wide runs."""
+    endpoints = {}
+    if forge_tokens(environ) is not None:
+        endpoints["github"] = "https://github.com"
+    if settings := forgejo_settings(environ):
+        endpoints["forgejo"] = settings[0]
+    return endpoints

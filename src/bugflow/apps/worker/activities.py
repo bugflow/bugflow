@@ -193,6 +193,7 @@ from bugflow.shared.domain.values.repository_association import (
     AssociationConflictError,
     RepositoryAssociationUnresolvedError,
 )
+from bugflow.shared.domain.values.repository_origin import https_origin
 from bugflow.work.domain.models.backfill import WatchedRepository
 from bugflow.work.domain.repositories.backfill import (
     ClosedPullRequestFeedRepository,
@@ -372,12 +373,14 @@ class ReviewActivities:
         # manifests give them. A policy in it is answered by code and
         # needs no model.
         checked: Mapping[str, Checked] | None = None,
+        repository_endpoints: Mapping[str, str] | None = None,
     ) -> None:
         # The judge itself, not the activity that calls it. Startup
         # asks it which policies have no model and drops them. The
         # fan-out and the observation's record of what was asked for
         # read the narrowed set, so the three must be the same object.
         self.judge_port = judge
+        self._repository_endpoints = dict(repository_endpoints or {})
         self._judged = judged
         self._checked = dict(checked or {})
         self._observe = ObservePullRequestUseCase(
@@ -978,7 +981,19 @@ class ReviewActivities:
     def take_stock(self, request: TakeStockRequest) -> TakeStockResponse:
         """Return the range a layer has not taken stock of, and record
         the mark that says it has now."""
-        return self._take_stock.execute(request)
+        try:
+            origin = https_origin(
+                self._repository_endpoints.get(request.forge), request.repo
+            )
+            if request.origin is not None and request.origin != origin:
+                raise AssociationConflictError(
+                    "stocktake origin differs from configured endpoint"
+                )
+            return self._take_stock.execute(
+                request.model_copy(update={"origin": origin})
+            )
+        except (ValueError, RepositoryAssociationUnresolvedError) as exc:
+            raise _non_retryable(exc) from exc
 
     @activity.defn(name=COLLECT_AT_CLOSE_ACTIVITY)
     def collect_at_close(

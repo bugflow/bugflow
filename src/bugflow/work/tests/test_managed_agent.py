@@ -785,3 +785,44 @@ def test_a_dispatched_run_carries_the_patience_it_deserves() -> None:
     sessions = FakeSessions()
     handle = agent(sessions).dispatch(TASK)
     assert handle.patience == PATIENCE
+
+
+@pytest.mark.parametrize(
+    "origin", ["other.test/orchard/pear-tree", "github.com/other/repo"]
+)
+def test_canonical_task_cannot_mount_a_different_clone_origin(
+    origin: str,
+) -> None:
+    sessions = FakeSessions()
+    with pytest.raises(AgentUnavailableError, match="task origin"):
+        agent(sessions).dispatch(replace(TASK, origin=origin))
+    assert not sessions.created
+
+
+def test_canonical_task_mounts_the_matching_endpoint() -> None:
+    sessions = FakeSessions()
+    agent(sessions).dispatch(
+        replace(TASK, origin="github.com/orchard/pear-tree")
+    )
+    assert (
+        sessions.created[0]["resources"][0]["url"]
+        == "https://github.com/orchard/pear-tree"
+    )
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["http://github.com", "https://github.com/prefix", "https://other.test"],
+)
+def test_configured_clone_endpoint_must_match_canonical_task(
+    endpoint: str,
+) -> None:
+    sessions = FakeSessions()
+    runner = ManagedAgent(
+        client=FakeClient(sessions),
+        repository_token="token",
+        settings=replace(SETTINGS, clone_url=endpoint),
+    )
+    with pytest.raises(AgentUnavailableError):
+        runner.dispatch(replace(TASK, origin="github.com/orchard/pear-tree"))
+    assert not sessions.created

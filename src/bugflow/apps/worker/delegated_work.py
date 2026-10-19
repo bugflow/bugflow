@@ -37,6 +37,7 @@ def _task(task: Task) -> AgentTask:
         instructions=task.instructions,
         inputs=task.inputs,
         repository=task.repository,
+        origin=task.origin,
         commit=task.commit,
         head=task.head,
         artifact_schema=task.artifact_schema,
