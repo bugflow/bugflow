@@ -6,6 +6,8 @@ association table. It leaves existing records and access behaviour intact.
 New GitHub and HTTPS Forgejo snapshots retain and associate their origin.
 Observed evaluation runs associate their journal entries with that origin.
 Authenticated deliveries also associate new delivery, dismissal and merge facts.
+Closing workflows associate their reaction and closing facts with the
+observed source.
 Evaluation API reads accept an optional canonical origin and select
 retained records. This release does not implement repository-key enforcement.
 
@@ -37,7 +39,7 @@ host. The parser does not contact a forge or follow redirects.
 
 | Storage | Existing identity | Association treatment |
 |---|---|---|
-| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations and canonical deliveries associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
+| `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries and closing workflows associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
 | `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
 | `archive_bindings` | Ledger UUID, forge, repo and scope | Map the ledger UUID. Keep the existing binding. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
@@ -110,9 +112,9 @@ hostless results. Suspend canonical requests before rolling the API back.
 An operator can test reader readiness with mapped records that share a
 path on two hosts.
 
-Independent close-workflow and repository-wide runs still need an origin
-source. Bindings and declarations need compatible migration paths. Repository-key activation requires credential
-protection and compatible clients in later releases.
+Independent repository-wide runs still need an origin source. Bindings and
+declarations need compatible migration paths. Repository-key activation
+requires credential protection and compatible clients in later releases.
 
 ## New snapshot ingestion
 
@@ -189,10 +191,9 @@ leaves subsequent journal events unresolved and can cause canonical reads
 to return 409. Retained associations remain intact.
 
 A newly observed evaluation can be read by its canonical origin without a
-manual per-event mapping. Independent close-workflow and repository-wide records still need their
-own origin source. A
-repository history request can therefore return 409 while a detail request
-for the fully associated evaluation succeeds. Bindings, declarations and
+manual per-event mapping. Independent repository-wide records still need
+their own origin source. A repository history request can therefore return
+409 while a detail request for the fully associated evaluation succeeds. Bindings, declarations and
 repository-key enforcement still need their later migration steps.
 
 ## Delivery ingestion
@@ -234,8 +235,45 @@ ingress, pollers and workers together. An older poller omits the source
 metadata; its deliveries stay unresolved and can conflict with a canonical
 run. An older ingress discards the poller's metadata. On rollback, retain
 associations; subsequent unresolved records can make canonical history
-return 409. This change does not associate close-workflow output or
-repository-wide review runs, and does not activate repository-key access.
+return 409. Repository-wide review runs still need provenance, and
+repository-key access remains disabled.
+
+## Closing workflow ingestion
+
+The closing-state read supplies the source origin: GitHub's fixed endpoint
+or the configured HTTPS Forgejo endpoint. HTTP Forgejo remains unresolved.
+Closing-state and reaction requests refuse redirects. Unsupported HTTPS
+path prefixes refuse the closing-state read before contacting the forge.
+The worker passes that source into the review context without changing
+workflow input or event identifiers.
+
+Before reading reactions, collection checks that the observed origin
+agrees with every existing event in the same workflow run, forge,
+repository path and PR number. A known source refuses unresolved or
+conflicting records in that scope. An unknown source cannot inherit a
+known run's origin. These provenance errors stop the activity without
+automatic retries; inspect the scope and repair mappings explicitly where
+evidence supports them before rerunning the workflow.
+
+For a canonical source, collection selects posted comments, reviewer
+attribution and the last published evaluation's outstanding findings only
+from records associated with that origin. Foreign and unresolved history
+cannot be copied into the closing record. Map older review evidence before
+upgrading if it should remain eligible for collection. An unresolved source
+retains legacy history selection and produces unresolved closing records.
+
+All reaction and closing facts assert the observed source in one journal
+append. Retrying an unresolved closing event with a newly known source
+refuses reassociation. Retrying the same source preserves existing event
+identifiers and associations. The journal checks provenance again at append,
+so a concurrent conflicting writer cannot commit a mixed batch.
+
+Migration `0008` and the coordinated drain and worker replacement above
+remain required. Reverting to older closing workers restores hostless
+history selection, so suspend closing collection before rollback while
+retaining all stored associations. Repository-wide producers, declarations
+and ledger bindings still need their migration steps. This release does
+not enable repository-key enforcement.
 
 ## Canonical evaluation reads
 

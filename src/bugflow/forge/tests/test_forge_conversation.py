@@ -9,7 +9,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx2
+import pytest
 
+from bugflow.forge.domain.errors import ForgeRejectedError
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
 from bugflow.forge.infrastructure.forgejo import ForgejoForge
 from bugflow.forge.infrastructure.github import GitHubForge
@@ -65,7 +67,9 @@ def test_github_says_whether_a_pull_request_merged_and_at_which_head() -> None:
         "t", transport=answering({"/repos/o/r/pulls/7": PULL}, seen)
     )
 
-    assert forge.state(REF) == PullRequestState(merged=True, head_sha="c" * 40)
+    assert forge.state(REF) == PullRequestState(
+        merged=True, head_sha="c" * 40, origin="github.com/o/r"
+    )
 
 
 def test_forgejo_reads_the_reactions_on_one_comment() -> None:
@@ -91,3 +95,57 @@ def test_forgejo_says_whether_a_pull_request_merged() -> None:
     )
 
     assert forge.state(ON_FORGEJO).merged
+
+
+@pytest.mark.parametrize("kind", ["github", "forgejo"])
+@pytest.mark.parametrize("operation", ["state", "reactions"])
+def test_close_reads_refuse_redirects(kind: str, operation: str) -> None:
+    seen: list[str] = []
+
+    def redirect(request: httpx2.Request) -> httpx2.Response:
+        seen.append(str(request.url))
+        return httpx2.Response(
+            302, headers={"Location": "https://other.test/redirected"}
+        )
+
+    transport = httpx2.MockTransport(redirect)
+    forge = (
+        GitHubForge("token", transport=transport)
+        if kind == "github"
+        else ForgejoForge("https://forge.test", "token", transport=transport)
+    )
+    with pytest.raises(ForgeRejectedError):
+        if operation == "state":
+            forge.state(REF)
+        else:
+            forge.reactions(REF, 42)
+    assert len(seen) == 1
+    assert "other.test" not in seen[0]
+
+
+@pytest.mark.parametrize(
+    "endpoint, origin",
+    [
+        ("https://FORGE.test:8443", "forge.test:8443/o/r"),
+        ("http://forge.test", None),
+    ],
+)
+def test_closing_source_comes_from_forgejo_endpoint(
+    endpoint: str, origin: str | None
+) -> None:
+    forge = ForgejoForge(
+        endpoint,
+        "token",
+        transport=answering({"/api/v1/repos/o/r/pulls/7": PULL}, []),
+    )
+    assert forge.state(ON_FORGEJO).origin == origin
+
+
+def test_close_refuses_unsupported_https_endpoint_before_fetching() -> None:
+    seen: list[str] = []
+    forge = ForgejoForge(
+        "https://forge.test/prefix", "token", transport=answering({}, seen)
+    )
+    with pytest.raises(ForgeRejectedError):
+        forge.state(ON_FORGEJO)
+    assert not seen
