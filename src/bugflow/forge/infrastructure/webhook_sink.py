@@ -153,7 +153,9 @@ class SignedWebhookSink:
                 f"the server has no route for the {delivery.forge} forge"
             )
         payload, headers = SHAPES[delivery.forge]
-        body = json.dumps(payload(delivery)).encode()
+        body = json.dumps(
+            {**payload(delivery), "_bugflow_origin": delivery.origin}
+        ).encode()
         try:
             response = self._client.post(
                 f"{self._url}/webhooks/{delivery.forge}",

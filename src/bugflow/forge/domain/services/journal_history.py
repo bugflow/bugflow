@@ -38,7 +38,13 @@ class DeliveryJournalService(RecordingService, Protocol):
     """What receiving a delivery needs from the journal: writing entries,
     and one question."""
 
-    def received_since(self, ref: PullRequestRef, since: datetime) -> bool:
+    def received_since(
+        self,
+        ref: PullRequestRef,
+        since: datetime,
+        *,
+        origin: str | None = None,
+    ) -> bool:
         """Whether a delivery for the pull request was received at or
         after ``since``."""
         ...

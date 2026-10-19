@@ -47,7 +47,10 @@ from bugflow.forge.domain.models.pull_request import (
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
-from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
+from bugflow.shared.domain.values.repository_origin import (
+    RepositoryOrigin,
+    https_origin,
+)
 
 # Forgejo's default page size (its ``MAX_RESPONSE_ITEMS`` setting). A server
 # may be set to return fewer, so a listing is read until it has as many items
@@ -365,6 +368,14 @@ class ForgejoForge:
             },
         )
 
+    def _poll_origin(self, owner: str, repo: str) -> str | None:
+        try:
+            return https_origin(self._url, f"{owner}/{repo}")
+        except ValueError as exc:
+            raise ForgeRejectedError(
+                "Forgejo endpoint cannot identify a canonical repository"
+            ) from exc
+
     def updated_pull_requests(
         self, owner: str, repo: str, since: datetime | None
     ) -> list[PolledPullRequest]:
@@ -372,13 +383,16 @@ class ForgejoForge:
             "state": "open" if since is None else "all",
             "sort": "recentupdate",
         }
+        origin = self._poll_origin(owner, repo)
         pulls: list[PolledPullRequest] = []
-        for batch in self._pages(f"/repos/{owner}/{repo}/pulls", params):
+        for batch in self._pages(
+            f"/repos/{owner}/{repo}/pulls", params, follow_redirects=False
+        ):
             for payload in batch:
                 pull = polled_from_payload(owner, repo, payload)
                 if since is not None and pull.updated_at < since:
                     return pulls
-                pulls.append(pull)
+                pulls.append(replace(pull, origin=origin))
         return pulls
 
     def closed_pull_requests(
@@ -414,14 +428,17 @@ class ForgejoForge:
         params: dict[str, int | str] = {
             "since": since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
+        origin = self._poll_origin(owner, repo)
         comments: list[PolledComment] = []
         for batch in self._pages(
-            f"/repos/{owner}/{repo}/issues/comments", params
+            f"/repos/{owner}/{repo}/issues/comments",
+            params,
+            follow_redirects=False,
         ):
             for payload in batch:
                 comment = polled_comment_from_payload(owner, repo, payload)
                 if comment is not None:
-                    comments.append(comment)
+                    comments.append(replace(comment, origin=origin))
         return comments
 
     def _request(

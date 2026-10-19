@@ -18,6 +18,9 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
     ENTRY_COLUMNS,
     journal,
 )
+from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
+    association_exists,
+)
 
 
 class SqlAlchemyJournalQueries:
@@ -57,7 +60,13 @@ class SqlAlchemyJournalQueries:
             rows = connection.execute(query).all()
         return [(row.forge, row.repo) for row in rows]
 
-    def received_since(self, ref: PullRequestRef, since: datetime) -> bool:
+    def received_since(
+        self,
+        ref: PullRequestRef,
+        since: datetime,
+        *,
+        origin: str | None = None,
+    ) -> bool:
         query = (
             sa.select(journal.c.event_id)
             .where(
@@ -69,5 +78,11 @@ class SqlAlchemyJournalQueries:
             )
             .limit(1)
         )
+        if origin is not None:
+            query = query.where(
+                association_exists(
+                    "journal", sa.cast(journal.c.event_id, sa.Text), origin
+                )
+            )
         with self._engine.connect() as connection:
             return connection.execute(query).first() is not None

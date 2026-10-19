@@ -91,8 +91,14 @@ class DeliveryJournal:
     def has_event(self, event_id: UUID) -> bool:
         return self._recording.has_event(event_id)
 
-    def received_since(self, ref: PullRequestRef, since: datetime) -> bool:
-        return self._queries.received_since(ref, since)
+    def received_since(
+        self,
+        ref: PullRequestRef,
+        since: datetime,
+        *,
+        origin: str | None = None,
+    ) -> bool:
+        return self._queries.received_since(ref, since, origin=origin)
 
 
 def delivery_journal(database_url: str, build: str | None) -> DeliveryJournal:

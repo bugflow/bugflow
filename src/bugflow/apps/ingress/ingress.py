@@ -19,7 +19,7 @@ import os
 import signal
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -51,6 +51,7 @@ from bugflow.apps.shared.temporal import connect as connect_temporal
 from bugflow.apps.worker import evaluate_pull_request, pull_request
 from bugflow.forge.domain.errors import EvaluationStartError
 from bugflow.forge.domain.models.delivery import Delivery
+from bugflow.forge.domain.models.polling import POLLED_DELIVERY_PREFIX
 from bugflow.forge.domain.services.corpus_refresh import CorpusRefreshPort
 from bugflow.forge.dtos.receive_delivery import ReceiveDeliveryRequest
 from bugflow.forge.infrastructure.forgejo_delivery import delivery_from_forgejo
@@ -72,6 +73,11 @@ from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
 )
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.domain.values.repository_association import (
+    AssociationConflictError,
+    RepositoryAssociationUnresolvedError,
+)
+from bugflow.shared.domain.values.repository_origin import https_origin
 from bugflow.shared.infrastructure.system_clock import SystemClock
 from bugflow.work.dtos.receive_completion import ReceiveCompletionRequest
 from bugflow.work.infrastructure.managed_agent_completion import (
@@ -142,6 +148,7 @@ def create_app(
     receive_completion: ReceiveCompletionUseCase | None = None,
     review_webhook_secret: str = "",
     instrument: Callable[[FastAPI], None] | None = None,
+    forgejo_url: str | None = None,
 ) -> FastAPI:
     """The ingress, verifying each delivery against the webhook secret.
 
@@ -155,12 +162,16 @@ def create_app(
     the same and accepts nothing, the way an empty ``previous_secret``
     does, so that one credential leaking opens one route.
 
+    ``forgejo_url`` identifies the forge whose signed deliveries this route
+    accepts. Only HTTPS endpoints supply a canonical origin.
+
     ``receive`` and ``receive_completion`` may be set later, by
     ``lifespan``, as ``app.state.receive`` and
     ``app.state.receive_completion``.
     """
     if not secret:
         raise ValueError("a webhook secret is required")
+    https_origin(forgejo_url, "owner/repository")
     previous = previous_secret or None
     app = FastAPI(title="bugflow ingress", lifespan=lifespan)
     app.state.receive = receive
@@ -199,6 +210,20 @@ def create_app(
             if not isinstance(payload, dict):
                 raise ValueError("delivery body is not a JSON object")
             delivery = forge.normalise(request.headers, payload)
+            endpoint = "https://github.com" if forge is GITHUB else forgejo_url
+            origin = (
+                https_origin(endpoint, delivery.repository)
+                if delivery.repository
+                else None
+            )
+            if delivery.delivery_id.startswith(POLLED_DELIVERY_PREFIX):
+                reported = payload.get("_bugflow_origin")
+                if reported is not None and reported != origin:
+                    raise ValueError(
+                        "polled origin does not match ingress endpoint"
+                    )
+                origin = reported
+            delivery = replace(delivery, origin=origin)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
@@ -207,6 +232,11 @@ def create_app(
             received = await run_in_threadpool(
                 use_case.execute, ReceiveDeliveryRequest(delivery=delivery)
             )
+        except (
+            AssociationConflictError,
+            RepositoryAssociationUnresolvedError,
+        ) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=409)
         except EvaluationStartError as exc:
             return JSONResponse({"error": str(exc)}, status_code=503)
 
@@ -333,6 +363,8 @@ def app_from_environment(
     Optional:
 
     - ``WEBHOOK_SECRET_PREVIOUS``: set only while the secret is rotated.
+    - ``FORGEJO_URL``: the Forgejo endpoint shared with workers and pollers;
+      HTTPS supplies new deliveries with their canonical origin.
     - ``REVIEW_WEBHOOK_SECRET``: the managed agent's, registered in the
       platform's console; unset, the ingress still starts and that route
       accepts nothing.
@@ -433,4 +465,5 @@ def app_from_environment(
         previous_secret=environ.get("WEBHOOK_SECRET_PREVIOUS"),
         review_webhook_secret=environ.get("REVIEW_WEBHOOK_SECRET", ""),
         instrument=added.instrument,
+        forgejo_url=environ.get("FORGEJO_URL"),
     )

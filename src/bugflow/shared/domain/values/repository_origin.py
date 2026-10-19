@@ -92,3 +92,10 @@ class RepositoryOrigin:
 
     def __str__(self) -> str:
         return self.value
+
+
+def https_origin(endpoint: str | None, repository: str) -> str | None:
+    """Resolve a repository against a configured HTTPS endpoint."""
+    if not endpoint or not endpoint.startswith("https://"):
+        return None
+    return str(RepositoryOrigin.parse(f"{endpoint.rstrip('/')}/{repository}"))
