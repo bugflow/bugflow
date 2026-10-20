@@ -17,6 +17,7 @@ Its subcommands include::
     bugflow migrate [--check]
     bugflow repository-origins [--apply MAPPINGS.json]
     bugflow poll [--once]
+    bugflow prune-webhooks OLD_INGRESS_URL [--dry-run]
     bugflow revoke [REPOSITORY] [--layer LAYER] [--agent REVIEWER]
         --per CADENCE
     bugflow webhooks
@@ -114,6 +115,18 @@ agrees. It records what it did in the database ``DATABASE_URL`` names.
 Exit status: 0 if every repository agrees with the declaration. 1 if any
 could not be reconciled. 2 if a setting is missing or wrong.
 
+``prune-webhooks`` deletes, from each repository
+``WATCHED_REPOSITORIES`` names, the webhook pointing at
+OLD_INGRESS_URL, the public address this server answered on before it
+moved. Only a webhook whose URL is exactly that address's
+``/webhooks/github`` is deleted. It refuses an OLD_INGRESS_URL that is
+``INGRESS_URL``, the address it answers on now. With ``--dry-run`` it
+lists what it would delete and deletes nothing. It records nothing.
+
+Exit status: 0 if every repository was read, and changed where it had
+to be. 1 if any could not be. 2 if a setting is missing or wrong, or
+the prune was refused.
+
 ``migrate``, ``poll``, ``webhooks`` and ``worker`` write their log
 lines as JSON and export traces as ``bugflow.apps.shared.telemetry``
 describes, when ``LOG_FORMAT`` and ``OTEL_EXPORTER_OTLP_ENDPOINT`` say
@@ -151,7 +164,12 @@ from bugflow.apps.command.declaring import (
     run_revoke,
 )
 from bugflow.apps.command.repository_origins import apply_mapping, inventory
-from bugflow.apps.command.webhooks import HookSettings, run_webhooks
+from bugflow.apps.command.webhooks import (
+    HookSettings,
+    PruneSettings,
+    run_prune,
+    run_webhooks,
+)
 from bugflow.apps.poller.poller import (
     PollerSettings,
     poller_from_settings,
@@ -171,6 +189,7 @@ from bugflow.forge.infrastructure.github import GitHubForge
 from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
 )
+from bugflow.forge.usecases.prune_webhooks import PruneRefusedError
 from bugflow.method.domain.errors import (
     PoliciesRefusedError,
     PolicyDeploymentError,
@@ -312,6 +331,23 @@ def _parser() -> argparse.ArgumentParser:
         "webhooks",
         help="register this server's webhook on each repository "
         "WATCHED_REPOSITORIES names, pointing at INGRESS_URL",
+    )
+    prune = commands.add_parser(
+        "prune-webhooks",
+        help="delete the webhook pointing at the address this server "
+        "answered on before it moved, from each repository "
+        "WATCHED_REPOSITORIES names",
+    )
+    prune.add_argument(
+        "old_ingress_url",
+        metavar="OLD_INGRESS_URL",
+        help="the public address the server answered on before; refused "
+        "if it is INGRESS_URL",
+    )
+    prune.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="list the webhooks it would delete, and delete nothing",
     )
     commands.add_parser(
         "worker",
@@ -569,6 +605,10 @@ def run(
         return _poll(args.once, environ)
     if args.command == "webhooks":
         return _webhooks(environ, transport)
+    if args.command == "prune-webhooks":
+        return _prune_webhooks(
+            args.old_ingress_url, args.dry_run, environ, transport
+        )
     if args.command == "worker":
         return _worker(environ)
     if args.command in DECLARING:
@@ -738,6 +778,28 @@ def _webhooks(
         SystemClock(),
         sys.stdout,
     )
+
+
+def _prune_webhooks(
+    old_ingress_url: str,
+    dry_run: bool,
+    environ: Mapping[str, str],
+    transport: httpx2.BaseTransport | None,
+) -> int:
+    try:
+        settings = PruneSettings.from_environment(environ, old_ingress_url)
+        return run_prune(
+            settings,
+            GitHubForge(settings.token, transport),
+            sys.stdout,
+            dry_run=dry_run,
+        )
+    except PruneRefusedError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 def _worker(environ: Mapping[str, str]) -> int:
