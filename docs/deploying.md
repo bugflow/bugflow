@@ -362,6 +362,21 @@ names, pointing at `/webhooks/github` under `bugflow_ingress_url` and
 signed with the webhook secret. It changes nothing where the forge
 already agrees, so it can be run on every deploy.
 
+When the server moves to a new public address, change
+`bugflow_ingress_url`, deploy, and run the registration above, which
+adds a webhook for the new address. It matches webhooks by their exact
+address, so the one for the old address stays and the forge goes on
+posting to it. Delete it with:
+
+    docker compose -f deployments/{environment}/docker-compose.yml \
+        --profile webhooks run --rm --no-deps webhooks \
+        bugflow prune-webhooks OLD_INGRESS_URL --dry-run
+
+which lists what it would delete, then the same without `--dry-run`. It
+deletes only a webhook whose address is exactly `/webhooks/github`
+under OLD_INGRESS_URL, and refuses when OLD_INGRESS_URL is the
+address the server answers on now.
+
 For a repository on a Forgejo, add the webhook by hand in the
 repository's settings: the address is `/webhooks/forgejo` under the
 ingress's public address, and the secret is the same one.
