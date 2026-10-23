@@ -7,8 +7,15 @@ and ``upgrade`` runs the scripts it has not run yet, in order.
 A script states the change in full. It does not import a table definition
 from an adapter, so a script written today makes the same change when it is
 run next year.
+
+A deployment with tables of its own keeps their scripts in a directory of
+its own, as a branch of this package's: each declares ``depends_on`` the
+package script whose table it needs. ``upgrade`` and ``pending`` take those
+directories, and run or list the package's scripts and the deployment's
+together, recorded in the one version table.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -22,22 +29,39 @@ from bugflow.shared.infrastructure.database import engine_url
 #: Where a database records the last script it ran.
 VERSION_TABLE = "bugflow_schema_version"
 
+#: The setting that names a deployment's own script directories, each a
+#: path or a package resource such as ``their_package.migrations:versions``,
+#: separated by whitespace.
+SCRIPTS_SETTING = "DATABASE_SCRIPTS"
+
 # The advisory lock held while scripts run. Any number will do, so long
 # as everything that runs these scripts uses the same one.
 _LOCK = 4_812_163_577_031
 
 
-def _config() -> Config:
+def locations(setting: str | None) -> list[str]:
+    """The script directories a deployment's ``DATABASE_SCRIPTS`` names."""
+    return (setting or "").split()
+
+
+def _config(scripts: Sequence[str]) -> Config:
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).parent))
+    # A resource name holds a colon, so the locations are separated by a
+    # line break rather than the path separator.
+    config.set_main_option("path_separator", "newline")
+    config.set_main_option(
+        "version_locations",
+        "\n".join([str(Path(__file__).parent / "versions"), *scripts]),
+    )
     return config
 
 
-def pending(database_url: str) -> list[str]:
+def pending(database_url: str, scripts: Sequence[str] = ()) -> list[str]:
     """Return the names of the scripts the database has not run yet, in
     the order ``upgrade`` would run them. Empty when it is up to date.
     """
-    scripts = ScriptDirectory.from_config(_config())
+    directory = ScriptDirectory.from_config(_config(scripts))
     engine = sa.create_engine(engine_url(database_url))
     try:
         with engine.connect() as connection:
@@ -47,19 +71,19 @@ def pending(database_url: str) -> list[str]:
             ran = context.get_current_heads()
     finally:
         engine.dispose()
-    # Alembic walks from the newest script down to the one last run.
-    not_run = scripts.iterate_revisions("head", ran[0] if ran else "base")
+    # Alembic walks from the newest scripts down to the ones last run.
+    not_run = directory.iterate_revisions("heads", ran or "base")
     return [Path(script.path).stem for script in reversed(list(not_run))]
 
 
-def upgrade(database_url: str) -> None:
+def upgrade(database_url: str, scripts: Sequence[str] = ()) -> None:
     """Run every script the database has not run yet.
 
     Programs that start at the same moment may all call this. One runs
     the scripts while the others wait, and then find nothing left to
     run.
     """
-    config = _config()
+    config = _config(scripts)
     engine = sa.create_engine(engine_url(database_url))
     try:
         with engine.connect() as connection:
@@ -70,7 +94,7 @@ def upgrade(database_url: str) -> None:
             try:
                 config.attributes["connection"] = connection
                 with connection.begin():
-                    command.upgrade(config, "head")
+                    command.upgrade(config, "heads")
             finally:
                 connection.execute(
                     sa.select(sa.func.pg_advisory_unlock(_LOCK))

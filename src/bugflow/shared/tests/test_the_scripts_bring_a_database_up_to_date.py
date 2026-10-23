@@ -8,13 +8,19 @@ Skipped unless DATABASE_URL names a Postgres server.
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from alembic.script.revision import ResolutionError
 
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.database import engine_url
-from bugflow.shared.infrastructure.migrations import VERSION_TABLE, upgrade
+from bugflow.shared.infrastructure.migrations import (
+    VERSION_TABLE,
+    pending,
+    upgrade,
+)
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     journal,
     metadata,
@@ -106,3 +112,64 @@ def seed_legacy(
                 values | {"policy_repository": policy_repository}
             )
         )
+
+
+#: A deployment's own script: a branch of the package's that depends on
+#: the script that made the journal, since its table refers to an event.
+DEPLOYMENT_SCRIPT = """
+import sqlalchemy as sa
+from alembic import op
+
+revision = "d0001"
+down_revision = None
+branch_labels = ("deployment",)
+depends_on = "0002"
+
+
+def upgrade() -> None:
+    op.create_table(
+        "deployment_notes",
+        sa.Column("event_id", sa.Text, primary_key=True),
+        sa.Column("note", sa.Text, nullable=False),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table("deployment_notes")
+"""
+
+
+def test_a_deployments_own_scripts_run_as_a_branch_of_the_packages(
+    empty: str, tmp_path: Path
+) -> None:
+    """The deployment's script runs after the package script it depends
+    on, and the one version table records both heads."""
+    (tmp_path / "d0001_deployment_notes.py").write_text(DEPLOYMENT_SCRIPT)
+    scripts = [str(tmp_path)]
+
+    not_run = pending(empty, scripts)
+    assert not_run.index("d0001_deployment_notes") > not_run.index(
+        "s0002_the_journal"
+    )
+
+    upgrade(empty, scripts)
+
+    assert pending(empty, scripts) == []
+    assert set(last_run(empty)) == {LAST, "d0001"}
+    engine = sa.create_engine(engine_url(empty))
+    try:
+        assert sa.inspect(engine).has_table("deployment_notes")
+    finally:
+        engine.dispose()
+
+
+def test_a_database_with_a_branch_is_read_with_the_branchs_scripts(
+    empty: str, tmp_path: Path
+) -> None:
+    """The package's scripts alone do not know the branch's head, and
+    say so rather than run anything."""
+    (tmp_path / "d0001_deployment_notes.py").write_text(DEPLOYMENT_SCRIPT)
+    upgrade(empty, [str(tmp_path)])
+
+    with pytest.raises(ResolutionError, match="d0001"):
+        pending(empty)

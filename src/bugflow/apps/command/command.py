@@ -91,8 +91,10 @@ or if the command refused what it was asked, and then nothing was
 written.
 
 ``migrate`` brings the database named by ``DATABASE_URL`` up to date by
-running the scripts it has not run. With ``--check`` it runs nothing
-and prints the scripts that would be run, one a line.
+running the scripts it has not run: the package's, and those in the
+directories ``DATABASE_SCRIPTS`` names, a deployment's own branch. With
+``--check`` it runs nothing and prints the scripts that would be run,
+one a line.
 
 Exit status: 0 if the database is up to date, or was brought up to
 date. 1 if ``--check`` found scripts to run. 2 if ``DATABASE_URL`` is
@@ -820,12 +822,13 @@ def _migrate(check: bool, environ: Mapping[str, str]) -> int:
             file=sys.stderr,
         )
         return 2
+    scripts = migrations.locations(environ.get(migrations.SCRIPTS_SETTING))
     if check:
-        not_run = migrations.pending(database_url)
+        not_run = migrations.pending(database_url, scripts)
         for name in not_run:
             print(name)
         return 1 if not_run else 0
-    migrations.upgrade(database_url)
+    migrations.upgrade(database_url, scripts)
     return 0
 
 
