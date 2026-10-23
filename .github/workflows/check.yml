@@ -1,0 +1,64 @@
+# What `make check` runs, on every pull request and every push to
+# master, with a Postgres for the tests that need one. Without it those
+# tests skip themselves, among them the one that compares the scripts
+# with the adapters' table definitions.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  static:
+    name: lint, format, imports and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Lint, format, imports and types
+        run: make lint fmt imports types
+
+  test:
+    name: tests, with a Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: bugflow
+          POSTGRES_PASSWORD: bugflow
+          POSTGRES_DB: bugflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bugflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The tests make a database of their own on this server and drop
+      # it afterwards; they do not use the one named.
+      DATABASE_URL: postgresql://bugflow:bugflow@localhost:5432/bugflow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tests
+        run: make test
+
+  check:
+    # Branch protection on master can require a check of this name. A
+    # job skipped because one it needs failed would count there as a
+    # pass, so this one always runs and reads the results itself.
+    name: make check
+    if: always()
+    needs: [static, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          echo "$results"
+          for result in $results; do
+            [ "$result" = success ] || exit 1
+          done
