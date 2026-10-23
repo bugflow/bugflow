@@ -529,6 +529,8 @@ def from_environment(
       ``ARCHIVE_S3_ACCESS_KEY`` and ``ARCHIVE_S3_SECRET_KEY``: the bucket
       files are stored in.
     - ``DATABASE_URL``: the Postgres database for events and the journal.
+    - ``DATABASE_SCRIPTS``: the directories of a deployment's own database
+      scripts, run with the package's when the host starts. Optional.
 
     Optional:
 
@@ -637,7 +639,10 @@ def from_environment(
         )
 
     def migrate() -> None:
-        migrations.upgrade(database_url)
+        migrations.upgrade(
+            database_url,
+            migrations.locations(environ.get(migrations.SCRIPTS_SETTING)),
+        )
 
     return create_archive_host(
         JwtBearerToken(
