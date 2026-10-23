@@ -93,6 +93,7 @@ hold only letters, digits, `-`, `.`, `_` and `~`.
 | `bugflow_postgres_user` | `postgres`, `temporal`, and every program in its database address | The Postgres user |
 | `vault_bugflow_postgres_password` | The same | That user's password. Postgres reads it only when it creates its data volume |
 | `bugflow_database` | `postgres` and every program | The name of the database the programs keep their records in |
+| `bugflow_database_scripts` | `migrate` | The directories of this deployment's own database scripts, a branch of the package's, separated by whitespace: paths in the image, or package resources such as `their_package.migrations:versions`. Not written if empty, and then the package's scripts alone are run |
 | `bugflow_temporal_namespace` | `worker`, `ingress` | The Temporal namespace. Default `default` |
 | `bugflow_temporal_task_queue` | `worker`, `ingress` | The task queue the worker listens on. Default `bugflow` |
 | `bugflow_temporal_ui_url` | `ingress` | The address people reach the workflow console at. Not written if empty |
