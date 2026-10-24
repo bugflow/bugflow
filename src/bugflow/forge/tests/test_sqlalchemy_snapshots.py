@@ -52,7 +52,7 @@ def test_storing_the_same_snapshot_twice_keeps_one_row(
     store.put(original)
     reference = store.put(original)
     query = sa.text(
-        "select count(*) from pull_request_snapshots where snapshot_id = :id"
+        "select count(*) from pull_request_snapshot where snapshot_id = :id"
     )
     with engine.connect() as connection:
         count = connection.execute(query, {"id": reference.snapshot_id})

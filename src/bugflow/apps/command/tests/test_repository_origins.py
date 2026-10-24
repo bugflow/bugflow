@@ -31,7 +31,7 @@ def seed(database_url: str) -> tuple[str, str, str]:
             )
             connection.execute(
                 sa.text("""
-                INSERT INTO pull_request_snapshots (snapshot_id, body)
+                INSERT INTO pull_request_snapshot (snapshot_id, body)
                 VALUES (:id, '{"ref": {"forge": "forgejo", "owner": "a",
                                      "repo": "b", "number": 1}}')
             """),
@@ -39,7 +39,7 @@ def seed(database_url: str) -> tuple[str, str, str]:
             )
             connection.execute(
                 sa.text("""
-                INSERT INTO archive_bindings (ledger_id, forge, repo, scope)
+                INSERT INTO archive_binding (ledger_id, forge, repo, scope)
                 VALUES (:id, 'forgejo', 'a/b', '')
             """),
                 {"id": ledger},
@@ -93,7 +93,7 @@ def test_inventory_and_mapping_preserve_identifiers_and_bytes(
         with engine.connect() as connection:
             assert connection.execute(
                 sa.text(
-                    "SELECT body FROM pull_request_snapshots "
+                    "SELECT body FROM pull_request_snapshot "
                     "WHERE snapshot_id = :id"
                 ),
                 {"id": snapshot},

@@ -29,7 +29,7 @@ from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
 metadata = sa.MetaData()
 
 archive_bindings = sa.Table(
-    "archive_bindings",
+    "archive_binding",
     metadata,
     sa.Column("ledger_id", sa.Text, primary_key=True),
     sa.Column("forge", sa.Text, nullable=False),

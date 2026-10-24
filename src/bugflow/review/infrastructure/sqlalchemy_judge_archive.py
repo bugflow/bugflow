@@ -14,7 +14,7 @@ from bugflow.shared.infrastructure.database import engine_url
 
 metadata = sa.MetaData()
 exchanges = sa.Table(
-    "judge_exchanges",
+    "judge_exchange",
     metadata,
     sa.Column("exchange_id", sa.Text, primary_key=True),
     sa.Column(

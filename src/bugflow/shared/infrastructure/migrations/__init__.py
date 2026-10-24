@@ -15,7 +15,7 @@ directories, and run or list the package's scripts and the deployment's
 together, recorded in the one version table.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -97,6 +97,30 @@ def upgrade(database_url: str, scripts: Sequence[str] = ()) -> None:
     the scripts while the others wait, and then find nothing left to
     run.
     """
+    _run(
+        database_url, scripts, lambda config: command.upgrade(config, "heads")
+    )
+
+
+def downgrade(
+    database_url: str, revision: str, scripts: Sequence[str] = ()
+) -> None:
+    """Reverse the scripts run after ``revision``, newest first, so a
+    deployment can return to an earlier tag. A script that cannot be
+    reversed raises and says why.
+    """
+    _run(
+        database_url,
+        scripts,
+        lambda config: command.downgrade(config, revision),
+    )
+
+
+def _run(
+    database_url: str,
+    scripts: Sequence[str],
+    run: Callable[[Config], None],
+) -> None:
     config = _config(scripts)
     engine = sa.create_engine(engine_url(database_url))
     try:
@@ -108,7 +132,7 @@ def upgrade(database_url: str, scripts: Sequence[str] = ()) -> None:
             try:
                 config.attributes["connection"] = connection
                 with connection.begin():
-                    command.upgrade(config, "heads")
+                    run(config)
             finally:
                 connection.execute(
                     sa.select(sa.func.pg_advisory_unlock(_LOCK))

@@ -21,7 +21,7 @@ from bugflow.shared.infrastructure.database import engine_url
 
 metadata = sa.MetaData()
 spend_bindings = sa.Table(
-    "spend_bindings",
+    "spend_binding",
     metadata,
     # Empty rather than null for "any", so the primary key holds: null
     # is not equal to null, and two unscoped rows would both be allowed

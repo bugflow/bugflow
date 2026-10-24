@@ -36,8 +36,8 @@ def _table(name: str, column: str) -> sa.Table:
     )
 
 
-judged_policies = _table("repository_judged_policies", "policy_id")
-dispatched_processes = _table("repository_dispatched_processes", "process")
+judged_policies = _table("repository_judged_policy", "policy_id")
+dispatched_processes = _table("repository_dispatched_process", "process")
 
 
 class _Declared:

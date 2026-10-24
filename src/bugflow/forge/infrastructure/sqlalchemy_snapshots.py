@@ -32,7 +32,7 @@ from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
 
 metadata = sa.MetaData()
 snapshots = sa.Table(
-    "pull_request_snapshots",
+    "pull_request_snapshot",
     metadata,
     sa.Column("snapshot_id", sa.Text, primary_key=True),
     sa.Column(
