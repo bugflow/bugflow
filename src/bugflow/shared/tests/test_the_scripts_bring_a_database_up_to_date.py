@@ -5,14 +5,16 @@ collide, and that tables already there are kept.
 Skipped unless DATABASE_URL names a Postgres server.
 """
 
+import json
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
 from alembic.script.revision import ResolutionError
+from sqlalchemy.dialects.postgresql import JSONB
 
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.database import engine_url
@@ -22,14 +24,13 @@ from bugflow.shared.infrastructure.migrations import (
     pending,
     upgrade,
 )
-from bugflow.shared.infrastructure.sqlalchemy_journal import (
-    journal,
-    metadata,
-)
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0009"
+LAST = "0010"
+#: The last script before the journal gained its keys, at which a
+#: database built by an earlier program's scripts is seeded below.
+BEFORE_KEYS = "0009"
 
 
 @pytest.fixture
@@ -67,28 +68,29 @@ def test_programs_that_start_together_do_not_collide(empty: str) -> None:
 
 
 def test_a_table_that_is_already_there_keeps_its_rows(empty: str) -> None:
+    """A journal row written before the journal had its keys is kept,
+    and the script that adds the keys fills them for it."""
     engine = sa.create_engine(engine_url(empty))
     try:
-        metadata.create_all(engine)
-        made = entry("already-here")
-        seed_legacy(engine, made)
+        made = replace(entry("already-here"), pr_number=7)
+        seed_before_keys(empty, engine, made)
 
         upgrade(empty)
 
-        assert len(rows(engine, made.event_id)) == 1
+        (row,) = rows(engine, made.event_id)
+        assert row["pull_request_id"] is not None
+        assert row["workflow_run_id"] is not None
         assert last_run(empty) == [LAST]
     finally:
         engine.dispose()
 
 
 def test_columns_that_are_already_there_are_left_alone(empty: str) -> None:
-    """A database whose journal was made with every column the adapter
-    defines runs the script that adds some of them and loses nothing."""
+    """A row's columns survive the script that adds others beside them."""
     engine = sa.create_engine(engine_url(empty))
     try:
-        metadata.create_all(engine)
         made = entry("named")
-        seed_legacy(engine, made, "example-org/policies")
+        seed_before_keys(empty, engine, made, "example-org/policies")
 
         upgrade(empty)
 
@@ -99,19 +101,79 @@ def test_columns_that_are_already_there_are_left_alone(empty: str) -> None:
         engine.dispose()
 
 
-def seed_legacy(
-    engine: sa.Engine, made: JournalEntry, policy_repository: str | None = None
+def test_the_keys_name_the_entities_the_text_does(empty: str) -> None:
+    """The script makes one row per distinct forge, repository, pull
+    request, workflow and run the journal names, and the journal's keys
+    point at them."""
+    engine = sa.create_engine(engine_url(empty))
+    try:
+        first = replace(entry("first"), pr_number=7)
+        second = replace(entry("second"), pr_number=7)
+        seed_before_keys(empty, engine, first)
+        seed_before_keys(empty, engine, second, run=False)
+
+        upgrade(empty)
+
+        with engine.connect() as connection:
+            named = connection.execute(
+                sa.text(
+                    "select f.name, r.name, p.number, w.name, wr.name "
+                    "from journal j "
+                    "join pull_request p on p.id = j.pull_request_id "
+                    "join repository r on r.id = p.repository_id "
+                    "join forge f on f.id = r.forge_id "
+                    "join workflow_run wr on wr.id = j.workflow_run_id "
+                    "join workflow w on w.id = wr.workflow_id "
+                    "where j.event_id = :event_id"
+                ),
+                {"event_id": first.event_id},
+            ).one()
+            counts = connection.execute(
+                sa.text(
+                    "select (select count(*) from forge), "
+                    "(select count(*) from repository), "
+                    "(select count(*) from pull_request), "
+                    "(select count(*) from workflow), "
+                    "(select count(*) from workflow_run)"
+                )
+            ).one()
+        assert tuple(named) == (
+            first.forge,
+            first.repo,
+            first.pr_number,
+            first.workflow_id,
+            first.run_id,
+        )
+        assert tuple(counts) == (1, 1, 1, 1, 1)
+    finally:
+        engine.dispose()
+
+
+def seed_before_keys(
+    database_url: str,
+    engine: sa.Engine,
+    made: JournalEntry,
+    policy_repository: str | None = None,
+    run: bool = True,
 ) -> None:
-    # The current writer requires migration 0008. Seed the old table
-    # directly to verify that upgrading preserves pre-migration rows.
+    """Write a row as a program before the journal had its keys did:
+    into a database at the script before them, by the text columns."""
+    if run:
+        upgrade(database_url)
+        downgrade(database_url, BEFORE_KEYS)
     values = asdict(made)
     values.pop("origin")
     values.pop("origin_asserted")
+    values["policy_repository"] = policy_repository
+    columns = ", ".join(values)
+    placeholders = ", ".join(f":{name}" for name in values)
+    values["payload"] = json.dumps(values["payload"])
     with engine.begin() as connection:
         connection.execute(
-            journal.insert().values(
-                values | {"policy_repository": policy_repository}
-            )
+            sa.text(
+                f"insert into journal ({columns}) values ({placeholders})"
+            ).bindparams(sa.bindparam("payload", type_=JSONB)),
+            values,
         )
 
 

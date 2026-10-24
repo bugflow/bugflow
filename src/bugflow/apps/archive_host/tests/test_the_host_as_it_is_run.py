@@ -100,6 +100,12 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "policy_deployment",
             "policy_deployment_file",
             "policy_deployment_in_force",
+            "forge",
+            "repository",
+            "repository_name",
+            "pull_request",
+            "workflow",
+            "workflow_run",
         }
     finally:
         engine.dispose()
