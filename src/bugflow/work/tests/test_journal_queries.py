@@ -170,10 +170,10 @@ def test_an_entry_that_started_no_run_is_not_a_match(make: Make) -> None:
 def test_a_dispatch_under_another_fact_matches_only_if_it_is_named(
     make: Make,
 ) -> None:
-    recording, named = make((AGENT_DISPATCHED, "survey.dispatched"))
+    recording, named = make((AGENT_DISPATCHED, "stocktake.dispatched"))
     _, not_named = make((AGENT_DISPATCHED,))
     runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
-    written = entry("survey.dispatched", dispatch(runner, "s-1"), repo=repo)
+    written = entry("stocktake.dispatched", dispatch(runner, "s-1"), repo=repo)
     recording.append([written])
 
     found = named.dispatched_run(runner, "s-1")
@@ -189,7 +189,7 @@ def test_a_dispatch_under_another_fact_matches_only_if_it_is_named(
 def test_every_dispatch_that_started_a_run_comes_back_oldest_first(
     make: Make,
 ) -> None:
-    recording, queries = make((AGENT_DISPATCHED, "survey.dispatched"))
+    recording, queries = make((AGENT_DISPATCHED, "stocktake.dispatched"))
     runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
     recording.append(
         [
@@ -201,7 +201,7 @@ def test_every_dispatch_that_started_a_run_comes_back_oldest_first(
                 dispatch(runner, "s-3", step="reused"),
                 repo=repo,
             ),
-            entry("survey.dispatched", dispatch(runner, "s-4"), repo=repo),
+            entry("stocktake.dispatched", dispatch(runner, "s-4"), repo=repo),
         ]
     )
 

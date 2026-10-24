@@ -22,10 +22,11 @@ def seed(database_url: str) -> tuple[str, str, str]:
         with engine.begin() as connection:
             connection.execute(
                 sa.text("""
-                INSERT INTO journal
+                INSERT INTO forge_journal
                     (event_id, occurred_at, event_type, forge, repo,
                      workflow_id, run_id, payload)
-                VALUES (:id, now(), 'test', 'forgejo', 'a/b', '', '', '{}')
+                VALUES (:id, now(), 'pr.observed', 'forgejo', 'a/b', '', '',
+                        '{}')
             """),
                 {"id": event},
             )
