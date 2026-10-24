@@ -65,7 +65,10 @@ view goes when the last reader has moved.
 
 One script creates the five tables, copies each kind's rows into its
 own, drops the `journal` table and creates the view in its name, in
-one transaction with the programs stopped. One script and not five,
+one transaction with the programs stopped. A view a deployment built
+over the table, as PMI's `real_journal` is, cannot outlive it, so the
+drop cascades to it and the deployment's branch creates it again over
+the view, by a script that depends on this one. One script and not five,
 because the view has to replace the table at the moment the last kind
 leaves it, and a half-divided journal under a view is harder to hold
 in the head than a whole one. The downgrade creates the table again,
