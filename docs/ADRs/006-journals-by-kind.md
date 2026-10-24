@@ -45,11 +45,18 @@ October 2026 the five held 1,394, 10,527, 48,426, 53 and 80 of PMI's
 
 ### Which journal a fact goes to
 
-One map in the shared kernel gives each event type its kind. The
-journal adapter writes a fact to its kind's table by that map, and
-refuses a type the map does not have. A test holds every event type a
-context names to the map, so a new fact is placed when it is written.
-The in-memory journal is unchanged.
+One map in the shared kernel gives each of the package's event types
+its kind. The journal adapter writes a fact to its kind's table by that
+map. A test holds every event type a context names to the map, so a
+new fact is placed when it is written. The in-memory journal is
+unchanged.
+
+A deployment with facts of its own places them when it composes the
+adapter, by a mapping from each of its event types to the table it is
+written to: one of the package's five, or a table of the journal's
+shape the deployment's own scripts made. A type that neither the
+package's map nor the deployment's placements name is refused, so a
+fact nobody placed is never written where nothing reads it.
 
 ### Reading
 
@@ -79,8 +86,9 @@ a fact nobody classified is never lost.
 
 ## Rules
 
-1. Every event type belongs to one journal, by the map in the shared
-   kernel, and a fact is written to that journal and no other.
+1. Every event type belongs to one journal, the package's by the map
+   in the shared kernel and a deployment's by its placements, and a
+   fact is written to that journal and no other.
 2. A journal keeps the journal's shape and its triggers until the
    record that normalises it says otherwise.
 3. A reader that reads `journal` reads the view until it moves to the

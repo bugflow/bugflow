@@ -13,7 +13,11 @@ import pytest
 import sqlalchemy as sa
 
 from bugflow.shared.domain.models.journal_entry import JournalEntry, fact_id
-from bugflow.shared.domain.models.journal_kind import KIND_OF, KINDS
+from bugflow.shared.domain.models.journal_kind import (
+    KIND_OF,
+    KINDS,
+    UnplacedFactError,
+)
 from bugflow.shared.infrastructure.migrations import upgrade
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     SqlAlchemyJournal,
@@ -203,3 +207,27 @@ def test_added_columns_do_not_break_existing_writers(
         assert nullable == "YES" or default is not None, (
             f"{name} is required with no default"
         )
+
+
+def test_a_deployments_own_fact_goes_where_the_deployment_places_it(
+    engine: sa.Engine, database_url: str
+) -> None:
+    """A type the package's map lacks is written to the table the
+    deployment names for it, and refused where it names none."""
+    placed = entry("placed", event_type="deployment.noted")
+    writer = SqlAlchemyJournal(
+        database_url, placements={"deployment.noted": "review_journal"}
+    )
+    writer.append([placed])
+    with engine.connect() as connection:
+        held = connection.execute(
+            sa.text(
+                "select event_type from review_journal where event_id = :id"
+            ),
+            {"id": placed.event_id},
+        ).scalar_one()
+    assert held == "deployment.noted"
+
+    unplaced = entry("unplaced", event_type="deployment.unnoted")
+    with pytest.raises(UnplacedFactError):
+        SqlAlchemyJournal(database_url).append([unplaced])
