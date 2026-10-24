@@ -33,7 +33,17 @@ def entry(run: Correlation) -> JournalEntry:
         corpus_version="v1",
         workflow_id=run.workflow_id,
         run_id=run.run_id,
-        payload={"key": "a"},
+        # A finding's shape, since a fact is unpacked as it is written.
+        payload={
+            "policy_id": "a-policy",
+            "severity": "warn",
+            "clause": "A-1",
+            "subject": "a.md",
+            "message": "a",
+            "judged_by": None,
+            "judge": None,
+            "corpus_version": "v1",
+        },
     )
 
 
