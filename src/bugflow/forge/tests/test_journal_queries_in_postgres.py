@@ -79,7 +79,9 @@ def test_the_repositories_with_a_fact_are_listed_once_each(
     engine: sa.Engine, database_url: str
 ) -> None:
     ref = unique_ref()
-    fact = f"test.{uuid4().hex[:8]}"
+    # A real fact no other test here writes, so the listing is this
+    # test's alone on the shared database.
+    fact = "reaction.recorded"
     SqlAlchemyJournal(database_url).append(
         [
             entry(fact, ref),

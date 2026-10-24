@@ -71,7 +71,9 @@ def recorder(origin: str | None = None) -> Recorder:
     )
 
 
-def next_event(entry: JournalEntry, key: str = "next") -> JournalEntry:
+def next_event(
+    entry: JournalEntry, key: str = "judge.invoked"
+) -> JournalEntry:
     return replace(entry, event_id=uuid4(), event_type=key, origin=None)
 
 
@@ -90,7 +92,7 @@ def test_observation_origin_applies_to_later_records_and_retries(
             "llm.called",
             "judge.invoked",
             "finding.raised",
-            "pr.acted",
+            "action.taken",
         )
     ]
     writer.append(subsequent)

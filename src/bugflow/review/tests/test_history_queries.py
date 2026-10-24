@@ -24,7 +24,7 @@ from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     SqlAlchemyJournal,
-    journal,
+    table_for,
 )
 
 AT = datetime(2030, 1, 1, tzinfo=UTC)
@@ -88,11 +88,12 @@ def reader_factory(request: pytest.FixtureRequest) -> ReaderFactory:
 
         if events:
             with engine.begin() as connection:
-                connection.execute(
-                    insert(journal)
-                    .values([columns(e) for e in events])
-                    .on_conflict_do_nothing(index_elements=["event_id"])
-                )
+                for event in events:
+                    connection.execute(
+                        insert(table_for(event.entry.event_type))
+                        .values(columns(event))
+                        .on_conflict_do_nothing(index_elements=["event_id"])
+                    )
         return SqlAlchemyJournalQueries(database_url)
 
     return make
@@ -224,7 +225,9 @@ def test_preflight_and_fetch_share_a_snapshot_despite_a_late_commit(
         values = asdict(late.entry)
         values.pop("origin")
         values.pop("origin_asserted")
-        writer.execute(sa.insert(journal).values(values))
+        writer.execute(
+            sa.insert(table_for(late.entry.event_type)).values(values)
+        )
 
         def after_query(
             connection: Any,

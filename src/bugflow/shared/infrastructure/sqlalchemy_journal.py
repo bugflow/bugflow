@@ -1,12 +1,14 @@
-"""The journal stored in a Postgres table.
+"""The journal stored in Postgres: one table for each kind of fact, and
+a view named ``journal`` over them all (ADR 006).
 
-Other software reads this table, so its columns are a contract. A new
+Other software reads the view, so its columns are a contract. A new
 column may be added if existing writers can ignore it. No column is
 removed, changed in type, or made stricter.
 
-The database itself stops a row being changed: two triggers reject any
-UPDATE, DELETE or TRUNCATE on the table. The table and its triggers are
-made by the scripts in ``migrations``.
+A fact is written to the table of its kind, by the map in the shared
+kernel. The database itself stops a row being changed: two triggers on
+each table reject any UPDATE, DELETE or TRUNCATE. The tables, the view
+and the triggers are made by the scripts in ``migrations``.
 """
 
 import json
@@ -17,8 +19,10 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.schema import SchemaItem
 
 from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.shared.domain.models.journal_kind import KINDS, journal_of
 from bugflow.shared.domain.models.journal_provenance import (
     JournalScope,
     check_retry,
@@ -40,58 +44,88 @@ from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
     repository_associations,
 )
 
-# The journal shares its metadata with the entity tables it refers to by
-# key (ADR 005).
-journal = sa.Table(
-    "journal",
-    metadata,
-    sa.Column("event_id", PG_UUID(as_uuid=True), primary_key=True),
-    sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
-    sa.Column(
-        "recorded_at",
-        sa.DateTime(timezone=True),
-        nullable=False,
-        server_default=sa.func.now(),
-    ),
-    sa.Column("event_type", sa.Text, nullable=False),
-    sa.Column("forge", sa.Text, nullable=False),
-    sa.Column("repo", sa.Text, nullable=False),
-    sa.Column("pr_number", sa.Integer),
-    sa.Column("commit_sha", sa.Text),
-    sa.Column("corpus_version", sa.Text),
-    sa.Column("workflow_id", sa.Text, nullable=False),
-    sa.Column("run_id", sa.Text, nullable=False),
-    sa.Column("payload", JSONB, nullable=False),
-    sa.Column("agent_id", sa.Text),
-    sa.Column("build", sa.Text),
-    sa.Column("policy_repository", sa.Text),
-    sa.Column("policy_commit", sa.Text),
-    sa.Column("policy_content", sa.Text),
-    # The entities the text columns name, by key (ADR 005). A row about
-    # no pull request has no pull_request_id, and a row an older writer
-    # wrote has neither, since a new column must not break one.
-    sa.Column(
-        "pull_request_id", sa.BigInteger, sa.ForeignKey("pull_request.id")
-    ),
-    sa.Column(
-        "workflow_run_id", sa.BigInteger, sa.ForeignKey("workflow_run.id")
-    ),
-    sa.Index("journal_repo_pr_occurred", "repo", "pr_number", "occurred_at"),
-    sa.Index(
-        "journal_pull_request_occurred", "pull_request_id", "occurred_at"
-    ),
-    sa.Index("journal_workflow_run", "workflow_run_id"),
-    sa.Index("journal_type_occurred", "event_type", "occurred_at"),
-    sa.Index("journal_run", "workflow_id", "run_id"),
-    sa.Index("journal_agent_id_idx", "agent_id", "corpus_version"),
-    sa.Index("journal_build_idx", "build", "occurred_at"),
-    sa.Index(
-        "journal_policy_deployment_idx",
-        "policy_repository",
-        "policy_commit",
-        "occurred_at",
-    ),
-)
+
+def _journal_table(name: str, into: sa.MetaData, indexed: bool) -> sa.Table:
+    """A table of the journal's shape. The five kinds' tables are
+    indexed; the view over them is described without indexes, for
+    reading."""
+    columns: list[SchemaItem] = [
+        sa.Column("event_id", PG_UUID(as_uuid=True), primary_key=True),
+        sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "recorded_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column("event_type", sa.Text, nullable=False),
+        sa.Column("forge", sa.Text, nullable=False),
+        sa.Column("repo", sa.Text, nullable=False),
+        sa.Column("pr_number", sa.Integer),
+        sa.Column("commit_sha", sa.Text),
+        sa.Column("corpus_version", sa.Text),
+        sa.Column("workflow_id", sa.Text, nullable=False),
+        sa.Column("run_id", sa.Text, nullable=False),
+        sa.Column("payload", JSONB, nullable=False),
+        sa.Column("agent_id", sa.Text),
+        sa.Column("build", sa.Text),
+        sa.Column("policy_repository", sa.Text),
+        sa.Column("policy_commit", sa.Text),
+        sa.Column("policy_content", sa.Text),
+        # The entities the text columns name, by key (ADR 005). A row
+        # about no pull request has no pull_request_id, and a row an
+        # older writer wrote has neither, since a new column must not
+        # break one.
+        sa.Column(
+            "pull_request_id", sa.BigInteger, sa.ForeignKey("pull_request.id")
+        ),
+        sa.Column(
+            "workflow_run_id", sa.BigInteger, sa.ForeignKey("workflow_run.id")
+        ),
+    ]
+    if indexed:
+        columns += [
+            sa.Index(
+                f"{name}_repo_pr_occurred", "repo", "pr_number", "occurred_at"
+            ),
+            sa.Index(
+                f"{name}_pull_request_occurred",
+                "pull_request_id",
+                "occurred_at",
+            ),
+            sa.Index(f"{name}_workflow_run", "workflow_run_id"),
+            sa.Index(f"{name}_type_occurred", "event_type", "occurred_at"),
+            sa.Index(f"{name}_run", "workflow_id", "run_id"),
+            sa.Index(f"{name}_agent_id_idx", "agent_id", "corpus_version"),
+            sa.Index(f"{name}_build_idx", "build", "occurred_at"),
+            sa.Index(
+                f"{name}_policy_deployment_idx",
+                "policy_repository",
+                "policy_commit",
+                "occurred_at",
+            ),
+        ]
+    return sa.Table(name, into, *columns)
+
+
+# The journals share their metadata with the entity tables they refer to
+# by key (ADR 005).
+JOURNALS: dict[str, sa.Table] = {
+    kind: _journal_table(f"{kind}_journal", metadata, indexed=True)
+    for kind in KINDS
+}
+
+#: What readers read: the view over the five journals, with the columns
+#: the one table had. Described apart from the tables, since it is not
+#: one and the scripts are not compared with it.
+views = sa.MetaData()
+journal = _journal_table("journal", views, indexed=False)
+
+
+def table_for(event_type: str) -> sa.Table:
+    """The journal a fact of this type is written to."""
+    return metadata.tables[journal_of(event_type)]
+
 
 #: The columns that are not fields of a ``JournalEntry``: the time the
 #: database stored the row, the policy deployment the writing process
@@ -210,11 +244,12 @@ class SqlAlchemyJournal:
                 )
                 row["pull_request_id"] = pull_request_id
                 row["workflow_run_id"] = workflow_run_id
+                into = table_for(entry.event_type)
                 inserted = connection.execute(
-                    insert(journal)
+                    insert(into)
                     .values(row)
                     .on_conflict_do_nothing(index_elements=["event_id"])
-                    .returning(journal.c.event_id)
+                    .returning(into.c.event_id)
                 ).scalar_one_or_none()
                 if inserted is None:
                     if entry.origin is not None or entry.origin_asserted:
