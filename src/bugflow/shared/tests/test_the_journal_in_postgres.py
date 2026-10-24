@@ -48,7 +48,7 @@ def entry(key: str, **changed: object) -> JournalEntry:
     made = JournalEntry(
         event_id=fact_id("a-test", key),
         occurred_at=datetime(2026, 10, 1, tzinfo=UTC),
-        event_type="archive.sealed",
+        event_type="pr.observed",
         forge="a-forge",
         repo="some/one",
         pr_number=None,
@@ -94,7 +94,7 @@ def test_an_entry_is_kept_as_it_was_made(
 
     (row,) = rows(engine, made.event_id)
     assert row["occurred_at"] == made.occurred_at
-    assert row["event_type"] == "archive.sealed"
+    assert row["event_type"] == "pr.observed"
     assert (row["pr_number"], row["commit_sha"]) == (7, "abc")
     assert row["agent_id"] == "an-agent"
     assert row["payload"] == made.payload
