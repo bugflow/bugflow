@@ -27,10 +27,10 @@ FROM (
     UNION ALL
     SELECT 'snapshot', snapshot_id, body->'ref'->>'forge',
            (body->'ref'->>'owner') || '/' || (body->'ref'->>'repo')
-    FROM pull_request_snapshots
+    FROM pull_request_snapshot
     UNION ALL
-    SELECT 'ledger', ledger_id, forge, repo FROM archive_bindings
-) r LEFT JOIN repository_associations a
+    SELECT 'ledger', ledger_id, forge, repo FROM archive_binding
+) r LEFT JOIN repository_association a
   ON a.kind = r.kind AND a.record_id = r.record_id
 ORDER BY r.kind, r.record_id
 """)

@@ -18,6 +18,7 @@ from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.migrations import (
     VERSION_TABLE,
+    downgrade,
     pending,
     upgrade,
 )
@@ -28,7 +29,7 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0008"
+LAST = "0009"
 
 
 @pytest.fixture
@@ -184,3 +185,29 @@ def test_a_database_with_a_branch_is_read_with_the_branchs_scripts(
 
     with pytest.raises(ResolutionError, match="d0001"):
         pending(empty)
+
+
+def tables(database_url: str) -> set[str]:
+    engine = sa.create_engine(engine_url(database_url))
+    try:
+        return set(sa.inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+
+def test_the_renames_can_be_backed_out_and_run_again(empty: str) -> None:
+    """A deployment returns to the previous tag by reversing the script
+    that renamed the tables, and moves forward again by running it."""
+    upgrade(empty)
+    assert {"spend_binding", "repository_association"} <= tables(empty)
+
+    downgrade(empty, "0008")
+
+    assert last_run(empty) == ["0008"]
+    assert {"spend_bindings", "repository_associations"} <= tables(empty)
+    assert "spend_binding" not in tables(empty)
+
+    upgrade(empty)
+
+    assert last_run(empty) == [LAST]
+    assert "spend_bindings" not in tables(empty)

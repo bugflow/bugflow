@@ -41,7 +41,7 @@ from bugflow.shared.infrastructure.database import engine_url
 metadata = sa.MetaData()
 
 archive_index_files = sa.Table(
-    "archive_index_files",
+    "archive_index_file",
     metadata,
     sa.Column("cid", sa.Text, primary_key=True),
     sa.Column("lines", sa.Integer, nullable=False),
@@ -55,7 +55,7 @@ archive_index_files = sa.Table(
 )
 
 archive_index_lines = sa.Table(
-    "archive_index_lines",
+    "archive_index_line",
     metadata,
     sa.Column("cid", sa.Text, primary_key=True),
     sa.Column("number", sa.Integer, primary_key=True),
@@ -63,7 +63,7 @@ archive_index_lines = sa.Table(
 )
 
 archive_index_positions = sa.Table(
-    "archive_index_positions",
+    "archive_index_position",
     metadata,
     sa.Column("ledger_id", sa.Text, primary_key=True),
     sa.Column("events", sa.Integer, nullable=False),
