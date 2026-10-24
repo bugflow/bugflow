@@ -31,6 +31,9 @@ from bugflow.method.infrastructure.deployment_watch import DeployedFrom
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries as ReviewJournalQueries,
 )
+from bugflow.review.infrastructure.sqlalchemy_review_facts import (
+    UNPACKERS as REVIEW_UNPACKERS,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -38,10 +41,18 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
     SqlAlchemyJournal,
     Unpacker,
 )
+from bugflow.work.infrastructure.sqlalchemy_work_facts import (
+    UNPACKERS as WORK_UNPACKERS,
+)
 
 #: What writes each unpacked type's row beside its envelope (ADR 007):
 #: every context's unpackers, gathered here for every program.
-UNPACKERS: dict[str, Unpacker] = {**ARCHIVE_UNPACKERS, **FORGE_UNPACKERS}
+UNPACKERS: dict[str, Unpacker] = {
+    **ARCHIVE_UNPACKERS,
+    **FORGE_UNPACKERS,
+    **REVIEW_UNPACKERS,
+    **WORK_UNPACKERS,
+}
 
 #: What a deployment sets to the git sha of the tree its image was built
 #: from. Unset locally and in tests, where there is no build to name.
