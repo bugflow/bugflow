@@ -163,6 +163,17 @@ def test_a_deployments_own_scripts_run_as_a_branch_of_the_packages(
         engine.dispose()
 
 
+def test_a_branch_not_yet_recorded_is_pending_on_an_up_to_date_database(
+    empty: str, tmp_path: Path
+) -> None:
+    """A deployment adds its branch to a database that has run every
+    package script, and the branch alone is what remains to run."""
+    (tmp_path / "d0001_deployment_notes.py").write_text(DEPLOYMENT_SCRIPT)
+    upgrade(empty)
+
+    assert pending(empty, [str(tmp_path)]) == ["d0001_deployment_notes"]
+
+
 def test_a_database_with_a_branch_is_read_with_the_branchs_scripts(
     empty: str, tmp_path: Path
 ) -> None:
