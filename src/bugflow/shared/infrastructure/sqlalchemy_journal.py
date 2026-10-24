@@ -12,7 +12,7 @@ and the triggers are made by the scripts in ``migrations``.
 """
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from uuid import UUID
 
@@ -127,6 +127,11 @@ journal = _journal_table("journal", views, indexed=False)
 _deployments = sa.MetaData()
 
 
+#: What writes a type's typed row from its envelope, in the envelope's
+#: transaction: a function of the connection and the entry (ADR 007).
+Unpacker = Callable[[sa.Connection, JournalEntry], None]
+
+
 def table_for(
     event_type: str, placements: Mapping[str, str] | None = None
 ) -> sa.Table:
@@ -173,6 +178,7 @@ class SqlAlchemyJournal:
         policy_commit: str | None = None,
         policy_content: str | None = None,
         placements: Mapping[str, str] | None = None,
+        unpackers: Mapping[str, Unpacker] | None = None,
     ) -> None:
         """``build`` is stored in the ``build`` column of every row this
         adapter writes.
@@ -182,6 +188,10 @@ class SqlAlchemyJournal:
         table of the journal's shape the deployment's own scripts made.
         A type neither the package's map nor the placements name is
         refused.
+
+        ``unpackers`` writes each type's typed row from the envelope's
+        payload, in the envelope's transaction (ADR 007). A type with no
+        unpacker has no typed table yet.
 
         ``policy_repository``, ``policy_commit`` and ``policy_content``
         name the policy deployment the writing process started with:
@@ -196,6 +206,7 @@ class SqlAlchemyJournal:
             engine_url(database_url), pool_pre_ping=True
         )
         self._placements = dict(placements or {})
+        self._unpackers = dict(unpackers or {})
         self._stamps = {
             "build": build,
             "policy_repository": policy_repository,
@@ -301,6 +312,9 @@ class SqlAlchemyJournal:
                             held.origin,
                         )
                     continue
+                unpack = self._unpackers.get(entry.event_type)
+                if unpack is not None:
+                    unpack(connection, entry)
                 origin = origins[scope_of(entry)]
                 if origin is not None:
                     associate_on_connection(
