@@ -4,7 +4,7 @@ Skipped unless DATABASE_URL names a Postgres server.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 import sqlalchemy as sa
@@ -34,8 +34,38 @@ def entry(
         corpus_version=None,
         workflow_id="delivery/github",
         run_id=uuid4().hex,
-        payload={},
+        payload=well_formed(event_type),
     )
+
+
+def well_formed(event_type: str) -> dict[str, Any]:
+    """The smallest payload of the type's shape, since a fact is
+    unpacked into its typed table as it is written (ADR 007)."""
+    if event_type == facts.DELIVERY_RECEIVED:
+        return {
+            "delivery_id": uuid4().hex,
+            "event": "pull_request",
+            "action": "opened",
+            "outcome": "accepted",
+            "reason": "known repository",
+        }
+    if event_type == facts.PR_OBSERVED:
+        return {
+            "delivery_id": None,
+            "delivery_ids": [],
+            "snapshot_id": uuid4().hex,
+            "corpus": {},
+            "title": "",
+            "head_branch": "",
+            "base_branch": "",
+            "author_login": "",
+            "commits": [],
+            "file_count": 0,
+            "changed_lines": 0,
+        }
+    if event_type == facts.PR_MERGED:
+        return {"delivery_id": uuid4().hex}
+    return {}
 
 
 def unique_ref(

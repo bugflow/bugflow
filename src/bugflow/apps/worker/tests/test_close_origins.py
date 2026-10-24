@@ -139,7 +139,15 @@ def test_close_refuses_conflicting_or_unresolved_run_before_reading_reactions(
 ) -> None:
     seed(journal, ORIGIN, "same")
     held = Recorder(REF, CLOSING, None, AT, origin=held_origin).entry(
-        "delivery.received", "delivery", {}
+        "delivery.received",
+        "delivery",
+        {
+            "delivery_id": "delivery",
+            "event": "pull_request",
+            "action": "closed",
+            "outcome": "accepted",
+            "reason": "known repository",
+        },
     )
     journal.append([held])
     before = journal.entries_for_run(CLOSING)
