@@ -45,10 +45,13 @@ CONTRACT = {
 
 
 def entry(key: str, **changed: object) -> JournalEntry:
+    """A merge, the fact with the smallest payload, well formed so that
+    the scripts' tests can seed it before the typed tables exist and
+    the script that makes them unpacks it."""
     made = JournalEntry(
         event_id=fact_id("a-test", key),
         occurred_at=datetime(2026, 10, 1, tzinfo=UTC),
-        event_type="pr.observed",
+        event_type="pr.merged",
         forge="a-forge",
         repo="some/one",
         pr_number=None,
@@ -56,7 +59,7 @@ def entry(key: str, **changed: object) -> JournalEntry:
         corpus_version=None,
         workflow_id="a-workflow",
         run_id="a-run",
-        payload={"key": key, "nested": {"n": 1}},
+        payload={"delivery_id": key},
     )
     return replace(made, **changed)  # type: ignore[arg-type]
 
@@ -94,7 +97,7 @@ def test_an_entry_is_kept_as_it_was_made(
 
     (row,) = rows(engine, made.event_id)
     assert row["occurred_at"] == made.occurred_at
-    assert row["event_type"] == "pr.observed"
+    assert row["event_type"] == "pr.merged"
     assert (row["pr_number"], row["commit_sha"]) == (7, "abc")
     assert row["agent_id"] == "an-agent"
     assert row["payload"] == made.payload
