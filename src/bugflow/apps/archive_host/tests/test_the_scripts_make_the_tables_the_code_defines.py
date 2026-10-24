@@ -31,6 +31,7 @@ from bugflow.review.infrastructure import (
     sqlalchemy_judge_archive,
     sqlalchemy_layer_boundaries,
     sqlalchemy_review_declaration,
+    sqlalchemy_review_facts,
     sqlalchemy_spend_bindings,
     sqlalchemy_withholding,
     sqlalchemy_write_up_archive,
@@ -41,6 +42,7 @@ from bugflow.shared.infrastructure import (
 )
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.migrations import VERSION_TABLE, upgrade
+from bugflow.work.infrastructure import sqlalchemy_work_facts
 
 
 def defined() -> sa.MetaData:
@@ -56,6 +58,8 @@ def defined() -> sa.MetaData:
         sqlalchemy_repository_associations.metadata,
         sqlalchemy_snapshots.metadata,
         sqlalchemy_forge_facts.metadata,
+        sqlalchemy_review_facts.metadata,
+        sqlalchemy_work_facts.metadata,
         sqlalchemy_judge_archive.metadata,
         sqlalchemy_write_up_archive.metadata,
         sqlalchemy_governance.metadata,

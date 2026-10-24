@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0013"
+LAST = "0014"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -470,6 +470,121 @@ def test_a_commit_with_an_unknown_key_stops_the_script(empty: str) -> None:
     )
 
     with pytest.raises(Exception, match="commits element of a shape"):
+        upgrade(empty)
+
+
+def test_the_reviews_facts_already_there_are_unpacked(empty: str) -> None:
+    """A review comment and a label written before the typed tables
+    existed are unpacked by the script that makes them, the labels
+    removed as rows, and a judged finding carries its judge."""
+    upgrade(empty)
+    downgrade(empty, "0013")
+    commented = replace(
+        entry("commented-before"),
+        event_type="action.taken",
+        payload={
+            "action": "review_comment",
+            "agent_id": "narrative",
+            "performed": True,
+            "status": "published",
+            "comment_id": 41,
+            "verdict": "warn",
+            "head_sha": "abc",
+            "finding_count": 2,
+            "raised_count": 1,
+            "fixed_count": 0,
+            "dismissed_count": 1,
+        },
+    )
+    labelled = replace(
+        entry("labelled-before"),
+        event_type="action.taken",
+        payload={
+            "action": "outcome_label",
+            "performed": True,
+            "status": "published",
+            "label": "review: warn",
+            "removed": ["review: fail", "review: pass"],
+        },
+    )
+    raised = replace(
+        entry("raised-before"),
+        event_type="finding.raised",
+        payload={
+            "policy_id": "narrative",
+            "severity": "warn",
+            "clause": "N-3",
+            "subject": "x.md",
+            "message": "Says too much",
+            "judged_by": "judge-1",
+            "judge": {
+                "model": "m",
+                "fingerprint": "f",
+                "prompt_hash": "p",
+                "input_hash": "i",
+                "exchange_id": "e",
+            },
+            "corpus_version": "v3",
+            "agent_id": "narrative",
+        },
+    )
+    engine = _engine(empty)
+    for made in (commented, labelled, raised):
+        seed_before_keys(
+            empty, engine, made, run=False, table="review_journal"
+        )
+
+    upgrade(empty)
+
+    try:
+        with engine.connect() as connection:
+            comment = connection.execute(
+                sa.text(
+                    "select verdict, dismissed_count, label "
+                    "from review_action where event_id = :id"
+                ),
+                {"id": commented.event_id},
+            ).one()
+            removed = (
+                connection.execute(
+                    sa.text(
+                        "select label from review_action_removed_label "
+                        "where event_id = :id order by label"
+                    ),
+                    {"id": labelled.event_id},
+                )
+                .scalars()
+                .all()
+            )
+            judge = connection.execute(
+                sa.text(
+                    "select judge_model, judge_exchange_id "
+                    "from raised_finding where event_id = :id"
+                ),
+                {"id": raised.event_id},
+            ).one()
+    finally:
+        engine.dispose()
+    assert tuple(comment) == ("warn", 1, None)
+    assert removed == ["review: fail", "review: pass"]
+    assert tuple(judge) == ("m", "e")
+
+
+def test_an_action_the_inventory_did_not_find_stops_the_script(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0013")
+    odd = replace(
+        entry("odd-action"),
+        event_type="action.taken",
+        payload={"action": "assignment", "performed": True, "status": "x"},
+    )
+    seed_before_keys(
+        empty, _engine(empty), odd, run=False, table="review_journal"
+    )
+
+    with pytest.raises(Exception, match="action the inventory did not find"):
         upgrade(empty)
 
 

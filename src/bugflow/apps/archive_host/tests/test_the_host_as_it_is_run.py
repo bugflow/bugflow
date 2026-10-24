@@ -130,6 +130,22 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "reaction",
             "reaction_agent",
             "finding_dismissal",
+            "review_action",
+            "review_action_removed_label",
+            "agent_dispatch",
+            "agent_dispatch_withheld_file",
+            "raised_finding",
+            "resolved_finding",
+            "rewritten_finding",
+            "withheld_finding",
+            "judge_invocation",
+            "judge_invocation_unsupported",
+            "model_call",
+            "model_call_finish_reason",
+            "model_call_object",
+            "policy_check",
+            "review_grade",
+            "completion",
         }
     finally:
         engine.dispose()
