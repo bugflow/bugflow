@@ -66,7 +66,13 @@ def fact(
         corpus_version=None,
         workflow_id="previous",
         run_id=str(uuid4()),
-        payload={"layer": "weekly", "head_sha": head},
+        # A merge's payload is its delivery; a mark's is its layer and
+        # the commit it stopped at.
+        payload=(
+            {"delivery_id": f"delivery-{head}"}
+            if kind == "pr.merged"
+            else {"layer": "weekly", "head_sha": head}
+        ),
         origin=origin,
     )
 
