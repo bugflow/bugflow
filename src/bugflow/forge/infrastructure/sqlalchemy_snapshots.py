@@ -47,7 +47,7 @@ snapshots = sa.Table(
 
 class SqlAlchemySnapshotStore:
     """Implements ``SnapshotStoreRepository`` over the
-    ``pull_request_snapshots`` table.
+    ``pull_request_snapshot`` table.
     """
 
     def __init__(self, database_url: str) -> None:
