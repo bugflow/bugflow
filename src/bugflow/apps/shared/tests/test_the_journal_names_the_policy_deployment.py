@@ -7,6 +7,7 @@ of a journal entry, so these tests read the table.
 Skipped unless DATABASE_URL names a Postgres server.
 """
 
+import pytest
 import sqlalchemy as sa
 
 from bugflow.apps.shared.journals import review_journal, stamped_journal
@@ -16,6 +17,7 @@ from bugflow.apps.shared.tests.test_the_journal_names_its_build import (
     new_run,
 )
 from bugflow.method.infrastructure.deployment_watch import DeployedFrom
+from bugflow.shared.domain.models.journal_kind import KINDS
 from bugflow.shared.domain.values.correlation import Correlation
 
 DEPLOYED = DeployedFrom(
@@ -69,12 +71,16 @@ def test_the_build_is_still_stamped_beside_the_deployment(
     ]
 
 
-def test_the_columns_are_indexed_together(engine: sa.Engine) -> None:
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_columns_are_indexed_together(
+    engine: sa.Engine, kind: str
+) -> None:
+    table = f"{kind}_journal"
     indexes = {
         index["name"]: index["column_names"]
-        for index in sa.inspect(engine).get_indexes("journal")
+        for index in sa.inspect(engine).get_indexes(table)
     }
-    assert indexes["journal_policy_deployment_idx"] == [
+    assert indexes[f"{table}_policy_deployment_idx"] == [
         "policy_repository",
         "policy_commit",
         "occurred_at",

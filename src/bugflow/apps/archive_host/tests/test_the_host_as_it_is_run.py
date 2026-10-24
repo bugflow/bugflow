@@ -77,7 +77,11 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
         with TestClient(app):
             pass
         assert set(sa.inspect(engine).get_table_names()) == {
-            "journal",
+            "archive_journal",
+            "forge_journal",
+            "review_journal",
+            "stocktake_journal",
+            "policy_journal",
             "archive_binding",
             "archive_event",
             "archive_block_put",
