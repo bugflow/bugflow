@@ -55,6 +55,7 @@ def seed(journal: Any, origin: str | None, name: str, hours: int = 0) -> None:
                 {
                     "action": "review_comment",
                     "performed": True,
+                    "status": "published",
                     "comment_id": 41,
                     "agent_id": name,
                 },
