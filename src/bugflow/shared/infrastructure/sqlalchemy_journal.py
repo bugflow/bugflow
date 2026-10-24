@@ -12,7 +12,7 @@ and the triggers are made by the scripts in ``migrations``.
 """
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from uuid import UUID
 
@@ -122,8 +122,24 @@ views = sa.MetaData()
 journal = _journal_table("journal", views, indexed=False)
 
 
-def table_for(event_type: str) -> sa.Table:
-    """The journal a fact of this type is written to."""
+#: Tables of the journal's shape a deployment keeps beside the package's
+#: five, described as they are first named.
+_deployments = sa.MetaData()
+
+
+def table_for(
+    event_type: str, placements: Mapping[str, str] | None = None
+) -> sa.Table:
+    """The journal a fact of this type is written to: the package's for a
+    type its map places, else the deployment's own placement, a table of
+    the journal's shape, else a refusal."""
+    if placements and event_type in placements:
+        name = placements[event_type]
+        if name in metadata.tables:
+            return metadata.tables[name]
+        if name not in _deployments.tables:
+            _journal_table(name, _deployments, indexed=False)
+        return _deployments.tables[name]
     return metadata.tables[journal_of(event_type)]
 
 
@@ -156,9 +172,16 @@ class SqlAlchemyJournal:
         policy_repository: str | None = None,
         policy_commit: str | None = None,
         policy_content: str | None = None,
+        placements: Mapping[str, str] | None = None,
     ) -> None:
         """``build`` is stored in the ``build`` column of every row this
         adapter writes.
+
+        ``placements`` names the journal each of a deployment's own event
+        types is written to, by table: one of the package's five, or a
+        table of the journal's shape the deployment's own scripts made.
+        A type neither the package's map nor the placements name is
+        refused.
 
         ``policy_repository``, ``policy_commit`` and ``policy_content``
         name the policy deployment the writing process started with:
@@ -172,6 +195,7 @@ class SqlAlchemyJournal:
         self._engine = sa.create_engine(
             engine_url(database_url), pool_pre_ping=True
         )
+        self._placements = dict(placements or {})
         self._stamps = {
             "build": build,
             "policy_repository": policy_repository,
@@ -244,7 +268,7 @@ class SqlAlchemyJournal:
                 )
                 row["pull_request_id"] = pull_request_id
                 row["workflow_run_id"] = workflow_run_id
-                into = table_for(entry.event_type)
+                into = table_for(entry.event_type, self._placements)
                 inserted = connection.execute(
                     insert(into)
                     .values(row)
