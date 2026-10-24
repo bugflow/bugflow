@@ -31,12 +31,17 @@ from bugflow.shared.domain.values.repository_association import (
 )
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.sqlalchemy_entities import (
+    metadata as metadata,
+)
+from bugflow.shared.infrastructure.sqlalchemy_entities import resolve_keys
 from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
     associate_on_connection,
     repository_associations,
 )
 
-metadata = sa.MetaData()
+# The journal shares its metadata with the entity tables it refers to by
+# key (ADR 005).
 journal = sa.Table(
     "journal",
     metadata,
@@ -62,7 +67,20 @@ journal = sa.Table(
     sa.Column("policy_repository", sa.Text),
     sa.Column("policy_commit", sa.Text),
     sa.Column("policy_content", sa.Text),
+    # The entities the text columns name, by key (ADR 005). A row about
+    # no pull request has no pull_request_id, and a row an older writer
+    # wrote has neither, since a new column must not break one.
+    sa.Column(
+        "pull_request_id", sa.BigInteger, sa.ForeignKey("pull_request.id")
+    ),
+    sa.Column(
+        "workflow_run_id", sa.BigInteger, sa.ForeignKey("workflow_run.id")
+    ),
     sa.Index("journal_repo_pr_occurred", "repo", "pr_number", "occurred_at"),
+    sa.Index(
+        "journal_pull_request_occurred", "pull_request_id", "occurred_at"
+    ),
+    sa.Index("journal_workflow_run", "workflow_run_id"),
     sa.Index("journal_type_occurred", "event_type", "occurred_at"),
     sa.Index("journal_run", "workflow_id", "run_id"),
     sa.Index("journal_agent_id_idx", "agent_id", "corpus_version"),
@@ -76,10 +94,17 @@ journal = sa.Table(
 )
 
 #: The columns that are not fields of a ``JournalEntry``: the time the
-#: database stored the row, and the policy deployment the writing
-#: process started with.
+#: database stored the row, the policy deployment the writing process
+#: started with, and the keys of the entities the entry names in text.
 _NOT_OF_AN_ENTRY = frozenset(
-    {"recorded_at", "policy_repository", "policy_commit", "policy_content"}
+    {
+        "recorded_at",
+        "policy_repository",
+        "policy_commit",
+        "policy_content",
+        "pull_request_id",
+        "workflow_run_id",
+    }
 )
 
 #: The columns a ``JournalEntry`` is built from, for an adapter that
@@ -180,6 +205,11 @@ class SqlAlchemyJournal:
                 row = asdict(entry) | self._stamps
                 row.pop("origin")
                 row.pop("origin_asserted")
+                pull_request_id, workflow_run_id = resolve_keys(
+                    connection, entry
+                )
+                row["pull_request_id"] = pull_request_id
+                row["workflow_run_id"] = workflow_run_id
                 inserted = connection.execute(
                     insert(journal)
                     .values(row)
