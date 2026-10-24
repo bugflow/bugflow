@@ -51,12 +51,14 @@ that journal's payloads have moved to the typed tables by then.
 
 ### Writing and reading
 
-The journal adapter writes the envelope as it does. The context that
-owns the fact writes the typed row in the same transaction, through
-an adapter of the typed table, from the fact's own model rather than
-from a payload dictionary. The payload dictionary stays what the
-adapter writes to the envelope until the journal's `payload` column
-goes.
+The journal adapter writes the envelope as it does, and in the same
+transaction writes the typed row through the type's unpacker, a
+function the owning context defines that reads the envelope's payload
+and inserts the typed row. The composition hands the adapter the
+unpackers of every type that has a table. While the journal's
+`payload` column stays, the payload is what the context writes and the
+unpacker reads; when the column goes, the context writes the typed
+row from its own model and the envelope carries no payload.
 
 A reader of the type moves from the payload to the typed table in the
 same pull request as the script, or the pull request says which
