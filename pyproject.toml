@@ -1,6 +1,6 @@
 [project]
 name = "bugflow"
-version = "0.0.5"
+version = "0.0.6"
 description = "Self-hosted infrastructure for teams that want to converge on methodology for using AI to augment human creativity"
 readme = "README.md"
 requires-python = ">=3.12"
