@@ -71,9 +71,23 @@ def pending(database_url: str, scripts: Sequence[str] = ()) -> list[str]:
             ran = context.get_current_heads()
     finally:
         engine.dispose()
-    # Alembic walks from the newest scripts down to the ones last run.
-    not_run = directory.iterate_revisions("heads", ran or "base")
-    return [Path(script.path).stem for script in reversed(list(not_run))]
+    # Every script, newest first, less those the database has run and
+    # their ancestors. A walk from the heads down to what was run would
+    # miss a branch the database has not recorded yet.
+    done = (
+        {
+            script.revision
+            for script in directory.iterate_revisions(ran, "base")
+        }
+        if ran
+        else set()
+    )
+    not_run = [
+        script
+        for script in directory.iterate_revisions("heads", "base")
+        if script.revision not in done
+    ]
+    return [Path(script.path).stem for script in reversed(not_run)]
 
 
 def upgrade(database_url: str, scripts: Sequence[str] = ()) -> None:
