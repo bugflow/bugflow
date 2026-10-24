@@ -54,9 +54,14 @@ def stamped_journal(
     database_url: str,
     build: str | None,
     deployed_from: DeployedFrom | None = None,
+    placements: Mapping[str, str] | None = None,
 ) -> SqlAlchemyJournal:
     """Return the Postgres journal, stamping ``build`` on every row it
     writes. ``build`` is what ``build_sha`` read.
+
+    ``placements`` names the journal each of the deployment's own event
+    types is written to (ADR 006); the package's own are placed by its
+    map, and a deployment with no facts of its own leaves it out.
 
     ``deployed_from`` is the policy deployment the caller's reviewers
     were built from. Given, every row also names that deployment's
@@ -70,6 +75,7 @@ def stamped_journal(
         policy_repository=deployed_from.repository if deployed_from else None,
         policy_commit=deployed_from.commit if deployed_from else None,
         policy_content=deployed_from.content_hash if deployed_from else None,
+        placements=placements,
     )
 
 
