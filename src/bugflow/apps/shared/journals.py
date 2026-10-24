@@ -18,6 +18,9 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
+from bugflow.archive.infrastructure.sqlalchemy_archive_facts import (
+    UNPACKERS as ARCHIVE_UNPACKERS,
+)
 from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
 )
@@ -28,7 +31,14 @@ from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
-from bugflow.shared.infrastructure.sqlalchemy_journal import SqlAlchemyJournal
+from bugflow.shared.infrastructure.sqlalchemy_journal import (
+    SqlAlchemyJournal,
+    Unpacker,
+)
+
+#: What writes each unpacked type's row beside its envelope (ADR 007):
+#: every context's unpackers, gathered here for every program.
+UNPACKERS: dict[str, Unpacker] = {**ARCHIVE_UNPACKERS}
 
 #: What a deployment sets to the git sha of the tree its image was built
 #: from. Unset locally and in tests, where there is no build to name.
@@ -76,6 +86,7 @@ def stamped_journal(
         policy_commit=deployed_from.commit if deployed_from else None,
         policy_content=deployed_from.content_hash if deployed_from else None,
         placements=placements,
+        unpackers=UNPACKERS,
     )
 
 
