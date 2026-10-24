@@ -13,7 +13,7 @@ from bugflow.shared.infrastructure.database import engine_url
 metadata = sa.MetaData()
 
 cadence_boundaries = sa.Table(
-    "cadence_boundaries",
+    "cadence_boundary",
     metadata,
     sa.Column("cadence", sa.Text, primary_key=True),
     sa.Column("boundary", sa.Text, nullable=False),

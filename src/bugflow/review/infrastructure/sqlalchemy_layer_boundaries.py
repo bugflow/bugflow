@@ -14,7 +14,7 @@ from bugflow.shared.infrastructure.database import engine_url
 metadata = sa.MetaData()
 
 layer_boundaries = sa.Table(
-    "repository_layer_boundaries",
+    "repository_layer_boundary",
     metadata,
     sa.Column("forge", sa.Text, primary_key=True),
     sa.Column("repo", sa.Text, primary_key=True),

@@ -22,7 +22,7 @@ from bugflow.shared.infrastructure.database import engine_url
 metadata = sa.MetaData()
 
 deployments = sa.Table(
-    "policy_deployments",
+    "policy_deployment",
     metadata,
     sa.Column("repository", sa.Text, primary_key=True),
     sa.Column("commit", sa.Text, primary_key=True),
@@ -36,7 +36,7 @@ deployments = sa.Table(
 )
 
 files = sa.Table(
-    "policy_deployment_files",
+    "policy_deployment_file",
     metadata,
     sa.Column("repository", sa.Text, primary_key=True),
     sa.Column("commit", sa.Text, primary_key=True),
@@ -44,12 +44,12 @@ files = sa.Table(
     sa.Column("text", sa.Text, nullable=False),
     sa.ForeignKeyConstraint(
         ["repository", "commit"],
-        ["policy_deployments.repository", "policy_deployments.commit"],
+        ["policy_deployment.repository", "policy_deployment.commit"],
     ),
 )
 
 in_force = sa.Table(
-    "policy_deployments_in_force",
+    "policy_deployment_in_force",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("repository", sa.Text, nullable=False),
@@ -62,7 +62,7 @@ in_force = sa.Table(
     ),
     sa.ForeignKeyConstraint(
         ["repository", "commit"],
-        ["policy_deployments.repository", "policy_deployments.commit"],
+        ["policy_deployment.repository", "policy_deployment.commit"],
     ),
 )
 

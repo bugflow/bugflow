@@ -14,7 +14,7 @@ from bugflow.shared.infrastructure.database import engine_url
 
 metadata = sa.MetaData()
 write_ups = sa.Table(
-    "agent_write_ups",
+    "agent_write_up",
     metadata,
     sa.Column("write_up_id", sa.Text, primary_key=True),
     sa.Column(

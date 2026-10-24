@@ -17,7 +17,7 @@ from bugflow.shared.infrastructure.database import engine_url
 metadata = sa.MetaData()
 
 archive_events = sa.Table(
-    "archive_events",
+    "archive_event",
     metadata,
     sa.Column("ledger_id", sa.Text, primary_key=True),
     sa.Column("number", sa.Integer, primary_key=True),

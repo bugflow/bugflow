@@ -13,7 +13,7 @@ from bugflow.shared.infrastructure.database import engine_url
 
 metadata = sa.MetaData()
 repository_associations = sa.Table(
-    "repository_associations",
+    "repository_association",
     metadata,
     sa.Column("kind", sa.Text, primary_key=True),
     sa.Column("record_id", sa.Text, primary_key=True),
@@ -28,7 +28,7 @@ repository_associations = sa.Table(
     sa.CheckConstraint("record_id <> '' AND origin <> ''"),
 )
 sa.Index(
-    "repository_associations_origin_idx",
+    "repository_association_origin_idx",
     repository_associations.c.origin,
     repository_associations.c.kind,
 )

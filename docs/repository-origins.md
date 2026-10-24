@@ -45,8 +45,8 @@ host. The parser does not contact a forge or follow redirects.
 |---|---|---|
 | `journal` | `forge`, `repo`, optional PR number; UUID event id | Observed evaluations, canonical deliveries, closing workflows, stocktakes, bound archive operations and configured
 webhook reconciliation associate new entries on insertion. Map historical and remaining independent events by UUID without changing their payloads or identifiers. |
-| `pull_request_snapshots` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
-| `archive_bindings` | Ledger UUID, forge, repo and scope | Explicit declarations associate the ledger UUID. Reads include existing operator mappings. |
+| `pull_request_snapshot` | Hostless `body.ref`, optional `body.origin`; content-derived snapshot id | New canonical snapshots are associated on insertion. Map each historical snapshot id without changing its body or hash. |
+| `archive_binding` | Ledger UUID, forge, repo and scope | Explicit declarations associate the ledger UUID. Reads include existing operator mappings. |
 | Review declarations, enforcement, withholding, spend and period boundaries | Forge and owner/name; some empty scopes mean server-wide | Existing configuration remains hostless. Canonical configuration migration is not in this release. |
 | Policy deployments and activation records | Policy repository and commit | Policy-source provenance remains separate from reviewed-repository access. |
 | Exchanges and write-ups | Exchange/content ids or workflow/run ids | Resolve repository provenance through the selecting journal event; do not infer it from content ids. |
