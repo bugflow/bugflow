@@ -5,7 +5,6 @@ collide, and that tables already there are kept.
 Skipped unless DATABASE_URL names a Postgres server.
 """
 
-import json
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
@@ -27,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0011"
+LAST = "0012"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -155,9 +154,12 @@ def seed_before_keys(
     made: JournalEntry,
     policy_repository: str | None = None,
     run: bool = True,
+    table: str = "journal",
 ) -> None:
     """Write a row as a program before the journal had its keys did:
-    into a database at the script before them, by the text columns."""
+    into a database at the script before them, by the text columns.
+    ``table`` is the journal to write to where the database is past the
+    division."""
     if run:
         upgrade(database_url)
         downgrade(database_url, BEFORE_KEYS)
@@ -167,11 +169,10 @@ def seed_before_keys(
     values["policy_repository"] = policy_repository
     columns = ", ".join(values)
     placeholders = ", ".join(f":{name}" for name in values)
-    values["payload"] = json.dumps(values["payload"])
     with engine.begin() as connection:
         connection.execute(
             sa.text(
-                f"insert into journal ({columns}) values ({placeholders})"
+                f"insert into {table} ({columns}) values ({placeholders})"
             ).bindparams(sa.bindparam("payload", type_=JSONB)),
             values,
         )
@@ -273,3 +274,79 @@ def test_the_renames_can_be_backed_out_and_run_again(empty: str) -> None:
 
     assert last_run(empty) == [LAST]
     assert "spend_bindings" not in tables(empty)
+
+
+def test_the_archives_facts_already_there_are_unpacked(
+    empty: str, tmp_path: Path
+) -> None:
+    """A sealed fact written before the typed tables existed is unpacked
+    by the script that makes them, claims and all."""
+    upgrade(empty)
+    downgrade(empty, "0011")
+    sealed = replace(
+        entry("sealed-before"),
+        event_type="archive.sealed",
+        payload={
+            "ledger_id": "ledger-9",
+            "scope": "notes",
+            "name": "0001-first",
+            "head": "h",
+            "root": "r",
+            "events": 1,
+            "files": 1,
+            "bytes": 10,
+            "caller": "s",
+            "client": "c",
+            "claims": {"branch": "master"},
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), sealed, run=False, table="archive_journal"
+    )
+
+    upgrade(empty)
+
+    engine = sa.create_engine(engine_url(empty))
+    try:
+        with engine.connect() as connection:
+            claim = connection.execute(
+                sa.text(
+                    "select c.value from archive_seal s "
+                    "join archive_seal_claim c on c.event_id = s.event_id "
+                    "where s.event_id = :id"
+                ),
+                {"id": sealed.event_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert claim == "master"
+
+
+def test_an_archive_fact_with_an_unknown_key_stops_the_script(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0011")
+    odd = replace(
+        entry("odd"),
+        event_type="archive.refused",
+        payload={
+            "ledger_id": "l",
+            "scope": "s",
+            "name": "n",
+            "kind": "k",
+            "caller": "c",
+            "client": "x",
+            "reason": "a key the inventory never saw",
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), odd, run=False, table="archive_journal"
+    )
+
+    with pytest.raises(Exception, match="keys the inventory did not find"):
+        upgrade(empty)
+
+
+def _engine(database_url: str) -> sa.Engine:
+    return sa.create_engine(engine_url(database_url))

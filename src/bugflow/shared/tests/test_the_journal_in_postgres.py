@@ -143,8 +143,12 @@ def test_the_database_refuses_to_change_a_recorded_fact(
     made = entry(f"unchanging-{kind}", event_type=event_type)
     SqlAlchemyJournal(database_url).append([made])
 
+    # A truncate is refused by the trigger, or sooner by the foreign key
+    # a typed table holds to the journal; either way the row stays.
     with (
-        pytest.raises(sa.exc.DBAPIError, match="append-only"),
+        pytest.raises(
+            sa.exc.DBAPIError, match=r"append-only|referenced in a foreign key"
+        ),
         engine.begin() as connection,
     ):
         connection.execute(sa.text(change.format(table=table)))

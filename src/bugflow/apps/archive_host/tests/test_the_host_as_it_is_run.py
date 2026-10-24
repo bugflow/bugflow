@@ -110,6 +110,11 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "pull_request",
             "workflow",
             "workflow_run",
+            "archive_seal",
+            "archive_seal_claim",
+            "archive_registration",
+            "archive_registration_beside",
+            "archive_refusal",
         }
     finally:
         engine.dispose()

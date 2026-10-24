@@ -13,6 +13,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 
 from bugflow.archive.infrastructure import (
+    sqlalchemy_archive_facts,
     sqlalchemy_bindings,
     sqlalchemy_block_puts,
     sqlalchemy_kept_events,
@@ -45,6 +46,7 @@ def defined() -> sa.MetaData:
     for metadata in (
         sqlalchemy_bindings.metadata,
         sqlalchemy_kept_events.metadata,
+        sqlalchemy_archive_facts.metadata,
         sqlalchemy_block_puts.metadata,
         sqlalchemy_search_index.metadata,
         sqlalchemy_journal.metadata,
