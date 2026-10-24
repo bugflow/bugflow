@@ -42,10 +42,13 @@ origin, and how the two are reconciled is a later record.
 
 ### The journal
 
-The journal gains `pull_request_id`, nullable, since a third of its
-rows are about no pull request: reconciliations, deliveries, policy
-deployments and archive events. It gains `workflow_run_id`, not null,
-since every row names a run. Each is a foreign key. Two indexes serve
+The journal gains `pull_request_id`, null for a row about no pull
+request, which a third of its rows are: reconciliations, deliveries,
+policy deployments and archive events. It gains `workflow_run_id`.
+Each is a foreign key, and each is nullable, because a column added to
+the journal must not break a writer that does not know it: a program
+at an earlier version writes rows with neither, and a later script
+fills them. Two indexes serve
 the reads that today use the text columns: `pull_request_id` with
 `occurred_at`, and `workflow_run_id`.
 
@@ -57,9 +60,8 @@ text.
 
 ### Filling the keys
 
-The script creates the five tables from the journal's distinct values,
-adds the two columns, fills them, and makes `workflow_run_id` not
-null, in one transaction. The journal's triggers reject an update, so
+The script creates the six tables from the journal's distinct values,
+adds the two columns and fills them, in one transaction. The journal's triggers reject an update, so
 the script disables the two triggers for its transaction and enables
 them after. The triggers guard programs. A script that says what it
 did, in its docstring and in the version table, is not what they guard
