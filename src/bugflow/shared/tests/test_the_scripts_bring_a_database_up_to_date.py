@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0012"
+LAST = "0013"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -345,6 +345,131 @@ def test_an_archive_fact_with_an_unknown_key_stops_the_script(
     )
 
     with pytest.raises(Exception, match="keys the inventory did not find"):
+        upgrade(empty)
+
+
+def test_the_forges_facts_already_there_are_unpacked(empty: str) -> None:
+    """An observation written before the typed tables existed is unpacked
+    by the script that makes them, commits and policies and all, and an
+    older observation with no scope has no policy rows."""
+    upgrade(empty)
+    downgrade(empty, "0012")
+    observed = replace(
+        entry("observed-before"),
+        event_type="pr.observed",
+        payload={
+            "delivery_id": "d-2",
+            "delivery_ids": ["d-1", "d-2"],
+            "snapshot_id": "snap-1",
+            "corpus": {"doctrine": "v3", "judge": "v9"},
+            "installed": {"narrative": "1.2"},
+            "reviewed_for": ["narrative"],
+            "held": ["narrative", "security"],
+            "title": "Add a thing",
+            "head_branch": "thing",
+            "base_branch": "main",
+            "author_login": "someone",
+            "commits": [
+                {
+                    "sha": "abc",
+                    "author_name": "A",
+                    "author_email": "a@x",
+                    "author_login": "someone",
+                    "committer_name": "GitHub",
+                    "committer_email": "noreply@github.com",
+                    "committer_login": "web-flow",
+                    "verified": True,
+                    "verification_reason": "valid",
+                }
+            ],
+            "file_count": 3,
+            "changed_lines": 40,
+        },
+    )
+    older = replace(
+        entry("observed-earlier"),
+        event_type="pr.observed",
+        payload={
+            "delivery_id": None,
+            "delivery_ids": [],
+            "snapshot_id": "snap-0",
+            "corpus": {"doctrine": "v2", "judge": "v8"},
+            "title": "Older",
+            "head_branch": "old",
+            "base_branch": "main",
+            "author_login": "someone",
+            "commits": [],
+            "file_count": 0,
+            "changed_lines": 0,
+        },
+    )
+    engine = _engine(empty)
+    seed_before_keys(empty, engine, observed, run=False, table="forge_journal")
+    seed_before_keys(empty, engine, older, run=False, table="forge_journal")
+
+    upgrade(empty)
+
+    try:
+        with engine.connect() as connection:
+            commit = connection.execute(
+                sa.text(
+                    "select c.author_login, c.verified from "
+                    "pull_request_observation_commit c where c.event_id = :id"
+                ),
+                {"id": observed.event_id},
+            ).one()
+            policies = connection.execute(
+                sa.text(
+                    "select standing, policy_id from "
+                    "pull_request_observation_policy where event_id = :id "
+                    "order by standing, policy_id"
+                ),
+                {"id": observed.event_id},
+            ).all()
+            older_policies = connection.execute(
+                sa.text(
+                    "select count(*) from pull_request_observation_policy "
+                    "where event_id = :id"
+                ),
+                {"id": older.event_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert tuple(commit) == ("someone", True)
+    assert [tuple(p) for p in policies] == [
+        ("held", "narrative"),
+        ("held", "security"),
+        ("reviewed_for", "narrative"),
+    ]
+    assert older_policies == 0
+
+
+def test_a_commit_with_an_unknown_key_stops_the_script(empty: str) -> None:
+    """The check reaches inside the lists of objects a payload carries."""
+    upgrade(empty)
+    downgrade(empty, "0012")
+    odd = replace(
+        entry("odd-commit"),
+        event_type="pr.observed",
+        payload={
+            "delivery_id": None,
+            "delivery_ids": [],
+            "snapshot_id": "snap-9",
+            "corpus": {"doctrine": "v3", "judge": "v9"},
+            "title": "Odd",
+            "head_branch": "odd",
+            "base_branch": "main",
+            "author_login": "someone",
+            "commits": [{"sha": "abc", "signed_off_by": "someone"}],
+            "file_count": 1,
+            "changed_lines": 1,
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), odd, run=False, table="forge_journal"
+    )
+
+    with pytest.raises(Exception, match="commits element of a shape"):
         upgrade(empty)
 
 

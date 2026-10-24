@@ -115,6 +115,21 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "archive_registration",
             "archive_registration_beside",
             "archive_refusal",
+            "delivery",
+            "webhook_reconciliation",
+            "webhook_reconciliation_event",
+            "pull_request_observation",
+            "pull_request_observation_delivery",
+            "pull_request_observation_component",
+            "pull_request_observation_agent",
+            "pull_request_observation_policy",
+            "pull_request_observation_commit",
+            "pull_request_closure",
+            "pull_request_closure_outstanding",
+            "pull_request_merge",
+            "reaction",
+            "reaction_agent",
+            "finding_dismissal",
         }
     finally:
         engine.dispose()
