@@ -145,7 +145,7 @@ class SqlAlchemyIndexedFiles:
         statement = sa.text(
             "SELECT wanted.ordinality - 1 AS position, line.number, line.text "
             "FROM unnest(:cids) WITH ORDINALITY AS wanted(cid, ordinality) "
-            "JOIN archive_index_lines AS line ON line.cid = wanted.cid "
+            "JOIN archive_index_line AS line ON line.cid = wanted.cid "
             f"WHERE {_MATCH[mode]} "
             "ORDER BY wanted.ordinality, line.number "
             "LIMIT :limit"
