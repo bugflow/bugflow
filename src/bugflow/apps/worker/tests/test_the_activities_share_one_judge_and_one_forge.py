@@ -28,6 +28,7 @@ from bugflow.apps.worker.tests.activities import (
     at_attempt,
     gating,
 )
+from bugflow.apps.worker.tests.journal import ActivityJournal
 from bugflow.forge.domain.errors import ForgeRejectedError
 from bugflow.forge.domain.models.pull_request import PullRequestSnapshot
 from bugflow.forge.domain.services.forge import CommitState
@@ -53,7 +54,6 @@ from bugflow.review.infrastructure.in_memory_spend_bindings import (
 from bugflow.review.infrastructure.in_memory_spend_record import (
     InMemorySpendRecord,
 )
-from bugflow.review.tests.journal import QueryableJournal
 from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
@@ -68,7 +68,7 @@ def built_with(
         forge=FailingForge(ForgeRejectedError("unused")),
         doctrine=FakeDoctrine(),
         judge=judge,
-        journal=QueryableJournal(),
+        journal=ActivityJournal(),
         snapshots=snapshots,
         archive=InMemoryJudgeArchive(),
         clock=FixedClock(),
@@ -170,7 +170,7 @@ def test_is_open_observe_and_publish_share_one_forges_budget() -> None:
         forge=BudgetedForge(budget=2),
         doctrine=FakeDoctrine(),
         judge=None,
-        journal=QueryableJournal(),
+        journal=ActivityJournal(),
         snapshots=InMemorySnapshotStore(),
         archive=InMemoryJudgeArchive(),
         clock=FixedClock(),

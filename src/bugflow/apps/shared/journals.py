@@ -21,6 +21,7 @@ from uuid import UUID
 from bugflow.archive.infrastructure.sqlalchemy_archive_facts import (
     UNPACKERS as ARCHIVE_UNPACKERS,
 )
+from bugflow.forge.domain.models.judgement import RecordedJudgement
 from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
     UNPACKERS as FORGE_UNPACKERS,
 )
@@ -31,6 +32,8 @@ from bugflow.method.infrastructure.deployment_watch import DeployedFrom
 from bugflow.method.infrastructure.sqlalchemy_method_facts import (
     UNPACKERS as METHOD_UNPACKERS,
 )
+from bugflow.review.domain.facts import JUDGE_INVOKED
+from bugflow.review.domain.models.journal_facts import JudgeInvocation
 from bugflow.review.domain.models.observation import Observation
 from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
@@ -189,6 +192,24 @@ class ReviewJournal:
         self, forge: str, repo: str, event_type: str
     ) -> list[ReviewEntry]:
         return self._queries.events_for_repository(forge, repo, event_type)
+
+    def judgements_for_pull_request(
+        self, ref: PullRequestRef
+    ) -> list[RecordedJudgement]:
+        """The forge's question, answered from the review's facts: the
+        observation asks it of the journal the worker hands it."""
+        return [
+            RecordedJudgement(
+                policy_id=e.fact.policy_id,
+                input_hash=e.fact.identity.input_hash
+                if e.fact.identity
+                else None,
+                status=e.fact.status,
+                corpus_version=e.corpus_version,
+            )
+            for e in self._queries.events_for_pull_request(ref, JUDGE_INVOKED)
+            if isinstance(e.fact, JudgeInvocation)
+        ]
 
     def observations_for_pull_request(
         self, ref: PullRequestRef, origin: str | None = None

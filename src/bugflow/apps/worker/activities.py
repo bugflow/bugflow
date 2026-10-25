@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from temporalio import activity
@@ -82,6 +82,9 @@ from bugflow.forge.domain.services.conversation import (
     ConversationService as ForgeConversationService,
 )
 from bugflow.forge.domain.services.forge import ForgeService
+from bugflow.forge.domain.services.journal_history import (
+    PullRequestJournalService,
+)
 from bugflow.forge.dtos.observe_pull_request import (
     ObservePullRequestRequest,
     ObservePullRequestResponse,
@@ -305,6 +308,13 @@ def _as_assessed(
     )
 
 
+class ReviewAndObservationJournal(
+    JournalService, PullRequestJournalService, Protocol
+):
+    """The journal as the review activities take it: the review's
+    questions, and the observation's question of what was judged."""
+
+
 class ReviewActivities:
     """The activities of an evaluation, of a pull request's close and of
     a stocktake."""
@@ -314,7 +324,7 @@ class ReviewActivities:
         forge: ForgeService,
         doctrine: DoctrineRepository,
         judge: JudgeService | None,
-        journal: JournalService,
+        journal: ReviewAndObservationJournal,
         snapshots: SnapshotStoreRepository,
         clock: ClockService,
         archive: JudgeArchiveRepository,

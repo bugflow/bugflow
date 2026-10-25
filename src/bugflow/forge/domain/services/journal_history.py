@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from bugflow.forge.domain.models.judgement import RecordedJudgement
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -22,6 +23,13 @@ class PullRequestJournalService(Protocol):
     ) -> Sequence[JournalEntry]:
         """Every entry of that type recorded for the pull request, oldest
         first."""
+        ...
+
+    def judgements_for_pull_request(
+        self, ref: PullRequestRef
+    ) -> Sequence[RecordedJudgement]:
+        """Every ``judge.invoked`` fact recorded for the pull request,
+        oldest first, read from its table (ADR 007)."""
         ...
 
 
