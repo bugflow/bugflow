@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0017"
+LAST = "0018"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -810,7 +810,7 @@ def test_the_archive_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "archive_journal")
-    assert "payload" in _columns(empty, "forge_journal")
+    assert "payload" in _columns(empty, "review_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, refused.event_id)
@@ -846,6 +846,66 @@ def test_an_archive_fact_with_no_typed_row_stops_the_column_going(
     )
 
     with pytest.raises(Exception, match="have no row in archive_registration"):
+        upgrade(empty)
+
+
+def test_the_forge_journals_payload_column_goes_once_its_facts_have_tables(
+    empty: str,
+) -> None:
+    """A forge fact written before the typed tables is unpacked by 0013
+    and loses its payload to 0018: the column is gone from the table,
+    the view reads null for it, and the typed row holds the fact."""
+    upgrade(empty)
+    downgrade(empty, "0012")
+    merged = replace(
+        entry("merged-before"),
+        event_type="pr.merged",
+        payload={"delivery_id": "d"},
+    )
+    seed_before_keys(
+        empty, _engine(empty), merged, run=False, table="forge_journal"
+    )
+
+    upgrade(empty)
+
+    assert "payload" not in _columns(empty, "forge_journal")
+    assert "payload" in _columns(empty, "review_journal")
+    engine = _engine(empty)
+    try:
+        (row,) = rows(engine, merged.event_id)
+        assert row["payload"] is None
+        with engine.connect() as connection:
+            delivery_id = connection.execute(
+                sa.text(
+                    "select delivery_id from pull_request_merge "
+                    "where event_id = :id"
+                ),
+                {"id": merged.event_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert delivery_id == "d"
+
+
+def test_a_forge_fact_with_no_typed_row_stops_the_column_going(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0017")
+    unpacked_by_nothing = replace(
+        entry("never-unpacked"),
+        event_type="pr.merged",
+        payload={"delivery_id": "d"},
+    )
+    seed_before_keys(
+        empty,
+        _engine(empty),
+        unpacked_by_nothing,
+        run=False,
+        table="forge_journal",
+    )
+
+    with pytest.raises(Exception, match="have no row in pull_request_merge"):
         upgrade(empty)
 
 
