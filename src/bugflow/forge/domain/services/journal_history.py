@@ -7,6 +7,7 @@ context asks are declared here, and an application supplies something
 that answers them.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -18,7 +19,7 @@ from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 class PullRequestJournalService(Protocol):
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> Sequence[JournalEntry]:
         """Every entry of that type recorded for the pull request, oldest
         first."""
         ...

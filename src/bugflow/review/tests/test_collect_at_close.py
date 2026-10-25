@@ -8,6 +8,7 @@ from bugflow.review.domain.models.finding import Finding
 from bugflow.review.domain.models.recorder import Recorder
 from bugflow.review.dtos.collect_at_close import CollectAtCloseRequest
 from bugflow.review.tests.journal import QueryableJournal
+from bugflow.review.tests.payloads import whole
 from bugflow.review.usecases.collect_at_close import CollectAtCloseUseCase
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
@@ -57,12 +58,13 @@ def published(
     return Recorder(REF, EVALUATION, "v1", AT).entry(
         "action.taken",
         f"review_comment/{agent_id}",
-        {
-            "action": "review_comment",
-            "agent_id": agent_id,
-            "performed": performed,
-            "comment_id": comment_id,
-        },
+        whole(
+            "action.taken",
+            action="review_comment",
+            agent_id=agent_id,
+            performed=performed,
+            comment_id=comment_id,
+        ),
     )
 
 

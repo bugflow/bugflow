@@ -9,7 +9,7 @@ from bugflow.review.domain.facts import (
     PR_OBSERVED,
 )
 from bugflow.review.domain.models.observation import Observation
-from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.review.domain.models.review_entry import ReviewEntry, from_payload
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.dismissal import Dismissal
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -20,14 +20,14 @@ class QueryableJournal(InMemoryJournal):
     """The in-memory journal, with the queries declared in
     ``review/domain/services/journal.py``.
 
-    The forge's facts are read from their entries' payloads, which this
-    journal keeps as the Postgres adapter reads them from the forge's
-    tables, so a test's observation carries what the table requires.
+    Every fact is read from its entry's payload, which this journal
+    keeps, as the Postgres adapter reads it from the fact's table (ADR
+    007), so a test's entry carries what the table takes.
     """
 
-    def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
+    def entries_for_run(self, correlation: Correlation) -> list[ReviewEntry]:
         return [
-            replace(e, origin=self._origin(e.event_id))
+            from_payload(replace(e, origin=self._origin(e.event_id)))
             for e in self.entries
             if (e.workflow_id, e.run_id)
             == (correlation.workflow_id, correlation.run_id)
@@ -49,11 +49,11 @@ class QueryableJournal(InMemoryJournal):
 
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         key = (ref.forge, f"{ref.owner}/{ref.repo}", ref.number)
         return sorted(
             (
-                replace(e, origin=self._origin(e.event_id))
+                from_payload(replace(e, origin=self._origin(e.event_id)))
                 for e in self.entries
                 if e.event_type == event_type
                 and (e.forge, e.repo, e.pr_number) == key
@@ -63,10 +63,10 @@ class QueryableJournal(InMemoryJournal):
 
     def events_for_repository(
         self, forge: str, repo: str, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return sorted(
             (
-                replace(e, origin=self._origin(e.event_id))
+                from_payload(replace(e, origin=self._origin(e.event_id)))
                 for e in self.entries
                 if e.event_type == event_type
                 and (e.forge, e.repo) == (forge, repo)
@@ -99,7 +99,7 @@ class QueryableJournal(InMemoryJournal):
 
     def _about(
         self, ref: PullRequestRef, event_type: str, origin: str | None
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return [
             e
             for e in self.events_for_pull_request(ref, event_type)

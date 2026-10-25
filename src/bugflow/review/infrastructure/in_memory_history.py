@@ -1,8 +1,9 @@
 """A bounded history reader over stored events supplied in memory.
 
-An observation's snapshot is read from the payload the event keeps, as
-the Postgres reader reads it from the observation's row (ADR 007), so a
-test's event carries the snapshot in its payload or names it itself.
+A fact is read from the payload the event keeps, as the Postgres reader
+reads it from the fact's row (ADR 007): an observation's snapshot, and
+the review's own facts. So a test's event carries in its payload what
+the table takes, or names the fact itself.
 """
 
 import json
@@ -17,6 +18,7 @@ from bugflow.review.domain.models.history import (
     HistoryScope,
     StoredReviewEvent,
 )
+from bugflow.review.domain.models.review_entry import from_payload
 from bugflow.shared.domain.repositories.repository_associations import (
     RepositoryAssociations,
 )
@@ -77,6 +79,8 @@ class InMemoryHistory:
                     event,
                     snapshot_id=str(snapshot_id) if snapshot_id else None,
                 )
+            if entry.fact is None:
+                event = replace(event, entry=from_payload(entry))
             found.append(event)
             if len(found) > limits.max_events:
                 raise HistoryTooLargeError("history exceeds the event limit")

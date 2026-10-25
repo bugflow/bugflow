@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import replace
 
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.models.journal_provenance import (
@@ -61,7 +62,7 @@ class RepositoryJournal:
             ]
         )
 
-    def events(self, event_type: str) -> list[JournalEntry]:
+    def events(self, event_type: str) -> list[ReviewEntry]:
         return [
             entry
             for entry in self._journal.events_for_repository(

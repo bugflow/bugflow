@@ -7,25 +7,26 @@ policy that ran and the exchange with the model behind it, what each
 checkout agent's run cost, the verdict the grader gave, and what was
 written to the pull request.
 
-It is built from journal entries and stored exchanges and nothing else.
-Something the journal does not hold is left out, not guessed. Nothing
-here reads a clock or a store: the entries are passed in.
+It is built from journal entries, each with the fact its typed table
+holds (ADR 007), and stored exchanges, and nothing else. Something the
+journal does not hold is left out, not guessed. Nothing here reads a
+clock or a store: the entries are passed in.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from bugflow.review.domain.facts import (
-    ACTION_TAKEN,
-    AGENT_DISPATCHED,
-    FINDING_RAISED,
-    FINDING_RESOLVED,
-    JUDGE_INVOKED,
-    POLICY_CHECKED,
-    REVIEW_GRADED,
+from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.journal_facts import (
+    AgentDispatch,
+    JudgeInvocation,
+    PolicyCheck,
+    ResolvedFinding,
+    ReviewAction,
+    ReviewGrade,
 )
 from bugflow.review.domain.models.judgement import JudgeExchange
-from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.shared.domain.values.correlation import Correlation
 
 #: The order findings are listed in: the most severe first.
@@ -149,22 +150,18 @@ class ReviewRecord:
     label: str = ""
 
 
-def _finding(payload: Mapping[str, object]) -> RecordedFinding:
-    """A finding from the payload of its journal entry."""
+def _finding(finding: Finding) -> RecordedFinding:
+    """A finding as its journal entry's table holds it."""
     return RecordedFinding(
-        policy_id=str(payload.get("policy_id", "")),
-        clause=str(payload.get("clause", "")),
-        subject=str(payload.get("subject", "")),
-        severity=str(payload.get("severity", "")),
-        message=str(payload.get("message", "")),
-        judged_by=_text_or_none(payload.get("judged_by")),
-        agent_id=_text_or_none(payload.get("agent_id")),
-        corpus_version=_text_or_none(payload.get("corpus_version")),
+        policy_id=finding.policy_id,
+        clause=finding.clause,
+        subject=finding.subject,
+        severity=finding.severity,
+        message=finding.message,
+        judged_by=finding.judged_by,
+        agent_id=finding.agent_id,
+        corpus_version=finding.corpus_version,
     )
-
-
-def _text_or_none(value: object) -> str | None:
-    return None if value is None else str(value)
 
 
 def _ordered(
@@ -187,22 +184,24 @@ def _ordered(
 
 
 def _judged(
-    entry: JournalEntry, exchanges: Mapping[str, JudgeExchange]
+    entry: ReviewEntry,
+    judgement: JudgeInvocation,
+    exchanges: Mapping[str, JudgeExchange],
 ) -> PolicyRun:
     """A judged policy's run, from its journal entry and the stored
     exchanges.
     """
-    payload = entry.payload
-    identity = payload.get("identity") or {}
-    exchange_id = _text_or_none(identity.get("exchange_id"))
+    exchange_id = (
+        judgement.identity.exchange_id if judgement.identity else None
+    )
     return PolicyRun(
-        policy_id=str(payload.get("policy_id") or ""),
-        status=str(payload.get("status", "")),
-        model=_text_or_none(payload.get("model")),
-        finding_count=int(payload.get("finding_count") or 0),
-        unsupported=tuple(str(u) for u in payload.get("unsupported") or ()),
-        input_tokens=int(payload.get("input_tokens") or 0),
-        output_tokens=int(payload.get("output_tokens") or 0),
+        policy_id=judgement.policy_id or "",
+        status=judgement.status,
+        model=judgement.model,
+        finding_count=judgement.finding_count,
+        unsupported=judgement.unsupported,
+        input_tokens=judgement.input_tokens,
+        output_tokens=judgement.output_tokens,
         agent_id=entry.agent_id,
         corpus_version=entry.corpus_version,
         exchange_id=exchange_id,
@@ -210,19 +209,18 @@ def _judged(
     )
 
 
-def _checked(entry: JournalEntry) -> PolicyRun:
+def _checked(entry: ReviewEntry, check: PolicyCheck) -> PolicyRun:
     """A checked policy's run, from its journal entry."""
-    payload = entry.payload
     return PolicyRun(
-        policy_id=str(payload.get("policy_id") or ""),
+        policy_id=check.policy_id,
         status="checked",
-        finding_count=int(payload.get("finding_count") or 0),
+        finding_count=check.finding_count,
         agent_id=entry.agent_id,
         corpus_version=entry.corpus_version,
     )
 
 
-def _agent_run(agent_id: str, entries: Sequence[JournalEntry]) -> AgentRun:
+def _agent_run(agent_id: str, entries: Sequence[ReviewEntry]) -> AgentRun:
     """One checkout agent's run, from the entries recorded about it.
 
     Each entry says only what its step knew. Dispatching gives the
@@ -246,28 +244,36 @@ def _agent_run(agent_id: str, entries: Sequence[JournalEntry]) -> AgentRun:
     verdict: str | None = None
     grader_note = ""
     for entry in entries:
-        payload = entry.payload
-        if entry.event_type == REVIEW_GRADED:
-            verdict = _text_or_none(payload.get("status"))
-            grader_note = str(payload.get("detail") or "")
+        fact = entry.fact
+        if isinstance(fact, ReviewGrade):
+            verdict = fact.status
+            grader_note = fact.detail or ""
             continue
-        step = str(payload.get("step", ""))
-        steps.append(step)
+        if not isinstance(fact, AgentDispatch):
+            continue
+        steps.append(fact.step)
         for name in text:
-            if payload.get(name):
-                text[name] = str(payload[name])
-        if payload.get("cost"):
-            cost = {k: float(v) for k, v in dict(payload["cost"]).items()}
-        if payload.get("budget"):
-            budget = {k: float(v) for k, v in dict(payload["budget"]).items()}
-        if payload.get("withheld"):
-            withheld = tuple(str(w) for w in payload["withheld"])
-        if payload.get("events") is not None:
-            events = int(payload["events"])
-        if step == "reused":
+            value = getattr(fact, name)
+            if value:
+                text[name] = str(value)
+        recorded_cost = _figures(
+            ("usd", fact.cost_usd), ("seconds", fact.cost_seconds)
+        )
+        if recorded_cost:
+            cost = recorded_cost
+        recorded_budget = _figures(
+            ("usd", fact.budget_usd), ("turns", fact.budget_turns)
+        )
+        if recorded_budget:
+            budget = recorded_budget
+        if fact.withheld:
+            withheld = fact.withheld
+        if fact.events is not None:
+            events = fact.events
+        if fact.step == "reused":
             text["reason"] = (
                 "reviewed already at this commit, in run "
-                f"{payload.get('reviewed_in', '')}"
+                f"{fact.reviewed_in or ''}"
             )
     return AgentRun(
         agent_id=agent_id,
@@ -282,50 +288,54 @@ def _agent_run(agent_id: str, entries: Sequence[JournalEntry]) -> AgentRun:
     )
 
 
-def _said(entry: JournalEntry) -> Said:
-    """A comment, from its journal entry."""
-    payload = entry.payload
-    comment_id = payload.get("comment_id")
+def _figures(*named: tuple[str, float | None]) -> dict[str, float]:
+    """The figures recorded, by name, leaving out those that were not."""
+    return {name: value for name, value in named if value is not None}
+
+
+def _said(action: ReviewAction) -> Said:
+    """A comment, from its journal entry's row."""
     return Said(
-        agent_id=str(payload.get("agent_id", "")),
-        performed=bool(payload.get("performed")),
-        status=str(payload.get("status", "")),
-        comment_id=None if comment_id is None else int(comment_id),
-        verdict=str(payload.get("verdict") or ""),
-        findings=int(payload.get("finding_count") or 0),
-        raised=int(payload.get("raised_count") or 0),
-        fixed=int(payload.get("fixed_count") or 0),
-        dismissed=int(payload.get("dismissed_count") or 0),
+        agent_id=action.agent_id or "",
+        performed=action.performed,
+        status=action.status,
+        comment_id=action.comment_id,
+        verdict=action.verdict or "",
+        findings=action.finding_count or 0,
+        raised=action.raised_count or 0,
+        fixed=action.fixed_count or 0,
+        dismissed=action.dismissed_count or 0,
     )
+
+
+def _actions(rows: Sequence[ReviewEntry], action: str) -> list[ReviewAction]:
+    """The actions of one kind, in the order recorded."""
+    return [
+        e.fact
+        for e in rows
+        if isinstance(e.fact, ReviewAction) and e.fact.action == action
+    ]
 
 
 def review_record(
     correlation: Correlation,
-    entries: Iterable[JournalEntry],
+    entries: Iterable[ReviewEntry],
     exchanges: Mapping[str, JudgeExchange] | None = None,
 ) -> ReviewRecord:
     """Build the record of one evaluation.
 
     ``entries`` are the journal entries of that evaluation, oldest
-    first. ``exchanges`` are the stored judge exchanges that its
-    judgements name, by exchange id.
+    first, each with the fact its table holds. ``exchanges`` are the
+    stored judge exchanges that its judgements name, by exchange id.
     """
     rows = list(entries)
     archived = exchanges or {}
-    by_agent: dict[str, list[JournalEntry]] = {}
+    by_agent: dict[str, list[ReviewEntry]] = {}
     for entry in rows:
-        if entry.event_type in (AGENT_DISPATCHED, REVIEW_GRADED):
-            agent_id = str(entry.payload.get("agent_id") or entry.agent_id)
+        if isinstance(entry.fact, AgentDispatch | ReviewGrade):
+            agent_id = entry.fact.agent_id or entry.agent_id or ""
             by_agent.setdefault(agent_id, []).append(entry)
-    label = next(
-        (
-            str(e.payload.get("label") or "")
-            for e in rows
-            if e.event_type == ACTION_TAKEN
-            and e.payload.get("action") == "outcome_label"
-        ),
-        "",
-    )
+    label = next((a.label or "" for a in _actions(rows, "outcome_label")), "")
     first = rows[0] if rows else None
     return ReviewRecord(
         correlation=correlation,
@@ -340,21 +350,21 @@ def review_record(
             None,
         ),
         findings=_ordered(
-            _finding(e.payload) for e in rows if e.event_type == FINDING_RAISED
+            _finding(e.fact) for e in rows if isinstance(e.fact, Finding)
         ),
         withdrawn=_ordered(
-            _finding(e.payload)
+            _finding(e.fact.finding)
             for e in rows
-            if e.event_type == FINDING_RESOLVED
+            if isinstance(e.fact, ResolvedFinding)
         ),
         policies=tuple(
             sorted(
                 (
-                    _judged(e, archived)
-                    if e.event_type == JUDGE_INVOKED
-                    else _checked(e)
+                    _judged(e, e.fact, archived)
+                    if isinstance(e.fact, JudgeInvocation)
+                    else _checked(e, e.fact)
                     for e in rows
-                    if e.event_type in (JUDGE_INVOKED, POLICY_CHECKED)
+                    if isinstance(e.fact, JudgeInvocation | PolicyCheck)
                 ),
                 key=lambda p: p.policy_id,
             )
@@ -365,12 +375,7 @@ def review_record(
         ),
         said=tuple(
             sorted(
-                (
-                    _said(e)
-                    for e in rows
-                    if e.event_type == ACTION_TAKEN
-                    and e.payload.get("action") == "review_comment"
-                ),
+                (_said(a) for a in _actions(rows, "review_comment")),
                 key=lambda s: s.agent_id,
             )
         ),

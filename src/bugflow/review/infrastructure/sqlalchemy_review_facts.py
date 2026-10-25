@@ -31,20 +31,39 @@ rows. A ``policy.checked`` row is a checked policy's run, and a
 Each table is keyed by the event's id, a foreign key to the review
 journal. ``UNPACKERS`` writes the typed rows from the envelope's payload
 in the envelope's transaction; the script that made the tables filled
-them from the rows already there.
+them from the rows already there. ``read_facts`` reads them back as the
+domain's facts, for the queries that hand a reader an entry with its
+fact.
 """
 
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.schema import SchemaItem
 
+from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.journal_facts import (
+    AgentDispatch,
+    JudgeInvocation,
+    ModelCall,
+    PolicyCheck,
+    ResolvedFinding,
+    ReviewAction,
+    ReviewFact,
+    ReviewGrade,
+    RewrittenFinding,
+    StoredObject,
+    WithheldFinding,
+)
+from bugflow.review.domain.models.judgement import JudgeIdentity
 from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.shared.domain.values.correlation import Correlation
 
 metadata = sa.MetaData()
 
@@ -596,3 +615,195 @@ UNPACKERS: Mapping[str, Unpacker] = {
     "policy.checked": unpack_check,
     "review.graded": unpack_grade,
 }
+
+
+def _rows(
+    connection: sa.Connection,
+    table: sa.Table,
+    event_ids: sa.Select[tuple[UUID]],
+) -> list[sa.RowMapping]:
+    return list(
+        connection.execute(
+            sa.select(table).where(table.c.event_id.in_(event_ids))
+        ).mappings()
+    )
+
+
+def _children(
+    connection: sa.Connection,
+    table: sa.Table,
+    event_ids: sa.Select[tuple[UUID]],
+    order: str,
+) -> dict[UUID, list[sa.RowMapping]]:
+    """A child table's rows by their event, each event's in order."""
+    grouped: dict[UUID, list[sa.RowMapping]] = {}
+    for row in connection.execute(
+        sa.select(table)
+        .where(table.c.event_id.in_(event_ids))
+        .order_by(table.c.event_id, table.c[order])
+    ).mappings():
+        grouped.setdefault(row["event_id"], []).append(row)
+    return grouped
+
+
+def _identity(row: sa.RowMapping, prefix: str) -> JudgeIdentity | None:
+    if row[f"{prefix}_model"] is None:
+        return None
+    return JudgeIdentity(
+        model=row[f"{prefix}_model"],
+        fingerprint=row[f"{prefix}_fingerprint"],
+        prompt_hash=row[f"{prefix}_prompt_hash"],
+        input_hash=row[f"{prefix}_input_hash"],
+        exchange_id=row[f"{prefix}_exchange_id"],
+    )
+
+
+def _finding(row: sa.RowMapping) -> Finding:
+    return Finding(
+        policy_id=row["policy_id"],
+        severity=row["severity"],
+        clause=row["clause"],
+        subject=row["subject"],
+        message=row["message"],
+        judged_by=row["judged_by"],
+        judge=_identity(row, "judge"),
+        corpus_version=row["corpus_version"],
+        agent_id=row["agent_id"],
+    )
+
+
+def _raised_in_of(row: sa.RowMapping) -> Correlation:
+    return Correlation(
+        workflow_id=row["raised_in_workflow_id"],
+        run_id=row["raised_in_run_id"],
+    )
+
+
+def _columns(row: sa.RowMapping, *names: str) -> dict[str, Any]:
+    return {name: row[name] for name in names}
+
+
+def read_facts(
+    connection: sa.Connection, event_ids: sa.Select[tuple[UUID]]
+) -> dict[UUID, ReviewFact]:
+    """The review facts of the events ``event_ids`` selects, by event id,
+    each read from its table and its table's children."""
+    facts: dict[UUID, ReviewFact] = {}
+    removed = _children(
+        connection, review_action_removed_label, event_ids, "label"
+    )
+    for row in _rows(connection, review_action, event_ids):
+        facts[row["event_id"]] = ReviewAction(
+            **_columns(
+                row,
+                "action",
+                "performed",
+                "status",
+                "agent_id",
+                "comment_id",
+                "verdict",
+                "head_sha",
+                "finding_count",
+                "raised_count",
+                "fixed_count",
+                "dismissed_count",
+                "context",
+                "state",
+                "description",
+                "label",
+            ),
+            removed=tuple(
+                child["label"] for child in removed.get(row["event_id"], ())
+            ),
+        )
+    withheld_files = _children(
+        connection, agent_dispatch_withheld_file, event_ids, "position"
+    )
+    for row in _rows(connection, agent_dispatch, event_ids):
+        facts[row["event_id"]] = AgentDispatch(
+            **_columns(
+                row,
+                "agent_id",
+                "step",
+                "runner",
+                "fingerprint",
+                "remote_id",
+                "budget_usd",
+                "budget_turns",
+                "cost_usd",
+                "cost_seconds",
+                "events",
+                "detail",
+                "outcome",
+                "write_up_id",
+                "dispatched_at",
+                "reason",
+                "reviewed_in",
+            ),
+            withheld=tuple(
+                child["path"]
+                for child in withheld_files.get(row["event_id"], ())
+            ),
+        )
+    for row in _rows(connection, raised_finding, event_ids):
+        facts[row["event_id"]] = _finding(row)
+    for row in _rows(connection, resolved_finding, event_ids):
+        facts[row["event_id"]] = ResolvedFinding(
+            finding=_finding(row), raised_in=_raised_in_of(row)
+        )
+    for row in _rows(connection, rewritten_finding, event_ids):
+        facts[row["event_id"]] = RewrittenFinding(
+            finding=_finding(row), raised_in=_raised_in_of(row)
+        )
+    for row in _rows(connection, withheld_finding, event_ids):
+        facts[row["event_id"]] = WithheldFinding(
+            finding=_finding(row), share=row["share"]
+        )
+    unsupported = _children(
+        connection, judge_invocation_unsupported, event_ids, "position"
+    )
+    for row in _rows(connection, judge_invocation, event_ids):
+        facts[row["event_id"]] = JudgeInvocation(
+            **_columns(
+                row,
+                "policy_id",
+                "status",
+                "model",
+                "finding_count",
+                "input_tokens",
+                "output_tokens",
+            ),
+            identity=_identity(row, "identity"),
+            unsupported=tuple(
+                child["verdict"]
+                for child in unsupported.get(row["event_id"], ())
+            ),
+        )
+    reasons = _children(
+        connection, model_call_finish_reason, event_ids, "position"
+    )
+    objects = _children(connection, model_call_object, event_ids, "position")
+    for row in _rows(connection, model_call, event_ids):
+        facts[row["event_id"]] = ModelCall(
+            **{name: row[name] for name in row if name != "event_id"},
+            finish_reasons=tuple(
+                child["reason"] for child in reasons.get(row["event_id"], ())
+            ),
+            objects=tuple(
+                StoredObject(
+                    **_columns(
+                        child, "hop", "key", "sha256", "bytes", "encoding"
+                    )
+                )
+                for child in objects.get(row["event_id"], ())
+            ),
+        )
+    for row in _rows(connection, policy_check, event_ids):
+        facts[row["event_id"]] = PolicyCheck(
+            **_columns(row, "policy_id", "clause", "finding_count", "cost_usd")
+        )
+    for row in _rows(connection, review_grade, event_ids):
+        facts[row["event_id"]] = ReviewGrade(
+            **_columns(row, "agent_id", "detail", "status")
+        )
+    return facts

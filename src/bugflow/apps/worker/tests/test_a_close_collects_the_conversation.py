@@ -25,6 +25,7 @@ from bugflow.review.infrastructure.in_memory_judge_archive import (
     InMemoryJudgeArchive,
 )
 from bugflow.review.tests.journal import QueryableJournal
+from bugflow.review.tests.payloads import whole
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
@@ -86,12 +87,13 @@ def posted(journal: QueryableJournal) -> None:
             Recorder(REF, evaluation, "v1", AT).entry(
                 ACTION_TAKEN,
                 "review_comment/prose",
-                {
-                    "action": "review_comment",
-                    "agent_id": "prose",
-                    "performed": True,
-                    "comment_id": 41,
-                },
+                whole(
+                    ACTION_TAKEN,
+                    action="review_comment",
+                    agent_id="prose",
+                    performed=True,
+                    comment_id=41,
+                ),
             )
         ]
     )

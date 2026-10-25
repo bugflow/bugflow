@@ -7,6 +7,7 @@ import pytest
 
 from bugflow.review.domain.services.scoped_journal import for_run
 from bugflow.review.tests.journal import QueryableJournal
+from bugflow.review.tests.payloads import whole
 from bugflow.review.tests.test_publish_findings import REF, RUN, FixedClock
 from bugflow.shared.domain.models.recorder import Recorder
 from bugflow.shared.domain.values.repository_association import (
@@ -29,7 +30,12 @@ def test_partial_or_conflicting_current_run_cannot_use_legacy_history(
     first = Recorder(REF, RUN, "v1", FixedClock().now()).entry(
         "pr.observed", "head", {}
     )
-    second = replace(first, event_id=uuid4(), event_type="judge.invoked")
+    second = replace(
+        first,
+        event_id=uuid4(),
+        event_type="judge.invoked",
+        payload=whole("judge.invoked"),
+    )
     journal.append([first, second])
     mappings = [
         RepositoryAssociation(

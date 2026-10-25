@@ -46,6 +46,7 @@ from bugflow.review.domain.models.history import (
     HistoryLimits,
     StoredReviewEvent,
 )
+from bugflow.review.domain.models.review_entry import from_payload
 from bugflow.review.infrastructure.in_memory_history import InMemoryHistory
 from bugflow.review.infrastructure.in_memory_judge_archive import (
     InMemoryJudgeArchive,
@@ -53,6 +54,7 @@ from bugflow.review.infrastructure.in_memory_judge_archive import (
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
 )
+from bugflow.review.tests.payloads import whole
 from bugflow.review.usecases.read_review_record import (
     ReadReviewHistoryUseCase,
     ReadReviewRecordUseCase,
@@ -160,10 +162,12 @@ class Reading:
         )
         run = Correlation(workflow_id="review-" + marker, run_id="run")
         event = StoredReviewEvent(
-            entry=Recorder(ref, run, "build", NOW).entry(
-                "pr.observed",
-                marker,
-                observed(cited_snapshot or snapshot.snapshot_id),
+            entry=from_payload(
+                Recorder(ref, run, "build", NOW).entry(
+                    "pr.observed",
+                    marker,
+                    observed(cited_snapshot or snapshot.snapshot_id),
+                )
             )
         )
         if self.writer is not None:
@@ -521,7 +525,9 @@ def test_observed_evaluation_is_canonical_without_manual_mapping(
         Clock(),
     ).execute(ObservePullRequestRequest(ref=REF, correlation=run))
     later = Recorder(REF, run, "v1", NOW).entry(
-        "judge.invoked", "judge", {"status": "skipped: no judge configured"}
+        "judge.invoked",
+        "judge",
+        whole("judge.invoked", status="skipped: no judge configured"),
     )
     writer.append([later])
     # A separate delivery has no observation from which to inherit origin.
@@ -536,7 +542,7 @@ def test_observed_evaluation_is_canonical_without_manual_mapping(
         assert isinstance(reading.history, InMemoryHistory)
         for entry in writer.entries:
             reading.history.events[entry.event_id] = StoredReviewEvent(
-                entry=entry
+                entry=from_payload(entry)
             )
     with reading.client() as client:
         params = {

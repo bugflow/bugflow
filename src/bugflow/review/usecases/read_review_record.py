@@ -17,15 +17,16 @@ from bugflow.review.domain.errors import (
     ReviewRecordNotFoundError,
     SubmissionNotFoundError,
 )
-from bugflow.review.domain.facts import JUDGE_INVOKED
 from bugflow.review.domain.models.history import (
     HistoryLimits,
     HistoryScope,
     StoredReviewEvent,
     observed_review_run,
 )
+from bugflow.review.domain.models.journal_facts import JudgeInvocation
 from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.review.domain.models.record import review_record
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.review.domain.models.submission import Submission, SubmissionRef
 from bugflow.review.domain.repositories.judge_archive import (
     BoundedJudgeArchiveRepository,
@@ -41,7 +42,6 @@ from bugflow.review.dtos.read_review_record import (
     ReadReviewRecordResponse,
 )
 from bugflow.shared.domain.errors import ContentTooLargeError
-from bugflow.shared.domain.models.journal_entry import JournalEntry
 
 
 class ReadReviewRecordUseCase:
@@ -156,17 +156,16 @@ class ReadReviewRecordUseCase:
         return response
 
 
-def _exchange_ids(entries: Sequence[JournalEntry]) -> list[str]:
+def _exchange_ids(entries: Sequence[ReviewEntry]) -> list[str]:
     """The id of every exchange the judgements name, each once, in the
     order they appear."""
     named = []
     for entry in entries:
-        if entry.event_type != JUDGE_INVOKED:
+        if not isinstance(entry.fact, JudgeInvocation):
             continue
-        identity = entry.payload.get("identity") or {}
-        exchange_id = identity.get("exchange_id")
-        if exchange_id:
-            named.append(str(exchange_id))
+        identity = entry.fact.identity
+        if identity is not None and identity.exchange_id:
+            named.append(identity.exchange_id)
     return list(dict.fromkeys(named))
 
 

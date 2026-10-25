@@ -19,6 +19,7 @@ from bugflow.review.domain.models.history import (
 )
 from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.review.domain.models.recorder import Recorder
+from bugflow.review.domain.models.review_entry import from_payload
 from bugflow.review.domain.models.submission import Submission, SubmissionRef
 from bugflow.review.dtos.read_review_record import ReadReviewRecordRequest
 from bugflow.review.infrastructure.in_memory_history import InMemoryHistory
@@ -26,6 +27,7 @@ from bugflow.review.infrastructure.in_memory_judge_archive import (
     InMemoryJudgeArchive,
 )
 from bugflow.review.tests.doubles import NOW
+from bugflow.review.tests.payloads import whole
 from bugflow.review.usecases.read_review_record import ReadReviewRecordUseCase
 from bugflow.shared.domain.errors import ContentTooLargeError
 from bugflow.shared.domain.models.journal_entry import JournalEntry
@@ -41,19 +43,16 @@ EXCHANGE = JudgeExchange(request={"policy": "P-01"}, response={"ok": True})
 def judged(
     run: Correlation, policy: str, exchange_id: str | None
 ) -> JournalEntry:
+    # The judgement read the submission the observation stored.
     identity: dict[str, Any] | None = (
-        {"exchange_id": exchange_id} if exchange_id else None
+        {"exchange_id": exchange_id, "input_hash": "snapshot"}
+        if exchange_id
+        else None
     )
     return Recorder(REF, run, "server-1", NOW).entry(
         JUDGE_INVOKED,
         f"judge/{policy}",
-        {
-            "policy_id": policy,
-            "status": "judged by a-model",
-            "model": "a-model",
-            "finding_count": 0,
-            "identity": identity,
-        },
+        whole(JUDGE_INVOKED, policy_id=policy, identity=identity),
     )
 
 
@@ -61,13 +60,7 @@ def raised(run: Correlation) -> JournalEntry:
     return Recorder(REF, run, "server-1", NOW).entry(
         FINDING_RAISED,
         "judged/0/P-01/pull request",
-        {
-            "policy_id": "P-01",
-            "clause": "RULE-1",
-            "subject": "pull request",
-            "severity": "warn",
-            "message": "a message",
-        },
+        whole(FINDING_RAISED, policy_id="P-01", clause="RULE-1"),
     )
 
 
@@ -76,7 +69,7 @@ def test_the_record_has_the_runs_entries_and_its_stored_exchanges() -> None:
     exchange_id = archive.put(EXCHANGE)
     journal = InMemoryHistory(
         [
-            StoredReviewEvent(entry=e)
+            StoredReviewEvent(entry=from_payload(e))
             for e in [
                 judged(RUN, "P-01", exchange_id),
                 judged(RUN, "P-02", None),
@@ -105,7 +98,7 @@ def test_an_exchange_the_store_no_longer_has_is_listed_as_missing() -> None:
     journal = InMemoryHistory()
     journal = InMemoryHistory(
         [
-            StoredReviewEvent(entry=e)
+            StoredReviewEvent(entry=from_payload(e))
             for e in [judged(RUN, "P-01", "gone"), judged(RUN, "P-02", "gone")]
         ]
     )
@@ -154,7 +147,9 @@ def observed(snapshot_id: str | None) -> JournalEntry:
 
 
 def history(*entries: JournalEntry) -> InMemoryHistory:
-    return InMemoryHistory([StoredReviewEvent(entry=e) for e in entries])
+    return InMemoryHistory(
+        [StoredReviewEvent(entry=from_payload(e)) for e in entries]
+    )
 
 
 def test_detail_reads_only_content_named_by_the_scoped_run() -> None:

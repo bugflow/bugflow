@@ -60,6 +60,10 @@ from bugflow.review.domain.facts import (
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement, fails
 from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.journal_facts import (
+    ReviewAction,
+    RewrittenFinding,
+)
 from bugflow.review.domain.models.recorder import Recorder
 from bugflow.review.domain.models.review import (
     ReviewNote,
@@ -423,8 +427,11 @@ class PublishFindingsUseCase:
         }
         latest: dict[tuple[str, str, str], tuple[str | None, Finding]] = {}
         for e in journal.events_for_pull_request(request.ref, FINDING_RAISED):
-            f = Finding.from_payload(e.payload)
-            latest[_identity(f)] = (corpus_of_run.get(e.run_id), f)
+            if isinstance(e.fact, Finding):
+                latest[_identity(e.fact)] = (
+                    corpus_of_run.get(e.run_id),
+                    e.fact,
+                )
         carried: list[Finding] = []
         for corpus, f in latest.values():
             if f.policy_id in dismissed_policies or _identity(f) in kept_back:
@@ -452,10 +459,11 @@ class PublishFindingsUseCase:
         if text is None:
             return []
         already = {
-            _identity(Finding.from_payload(e.payload))
+            _identity(e.fact.finding)
             for e in journal.events_for_pull_request(
                 request.ref, FINDING_REWRITTEN
             )
+            if isinstance(e.fact, RewrittenFinding)
         }
         gone: dict[tuple[str, str, str], Finding] = {}
         for f in previous:
@@ -477,9 +485,9 @@ class PublishFindingsUseCase:
         if previous is None:
             return None, []
         return previous, [
-            Finding.from_payload(e.payload)
+            e.fact
             for e in journal.entries_for_run(previous)
-            if e.event_type == FINDING_RAISED
+            if e.event_type == FINDING_RAISED and isinstance(e.fact, Finding)
         ]
 
     def _standing(
@@ -508,11 +516,12 @@ class PublishFindingsUseCase:
             Seen(
                 run_id=entry.run_id,
                 read=read_by.get(entry.run_id) or "",
-                finding=Finding.from_payload(entry.payload),
+                finding=entry.fact,
             )
             for entry in journal.events_for_pull_request(
                 request.ref, FINDING_RAISED
             )
+            if isinstance(entry.fact, Finding)
         ]
         if not any(seen.read == here for seen in history):
             return {_identity(f) for f in request.findings}
@@ -536,17 +545,18 @@ class PublishFindingsUseCase:
 
     def _spoken(
         self, journal: JournalService, ref: PullRequestRef, agent_id: str
-    ) -> list[dict[str, object]]:
-        """The records of the comments this reviewer has had posted on the
-        pull request, oldest first. A comment that was worked out and not
-        posted does not count.
+    ) -> list[ReviewAction]:
+        """The comments this reviewer has had posted on the pull request,
+        oldest first. A comment that was worked out and not posted does
+        not count.
         """
         return [
-            e.payload
+            e.fact
             for e in journal.events_for_pull_request(ref, ACTION_TAKEN)
-            if e.payload.get("action") == "review_comment"
-            and e.payload.get("agent_id") == agent_id
-            and e.payload.get("performed") is True
+            if isinstance(e.fact, ReviewAction)
+            and e.fact.action == "review_comment"
+            and e.fact.agent_id == agent_id
+            and e.fact.performed
         ]
 
     def execute(
@@ -844,7 +854,7 @@ class PublishFindingsUseCase:
             if first:
                 new, gone = list(mine), []
             if rejudged and not first:
-                moved = now != spoken[-1].get("verdict")
+                moved = now != spoken[-1].verdict
                 new, gone = (list(mine), []) if moved else ([], [])
                 body = (
                     findings_comment(
@@ -939,10 +949,10 @@ class PublishFindingsUseCase:
             last = spoken[-1] if spoken else None
             speaks = (
                 last is None
-                or last.get("verdict") != verdict.status
+                or last.verdict != verdict.status
                 or (
                     verdict.status != "pass"
-                    and last.get("head_sha") != verdict.head_sha
+                    and last.head_sha != verdict.head_sha
                 )
             )
             note = notes.get(agent_id) or ReviewNote(

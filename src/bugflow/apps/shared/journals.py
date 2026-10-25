@@ -32,6 +32,7 @@ from bugflow.method.infrastructure.sqlalchemy_method_facts import (
     UNPACKERS as METHOD_UNPACKERS,
 )
 from bugflow.review.domain.models.observation import Observation
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries as ReviewJournalQueries,
 )
@@ -89,6 +90,7 @@ def stamped_journal(
     build: str | None,
     deployed_from: DeployedFrom | None = None,
     placements: Mapping[str, str] | None = None,
+    unpackers: Mapping[str, Unpacker] | None = None,
 ) -> SqlAlchemyJournal:
     """Return the Postgres journal, stamping ``build`` on every row it
     writes. ``build`` is what ``build_sha`` read.
@@ -96,6 +98,8 @@ def stamped_journal(
     ``placements`` names the journal each of the deployment's own event
     types is written to (ADR 006); the package's own are placed by its
     map, and a deployment with no facts of its own leaves it out.
+    ``unpackers`` writes the typed row of each such type beside the
+    package's own (ADR 007).
 
     ``deployed_from`` is the policy deployment the caller's reviewers
     were built from. Given, every row also names that deployment's
@@ -110,7 +114,7 @@ def stamped_journal(
         policy_commit=deployed_from.commit if deployed_from else None,
         policy_content=deployed_from.content_hash if deployed_from else None,
         placements=placements,
-        unpackers=UNPACKERS,
+        unpackers={**UNPACKERS, **(unpackers or {})},
     )
 
 
@@ -168,7 +172,7 @@ class ReviewJournal:
     def has_event(self, event_id: UUID) -> bool:
         return self._recording.has_event(event_id)
 
-    def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
+    def entries_for_run(self, correlation: Correlation) -> list[ReviewEntry]:
         return self._queries.entries_for_run(correlation)
 
     def latest_acted_run(
@@ -178,12 +182,12 @@ class ReviewJournal:
 
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return self._queries.events_for_pull_request(ref, event_type)
 
     def events_for_repository(
         self, forge: str, repo: str, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return self._queries.events_for_repository(forge, repo, event_type)
 
     def observations_for_pull_request(

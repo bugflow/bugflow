@@ -23,11 +23,13 @@ from bugflow.review.domain.models.history import (
     HistoryScope,
     StoredReviewEvent,
 )
+from bugflow.review.domain.models.review_entry import from_payload
 from bugflow.review.dtos.read_review_record import ReadReviewHistoryRequest
 from bugflow.review.infrastructure.in_memory_history import InMemoryHistory
 from bugflow.review.infrastructure.in_memory_judge_archive import (
     InMemoryJudgeArchive,
 )
+from bugflow.review.tests.payloads import whole
 from bugflow.review.usecases.read_review_record import (
     ReadReviewHistoryUseCase,
     ReadReviewRecordUseCase,
@@ -55,10 +57,12 @@ def fact(
     run: Correlation = RUN,
 ) -> StoredReviewEvent:
     return StoredReviewEvent(
-        entry=Recorder(ref, run, "build", NOW).entry(
-            kind,
-            f"{ref.forge}/{ref.owner}/{ref.repo}/{ref.number}/{kind}",
-            payload or {},
+        entry=from_payload(
+            Recorder(ref, run, "build", NOW).entry(
+                kind,
+                f"{ref.forge}/{ref.owner}/{ref.repo}/{ref.number}/{kind}",
+                whole(kind, **(payload or {})),
+            )
         )
     )
 

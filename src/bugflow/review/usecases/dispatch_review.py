@@ -7,7 +7,7 @@ a handle. Each step records what it did.
 """
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 from bugflow.review.domain.errors import (
     AgentUnavailableError,
@@ -15,8 +15,12 @@ from bugflow.review.domain.errors import (
 )
 from bugflow.review.domain.facts import AGENT_DISPATCHED, REVIEW_GRADED
 from bugflow.review.domain.models.delegation import Task
+from bugflow.review.domain.models.journal_facts import (
+    AgentDispatch,
+    ReviewGrade,
+)
 from bugflow.review.domain.models.recorder import Recorder
-from bugflow.review.domain.models.review import ReviewVerdict
+from bugflow.review.domain.models.review import ReviewStatus, ReviewVerdict
 from bugflow.review.domain.services.delegated_work import DelegatedWorkService
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.review.domain.services.scoped_journal import for_run
@@ -211,26 +215,28 @@ class DispatchReviewUseCase:
             for e in journal.events_for_pull_request(
                 request.ref, AGENT_DISPATCHED
             )
-            if e.payload.get("step") == "dispatched"
-            and e.payload.get("agent_id") == request.agent_id
-            and e.payload.get("fingerprint") == self._agent.fingerprint
+            if isinstance(e.fact, AgentDispatch)
+            and e.fact.step == "dispatched"
+            and e.fact.agent_id == request.agent_id
+            and e.fact.fingerprint == self._agent.fingerprint
             and e.commit_sha == request.head_sha
         }
         graded = [
-            e
+            (e, e.fact.status)
             for e in journal.events_for_pull_request(
                 request.ref, REVIEW_GRADED
             )
-            if e.payload.get("agent_id") == request.agent_id
+            if isinstance(e.fact, ReviewGrade)
+            and e.fact.agent_id == request.agent_id
             and e.commit_sha == request.head_sha
             and e.run_id in dispatched_in
-            and e.payload.get("status") is not None
+            and e.fact.status is not None
         ]
         if not graded:
             return None
-        latest = graded[-1]
+        latest, status = graded[-1]
         return latest.run_id, ReviewVerdict(
             agent_id=request.agent_id,
             head_sha=request.head_sha,
-            status=latest.payload["status"],
+            status=cast(ReviewStatus, status),
         )
