@@ -19,13 +19,19 @@ from bugflow.shared.domain.models.journal_kind import (
     UnplacedFactError,
 )
 from bugflow.shared.infrastructure.migrations import upgrade
+from bugflow.shared.infrastructure.serde import from_columns
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
+    ENTRY_COLUMNS,
     SqlAlchemyJournal,
     journal,
 )
 
 #: The five tables a fact is written to, one for each kind.
 JOURNALS = [f"{kind}_journal" for kind in KINDS]
+
+#: The journals whose payload column has gone, a table holding each of
+#: their types (ADR 007). The view reads null for it.
+PAYLOAD_GONE = {"archive_journal"}
 
 # The columns other software relies on: name -> (type, nullable)
 CONTRACT = {
@@ -188,8 +194,35 @@ def test_contract_columns_are_present_and_unchanged(
 ) -> None:
     actual = columns(engine, table)
     for name, expected in CONTRACT.items():
+        if name == "payload" and table in PAYLOAD_GONE:
+            assert name not in actual, f"{table} kept the {name} column"
+            continue
         assert name in actual, f"{table} lost the {name} column"
         assert actual[name][:2] == expected, f"{table} changed {name}"
+
+
+def test_a_fact_whose_journal_has_no_payload_column_is_kept_without_it(
+    engine: sa.Engine, database_url: str
+) -> None:
+    """The envelope is stored, the view reads null for its payload, and
+    an entry read back from the view carries an empty one."""
+    made = entry(
+        "no-payload-column",
+        event_type="archive.refused",
+        payload={"ledger_id": "l", "scope": "s", "name": "n", "kind": "k"},
+    )
+    SqlAlchemyJournal(database_url).append([made])
+
+    (row,) = rows(engine, made.event_id)
+    assert row["event_type"] == "archive.refused"
+    assert row["payload"] is None
+    with engine.connect() as connection:
+        (read,) = connection.execute(
+            sa.select(*ENTRY_COLUMNS).where(
+                journal.c.event_id == made.event_id
+            )
+        ).mappings()
+    assert from_columns(JournalEntry, read).payload == {}
 
 
 def test_the_view_has_the_contract_columns(engine: sa.Engine) -> None:

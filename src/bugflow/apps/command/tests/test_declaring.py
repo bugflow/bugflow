@@ -24,6 +24,9 @@ from bugflow.apps.command.declaring import (
 )
 from bugflow.apps.shared.boundaries import refuse_without_a_boundary
 from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.archive.infrastructure.sqlalchemy_archive_facts import (
+    archive_registration,
+)
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
@@ -495,7 +498,15 @@ def test_binding_a_ledger_is_recorded_in_the_journal(shared: str) -> None:
         with engine.connect() as connection:
             rows = list(
                 connection.execute(
-                    sa.select(journal.c.payload, journal.c.build).where(
+                    sa.select(
+                        archive_registration.c.ledger_id, journal.c.build
+                    )
+                    .join_from(
+                        journal,
+                        archive_registration,
+                        journal.c.event_id == archive_registration.c.event_id,
+                    )
+                    .where(
                         journal.c.event_type == "archive.bound",
                         journal.c.repo == name,
                     )
@@ -503,9 +514,7 @@ def test_binding_a_ledger_is_recorded_in_the_journal(shared: str) -> None:
             )
     finally:
         engine.dispose()
-    assert [(row.payload["ledger_id"], row.build) for row in rows] == [
-        (bound, build)
-    ]
+    assert [(row.ledger_id, row.build) for row in rows] == [(bound, build)]
 
 
 def test_declared_lists_the_ledgers_bound_to_a_repository(

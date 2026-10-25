@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0016"
+LAST = "0017"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -762,6 +762,90 @@ def test_a_deploy_with_an_unknown_key_stops_the_script(empty: str) -> None:
     )
 
     with pytest.raises(Exception, match="keys the inventory did not find"):
+        upgrade(empty)
+
+
+def _columns(database_url: str, table: str) -> set[str]:
+    engine = _engine(database_url)
+    try:
+        with engine.connect() as connection:
+            return {
+                row[0]
+                for row in connection.execute(
+                    sa.text(
+                        "select column_name from information_schema.columns "
+                        "where table_name = :table"
+                    ),
+                    {"table": table},
+                )
+            }
+    finally:
+        engine.dispose()
+
+
+def test_the_archive_journals_payload_column_goes_once_its_facts_have_tables(
+    empty: str,
+) -> None:
+    """An archive fact written before the typed tables is unpacked by
+    0012 and loses its payload to 0017: the column is gone from the
+    table, the view reads null for it, and the typed row holds the fact."""
+    upgrade(empty)
+    downgrade(empty, "0011")
+    refused = replace(
+        entry("refused-before"),
+        event_type="archive.refused",
+        payload={
+            "ledger_id": "l",
+            "scope": "s",
+            "name": "n",
+            "kind": "k",
+            "caller": "c",
+            "client": "x",
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), refused, run=False, table="archive_journal"
+    )
+
+    upgrade(empty)
+
+    assert "payload" not in _columns(empty, "archive_journal")
+    assert "payload" in _columns(empty, "forge_journal")
+    engine = _engine(empty)
+    try:
+        (row,) = rows(engine, refused.event_id)
+        assert row["payload"] is None
+        with engine.connect() as connection:
+            kind = connection.execute(
+                sa.text(
+                    "select kind from archive_refusal where event_id = :id"
+                ),
+                {"id": refused.event_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert kind == "k"
+
+
+def test_an_archive_fact_with_no_typed_row_stops_the_column_going(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0016")
+    unpacked_by_nothing = replace(
+        entry("never-unpacked"),
+        event_type="archive.bound",
+        payload={"ledger_id": "l", "scope": "s"},
+    )
+    seed_before_keys(
+        empty,
+        _engine(empty),
+        unpacked_by_nothing,
+        run=False,
+        table="archive_journal",
+    )
+
+    with pytest.raises(Exception, match="have no row in archive_registration"):
         upgrade(empty)
 
 

@@ -3,7 +3,9 @@ a view named ``journal`` over them all (ADR 006).
 
 Other software reads the view, so its columns are a contract. A new
 column may be added if existing writers can ignore it. No column is
-removed, changed in type, or made stricter.
+removed, changed in type, or made stricter, with one exception: a
+journal's ``payload`` column goes once a table holds each of its types,
+and the view reads null for it (ADR 007).
 
 A fact is written to the table of its kind, by the map in the shared
 kernel. The database itself stops a row being changed: two triggers on
@@ -14,6 +16,7 @@ and the triggers are made by the scripts in ``migrations``.
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
+from typing import Any
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -45,10 +48,13 @@ from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
 )
 
 
-def _journal_table(name: str, into: sa.MetaData, indexed: bool) -> sa.Table:
+def _journal_table(
+    name: str, into: sa.MetaData, indexed: bool, payload: bool = True
+) -> sa.Table:
     """A table of the journal's shape. The five kinds' tables are
     indexed; the view over them is described without indexes, for
-    reading."""
+    reading. ``payload`` is False for a journal whose payload column has
+    gone (ADR 007)."""
     columns: list[SchemaItem] = [
         sa.Column("event_id", PG_UUID(as_uuid=True), primary_key=True),
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
@@ -66,7 +72,7 @@ def _journal_table(name: str, into: sa.MetaData, indexed: bool) -> sa.Table:
         sa.Column("corpus_version", sa.Text),
         sa.Column("workflow_id", sa.Text, nullable=False),
         sa.Column("run_id", sa.Text, nullable=False),
-        sa.Column("payload", JSONB, nullable=False),
+        *([sa.Column("payload", JSONB, nullable=False)] if payload else []),
         sa.Column("agent_id", sa.Text),
         sa.Column("build", sa.Text),
         sa.Column("policy_repository", sa.Text),
@@ -108,16 +114,26 @@ def _journal_table(name: str, into: sa.MetaData, indexed: bool) -> sa.Table:
     return sa.Table(name, into, *columns)
 
 
+#: The journals whose payload column has gone, a table holding each of
+#: their types (ADR 007): the archive's, by script 0017.
+WITHOUT_PAYLOAD = frozenset({"archive"})
+
 # The journals share their metadata with the entity tables they refer to
 # by key (ADR 005).
 JOURNALS: dict[str, sa.Table] = {
-    kind: _journal_table(f"{kind}_journal", metadata, indexed=True)
+    kind: _journal_table(
+        f"{kind}_journal",
+        metadata,
+        indexed=True,
+        payload=kind not in WITHOUT_PAYLOAD,
+    )
     for kind in KINDS
 }
 
 #: What readers read: the view over the five journals, with the columns
-#: the one table had. Described apart from the tables, since it is not
-#: one and the scripts are not compared with it.
+#: the one table had, and null for the payload of a journal whose column
+#: has gone. Described apart from the tables, since it is not one and
+#: the scripts are not compared with it.
 views = sa.MetaData()
 journal = _journal_table("journal", views, indexed=False)
 
@@ -162,10 +178,23 @@ _NOT_OF_AN_ENTRY = frozenset(
     }
 )
 
+
+def _entry_column(column: sa.Column[Any]) -> sa.ColumnElement[Any]:
+    """The view's column as an entry's field: a payload the view reads
+    null for, since the journal's column has gone, is an empty one."""
+    if column.name == "payload":
+        return sa.func.coalesce(
+            column, sa.cast(sa.literal("{}"), JSONB)
+        ).label("payload")
+    return column
+
+
 #: The columns a ``JournalEntry`` is built from, for an adapter that
 #: reads entries back.
-ENTRY_COLUMNS = tuple(
-    column for column in journal.c if column.name not in _NOT_OF_AN_ENTRY
+ENTRY_COLUMNS: tuple[sa.ColumnElement[Any], ...] = tuple(
+    _entry_column(column)
+    for column in journal.c
+    if column.name not in _NOT_OF_AN_ENTRY
 )
 
 
@@ -189,9 +218,11 @@ class SqlAlchemyJournal:
         A type neither the package's map nor the placements name is
         refused.
 
-        ``unpackers`` writes each type's typed row from the envelope's
+        ``unpackers`` writes each type's typed row from the entry's
         payload, in the envelope's transaction (ADR 007). A type with no
-        unpacker has no typed table yet.
+        unpacker has no typed table yet. A journal whose payload column
+        has gone stores the envelope without the payload, and the typed
+        row is where the fact is read.
 
         ``policy_repository``, ``policy_commit`` and ``policy_content``
         name the policy deployment the writing process started with:
@@ -280,6 +311,8 @@ class SqlAlchemyJournal:
                 row["pull_request_id"] = pull_request_id
                 row["workflow_run_id"] = workflow_run_id
                 into = table_for(entry.event_type, self._placements)
+                if "payload" not in into.c:
+                    row.pop("payload")
                 inserted = connection.execute(
                     insert(into)
                     .values(row)
