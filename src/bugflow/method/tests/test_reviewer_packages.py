@@ -76,6 +76,26 @@ def test_a_reviewer_is_the_judges_and_governs_unless_it_says_otherwise() -> (
     assert (agent.runner, agent.governs) == ("judge", True)
 
 
+def test_a_manifest_names_the_site_its_gnome_publishes_at() -> None:
+    text = MANIFEST.replace(
+        "---\n", "site: https://example.github.io/safety/\n---\n", 1
+    )
+
+    agent = parse_agent(Path("a/manifest.md"), text)
+
+    assert agent.site == "https://example.github.io/safety/"
+    assert parse_agent(Path("a/manifest.md"), MANIFEST).site == ""
+
+
+def test_a_site_that_is_not_an_https_address_is_refused() -> None:
+    text = MANIFEST.replace(
+        "---\n", "site: example.github.io/safety\n---\n", 1
+    )
+
+    with pytest.raises(ValueError, match="not an https:// address"):
+        parse_agent(Path("a/manifest.md"), text)
+
+
 def test_a_key_the_server_does_not_read_is_kept_out_of_the_way() -> None:
     text = MANIFEST.replace("---\n", "subjects: document/file\n---\n", 1)
 

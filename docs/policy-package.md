@@ -85,6 +85,10 @@ server does not read:
   `judge`.
 - `governs`: `yes` when the reviewer's verdict decides a pull request's
   label. Optional; absent, `yes`.
+- `site`: the https address the gnome publishes its pages at, such as
+  `https://clankaoperatingsystem.github.io/pr-gnome/`. A comment links
+  each clause it cites to `doctrine/#<clause id>` under it. Optional;
+  absent, a comment names the clause and links nothing.
 
 A header line of any other key is a problem in `reviewer.md` and ignored
 in `manifest.md`, so that a gnome may say more about itself than a
