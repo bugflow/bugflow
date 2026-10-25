@@ -175,14 +175,11 @@ class ObservePullRequestUseCase:
         whether anything reviewed this content at all.
         """
         answered = {
-            entry.payload.get("policy_id")
-            for entry in self._history.events_for_pull_request(
-                ref, facts.JUDGE_INVOKED
-            )
-            if (entry.payload.get("identity") or {}).get("input_hash")
-            == snapshot_id
-            and entry.corpus_version == version
-            and str(entry.payload.get("status", "")).startswith("judged by")
+            judgement.policy_id
+            for judgement in self._history.judgements_for_pull_request(ref)
+            if judgement.input_hash == snapshot_id
+            and judgement.corpus_version == version
+            and judgement.status.startswith("judged by")
         }
         if not answered:
             return False
