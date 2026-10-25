@@ -25,6 +25,7 @@ from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
 )
 from bugflow.review.tests.journal import QueryableJournal
+from bugflow.review.tests.payloads import whole
 from bugflow.shared.domain.models.journal_entry import JournalEntry, event_id
 from bugflow.shared.domain.models.recorder import Recorder
 from bugflow.shared.domain.services.recording import RecordingService
@@ -83,8 +84,17 @@ def entry(
         corpus_version="v1",
         workflow_id=run.workflow_id,
         run_id=run.run_id,
-        payload={"key": key},
+        payload=whole(event_type, **{_KEYED[event_type]: key}),
     )
+
+
+#: The field of each type's payload a test's key is kept in, so that
+#: the payload is whole and the entry is told apart by its key.
+_KEYED = {
+    FINDING_RAISED: "message",
+    FINDING_WITHHELD: "message",
+    ACTION_TAKEN: "status",
+}
 
 
 def test_a_runs_entries_are_read_back(journals: Journals) -> None:
@@ -95,7 +105,10 @@ def test_a_runs_entries_are_read_back(journals: Journals) -> None:
 
     read = queries.entries_for_run(run)
 
-    assert {e.payload["key"] for e in read} == {"a", "b"}
+    assert {e.event_id for e in read} == {
+        event_id(run, FINDING_RAISED, "a"),
+        event_id(run, FINDING_RAISED, "b"),
+    }
 
 
 def test_a_repeated_event_id_is_read_back_once(journals: Journals) -> None:
@@ -160,7 +173,10 @@ def test_a_pull_requests_entries_of_one_type_come_back_oldest_first(
 
     found = queries.events_for_pull_request(ref, FINDING_WITHHELD)
 
-    assert [e.payload["key"] for e in found] == ["11", "12"]
+    assert [e.event_id for e in found] == [
+        event_id(run, FINDING_WITHHELD, "11"),
+        event_id(run, FINDING_WITHHELD, "12"),
+    ]
 
 
 def test_a_repositorys_entries_of_one_type_come_back_oldest_first(
@@ -183,7 +199,10 @@ def test_a_repositorys_entries_of_one_type_come_back_oldest_first(
 
     found = queries.events_for_repository("github", repo, ACTION_TAKEN)
 
-    assert [e.payload["key"] for e in found] == ["2", "3"]
+    assert [e.event_id for e in found] == [
+        event_id(run, ACTION_TAKEN, "2"),
+        event_id(run, ACTION_TAKEN, "3"),
+    ]
 
 
 def test_queries_return_the_origin_associated_with_each_entry(
@@ -199,7 +218,11 @@ def test_queries_return_the_origin_associated_with_each_entry(
     ).entry("pr.observed", "head", {})
     writer.append([observed])
     subsequent = replace(
-        observed, event_id=uuid4(), event_type=ACTION_TAKEN, origin=None
+        observed,
+        event_id=uuid4(),
+        event_type=ACTION_TAKEN,
+        origin=None,
+        payload=whole(ACTION_TAKEN),
     )
     writer.append([subsequent])
     assert {entry.origin for entry in reader.entries_for_run(run)} == {origin}

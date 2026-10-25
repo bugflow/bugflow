@@ -37,11 +37,12 @@ class ChooseWhatToSayUseCase:
             Seen(
                 run_id=entry.run_id,
                 read=head_of.get(entry.run_id, entry.commit_sha or ""),
-                finding=Finding.from_payload(entry.payload),
+                finding=entry.fact,
             )
             for entry in self._journal.events_for_pull_request(
                 request.ref, FINDING_RAISED
             )
+            if isinstance(entry.fact, Finding)
         ]
         at_head = {
             (s.finding.policy_id, s.finding.clause, s.finding.subject)

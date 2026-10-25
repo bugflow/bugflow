@@ -1,21 +1,29 @@
 """Tests of the work context's questions of the journal.
 
 Each test runs twice: against the in-memory journal the other tests
-use, and against the Postgres adapter. The two must give the same
-answers. The Postgres half is skipped unless DATABASE_URL names a
-Postgres server.
+use, and against the Postgres adapter, which reads a dispatch and a
+judgement from the review's and the stocktake's tables (ADR 007), so
+the Postgres journal here writes through their unpackers. The two must
+give the same answers. The Postgres half is skipped unless DATABASE_URL
+names a Postgres server.
 
 The database is shared by the tests in a session, so each test uses a
 repository and a runner with names of its own.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
 import pytest
 
+from bugflow.review.infrastructure.sqlalchemy_review_facts import (
+    UNPACKERS as REVIEW_UNPACKERS,
+)
+from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
+    UNPACKERS as STOCKTAKE_UNPACKERS,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.domain.values.budget import Budget
@@ -36,9 +44,12 @@ class Queries(JournalService, DispatchRecordService, Protocol):
     """Both of the context's reading interfaces."""
 
 
-#: Given the kinds of fact to search for dispatches, makes somewhere to
-#: write entries and somewhere to read them back.
-Make = Callable[[Sequence[str]], tuple[RecordingService, Queries]]
+#: Given the kinds of fact to search for dispatches, each with its
+#: table, makes somewhere to write entries and somewhere to read them
+#: back.
+Make = Callable[[Mapping[str, str]], tuple[RecordingService, Queries]]
+AGENT = {AGENT_DISPATCHED: "agent_dispatch"}
+BOTH = {**AGENT, "stocktake.dispatched": "stocktake_dispatch"}
 
 
 @pytest.fixture(params=["memory", "postgres"])
@@ -46,18 +57,23 @@ def make(request: pytest.FixtureRequest) -> Make:
     if request.param == "memory":
 
         def in_memory(
-            facts: Sequence[str],
+            tables: Mapping[str, str],
         ) -> tuple[RecordingService, Queries]:
-            journal = QueryableJournal(dispatch_facts=facts)
+            journal = QueryableJournal(dispatch_tables=tables)
             return journal, journal
 
         return in_memory
     database_url: str = request.getfixturevalue("database_url")
 
-    def in_postgres(facts: Sequence[str]) -> tuple[RecordingService, Queries]:
+    def in_postgres(
+        tables: Mapping[str, str],
+    ) -> tuple[RecordingService, Queries]:
         return (
-            SqlAlchemyJournal(database_url),
-            SqlAlchemyJournalQueries(database_url, dispatch_facts=facts),
+            SqlAlchemyJournal(
+                database_url,
+                unpackers={**REVIEW_UNPACKERS, **STOCKTAKE_UNPACKERS},
+            ),
+            SqlAlchemyJournalQueries(database_url, dispatch_tables=tables),
         )
 
     return in_postgres
@@ -100,24 +116,41 @@ def dispatch(runner: str, remote_id: str, step: str = "dispatched") -> Any:
         "fingerprint": "f1",
         "remote_id": remote_id,
         "budget": {"usd": 2.0},
+        # A stocktake's dispatch names its layer and range; a review's
+        # ignores them.
+        "layer": "weekly",
+        "base_sha": "b" * 40,
+        "head_sha": "a" * 40,
     }
 
 
 def test_a_pull_requests_entries_of_one_type_come_back_oldest_first(
     make: Make,
 ) -> None:
-    recording, queries = make((AGENT_DISPATCHED,))
+    recording, queries = make(AGENT)
     name = unique("pear-tree")
     repo = f"orchard/{name}"
-    later = entry(AGENT_DISPATCHED, {"n": 2}, repo=repo, day=3)
-    earlier = entry(AGENT_DISPATCHED, {"n": 1}, repo=repo, day=2)
+    runner = unique("hosted")
+    later = entry(AGENT_DISPATCHED, dispatch(runner, "s-2"), repo=repo, day=3)
+    earlier = entry(
+        AGENT_DISPATCHED, dispatch(runner, "s-1"), repo=repo, day=2
+    )
     recording.append(
         [
             later,
             earlier,
             entry(PR_OBSERVED, {}, repo=repo),
-            entry(AGENT_DISPATCHED, {}, repo=repo, pr_number=8),
-            entry(AGENT_DISPATCHED, {}, repo=f"orchard/{unique('other')}"),
+            entry(
+                AGENT_DISPATCHED,
+                dispatch(runner, "s-3"),
+                repo=repo,
+                pr_number=8,
+            ),
+            entry(
+                AGENT_DISPATCHED,
+                dispatch(runner, "s-4"),
+                repo=f"orchard/{unique('other')}",
+            ),
         ]
     )
 
@@ -126,14 +159,13 @@ def test_a_pull_requests_entries_of_one_type_come_back_oldest_first(
     )
 
     assert [e.event_id for e in found] == [earlier.event_id, later.event_id]
-    assert found[0].payload == {"n": 1}
     assert found[0].commit_sha == "a" * 40
 
 
 def test_a_runners_work_is_matched_to_the_run_that_dispatched_it(
     make: Make,
 ) -> None:
-    recording, queries = make((AGENT_DISPATCHED,))
+    recording, queries = make(AGENT)
     runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
     recording.append(
         [entry(AGENT_DISPATCHED, dispatch(runner, "s-1"), repo=repo)]
@@ -152,7 +184,7 @@ def test_a_runners_work_is_matched_to_the_run_that_dispatched_it(
 
 
 def test_an_entry_that_started_no_run_is_not_a_match(make: Make) -> None:
-    recording, queries = make((AGENT_DISPATCHED,))
+    recording, queries = make(AGENT)
     runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
     recording.append(
         [
@@ -170,8 +202,8 @@ def test_an_entry_that_started_no_run_is_not_a_match(make: Make) -> None:
 def test_a_dispatch_under_another_fact_matches_only_if_it_is_named(
     make: Make,
 ) -> None:
-    recording, named = make((AGENT_DISPATCHED, "stocktake.dispatched"))
-    _, not_named = make((AGENT_DISPATCHED,))
+    recording, named = make(BOTH)
+    _, not_named = make(AGENT)
     runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
     written = entry("stocktake.dispatched", dispatch(runner, "s-1"), repo=repo)
     recording.append([written])
@@ -189,7 +221,7 @@ def test_a_dispatch_under_another_fact_matches_only_if_it_is_named(
 def test_every_dispatch_that_started_a_run_comes_back_oldest_first(
     make: Make,
 ) -> None:
-    recording, queries = make((AGENT_DISPATCHED, "stocktake.dispatched"))
+    recording, queries = make(BOTH)
     runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
     recording.append(
         [

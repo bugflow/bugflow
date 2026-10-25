@@ -54,14 +54,30 @@ class DispatchedWork:
     handle: AgentHandle
 
 
-def dispatched_from_entry(entry: JournalEntry) -> DispatchedWork:
-    """Build a ``DispatchedWork`` from the journal entry of a dispatch.
+def dispatched_from(
+    entry: JournalEntry,
+    *,
+    agent_id: str | None,
+    runner: str | None,
+    fingerprint: str | None,
+    remote_id: str | None,
+    budget_usd: float | None,
+    budget_turns: float | None,
+) -> DispatchedWork:
+    """Build a ``DispatchedWork`` from the envelope of a dispatch and the
+    columns of its row (ADR 007).
 
     Every journal adapter uses this one function, so that they all read
-    the entry's payload the same way.
+    a dispatch the same way: the Postgres adapter from the dispatch's
+    table, the in-memory one from the payload it keeps.
     """
-    payload: dict[str, Any] = entry.payload
-    budget = payload.get("budget")
+    # Only the limits recorded are passed. One not recorded takes the
+    # budget's default, not zero.
+    limits = {
+        key: float(value)
+        for key, value in (("usd", budget_usd), ("turns", budget_turns))
+        if value is not None
+    }
     return DispatchedWork(
         correlation=Correlation(
             workflow_id=entry.workflow_id, run_id=entry.run_id
@@ -72,23 +88,36 @@ def dispatched_from_entry(entry: JournalEntry) -> DispatchedWork:
         pr_number=entry.pr_number,
         commit_sha=entry.commit_sha,
         corpus_version=entry.corpus_version,
-        agent_id=str(payload.get("agent_id") or ""),
+        agent_id=agent_id or "",
         handle=AgentHandle(
-            runner=str(payload.get("runner") or ""),
-            fingerprint=str(payload.get("fingerprint") or ""),
-            remote_id=str(payload.get("remote_id") or ""),
-            # Only the limits the payload names are passed. One it does
-            # not name takes the budget's default, not zero.
-            budget=(
-                Budget(
-                    **{
-                        key: float(value)
-                        for key, value in budget.items()
-                        if key in ("usd", "turns")
-                    }
-                )
-                if isinstance(budget, dict) and budget
-                else None
-            ),
+            runner=runner or "",
+            fingerprint=fingerprint or "",
+            remote_id=remote_id or "",
+            budget=Budget(**limits) if limits else None,
         ),
     )
+
+
+def dispatched_from_entry(entry: JournalEntry) -> DispatchedWork:
+    """Build a ``DispatchedWork`` from the payload a dispatch's entry was
+    written with, as the in-memory journal keeps it."""
+    payload: dict[str, Any] = entry.payload
+    budget = payload.get("budget")
+    limits = budget if isinstance(budget, dict) else {}
+    return dispatched_from(
+        entry,
+        agent_id=_text(payload.get("agent_id")),
+        runner=_text(payload.get("runner")),
+        fingerprint=_text(payload.get("fingerprint")),
+        remote_id=_text(payload.get("remote_id")),
+        budget_usd=_number(limits.get("usd")),
+        budget_turns=_number(limits.get("turns")),
+    )
+
+
+def _text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def _number(value: object) -> float | None:
+    return None if value is None else float(value)  # type: ignore[arg-type]

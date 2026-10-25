@@ -3,7 +3,14 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.journal_facts import (
+    JudgeInvocation,
+    ModelCall,
+    PolicyCheck,
+    policy_of,
+)
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
@@ -54,7 +61,8 @@ class StoredReviewEvent:
     that a fact belongs to an individual policy in that deployment.
     """
 
-    entry: JournalEntry
+    #: The entry, with the review fact its typed table holds (ADR 007).
+    entry: ReviewEntry
     recorded_at: datetime | None = None
     policy_repository: str | None = None
     policy_commit: str | None = None
@@ -113,26 +121,19 @@ def recorded_model_cost(
     events: tuple[StoredReviewEvent, ...], policy_id: str | None = None
 ) -> RecordedModelCost:
     calls = tuple(
-        event.entry
+        (event.entry, event.entry.fact)
         for event in events
-        if event.entry.event_type == "llm.called"
-        and (
-            policy_id is None
-            or event.entry.payload.get("policy_id") == policy_id
-        )
+        if isinstance(event.entry.fact, ModelCall)
+        and (policy_id is None or event.entry.fact.policy_id == policy_id)
     )
-    costs = tuple(call.payload.get("cost_nanodollars") for call in calls)
+    costs = tuple(call.cost_nanodollars for _, call in calls)
     priced = tuple(cost for cost in costs if type(cost) is int)
     return RecordedModelCost(
         nanodollars=sum(priced),
         priced_calls=len(priced),
         unpriced_calls=len(calls) - len(priced),
-        event_ids=tuple(str(call.event_id) for call in calls),
-        call_ids=tuple(
-            str(call.payload["call_id"])
-            for call in calls
-            if call.payload.get("call_id") is not None
-        ),
+        event_ids=tuple(str(entry.event_id) for entry, _ in calls),
+        call_ids=tuple(call.call_id for _, call in calls),
     )
 
 
@@ -143,33 +144,33 @@ def observed_review_run(
     first = events[0].entry
     assert first.pr_number is not None
     policy_ids = {
-        str(event.entry.payload["policy_id"])
+        policy
         for event in events
-        if event.entry.payload.get("policy_id") is not None
+        if (policy := policy_of(event.entry.fact)) is not None
     }
     if policy_id is not None:
         policy_ids.add(policy_id)
     policies = []
     for name in sorted(policy_ids):
         judgements = tuple(
-            event.entry
+            (event.entry, event.entry.fact)
             for event in events
-            if event.entry.event_type == "judge.invoked"
-            and event.entry.payload.get("policy_id") == name
+            if isinstance(event.entry.fact, JudgeInvocation)
+            and event.entry.fact.policy_id == name
         )
         checked = tuple(
             event.entry
             for event in events
-            if event.entry.event_type == "policy.checked"
-            and event.entry.payload.get("policy_id") == name
+            if isinstance(event.entry.fact, PolicyCheck)
+            and event.entry.fact.policy_id == name
         )
-        statuses = tuple(
-            str(j.payload.get("status") or "") for j in judgements
-        )
+        statuses = tuple(judgement.status or "" for _, judgement in judgements)
         policies.append(
             ObservedPolicy(
                 policy_id=name,
-                judgement_event_ids=tuple(str(j.event_id) for j in judgements),
+                judgement_event_ids=tuple(
+                    str(entry.event_id) for entry, _ in judgements
+                ),
                 judgement_statuses=statuses,
                 checked_event_ids=tuple(
                     str(check.event_id) for check in checked
@@ -179,8 +180,8 @@ def observed_review_run(
                 raised_event_ids=tuple(
                     str(event.entry.event_id)
                     for event in events
-                    if event.entry.event_type == "finding.raised"
-                    and event.entry.payload.get("policy_id") == name
+                    if isinstance(event.entry.fact, Finding)
+                    and event.entry.fact.policy_id == name
                 ),
                 model_cost=recorded_model_cost(events, name),
             )
@@ -191,11 +192,11 @@ def observed_review_run(
         named: tuple[tuple[str, object], ...] = ()
         if entry.event_type == "pr.observed":
             named = (("snapshot", event.snapshot_id),)
-        elif entry.event_type == "judge.invoked":
-            identity = entry.payload.get("identity") or {}
+        elif isinstance(entry.fact, JudgeInvocation):
+            identity = entry.fact.identity
             named = (
-                ("snapshot", identity.get("input_hash")),
-                ("exchange", identity.get("exchange_id")),
+                ("snapshot", identity.input_hash if identity else None),
+                ("exchange", identity.exchange_id if identity else None),
             )
         for kind, content_id in named:
             references.append(

@@ -1,6 +1,10 @@
 """The review context's questions of the journal, answered from the
 journal's Postgres table.
 
+An entry is read from the view with the fact its typed table holds (ADR
+007), so a reader takes the fact from the entry and not from a payload
+the review journal no longer carries.
+
 This class only reads. Writing to the journal is done by
 ``bugflow.shared.infrastructure.sqlalchemy_journal.SqlAlchemyJournal``.
 """
@@ -20,6 +24,8 @@ from bugflow.review.domain.models.history import (
     StoredReviewEvent,
 )
 from bugflow.review.domain.models.observation import Observation
+from bugflow.review.domain.models.review_entry import ReviewEntry, with_fact
+from bugflow.review.infrastructure.sqlalchemy_review_facts import read_facts
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.dismissal import Dismissal
@@ -84,7 +90,7 @@ class SqlAlchemyJournalQueries:
             engine_url(database_url), pool_pre_ping=True
         )
 
-    def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
+    def entries_for_run(self, correlation: Correlation) -> list[ReviewEntry]:
         return self._entries(
             sa.select(*ENTRY_COLUMNS)
             .where(
@@ -163,6 +169,7 @@ class SqlAlchemyJournalQueries:
                 journal.c.event_id,
             )
         )
+        selected = sa.select(journal.c.event_id).where(*predicates)
         with (
             self._engine.connect().execution_options(
                 isolation_level="REPEATABLE READ"
@@ -182,9 +189,12 @@ class SqlAlchemyJournalQueries:
             if byte_count > limits.max_bytes:
                 raise HistoryTooLargeError("history exceeds the byte limit")
             rows = connection.execute(query).mappings().all()
+            facts = read_facts(connection, selected)
         return tuple(
             StoredReviewEvent(
-                entry=from_columns(JournalEntry, row),
+                entry=with_fact(
+                    from_columns(JournalEntry, row), facts.get(row["event_id"])
+                ),
                 recorded_at=row["recorded_at"],
                 policy_repository=row["policy_repository"],
                 policy_commit=row["policy_commit"],
@@ -224,7 +234,7 @@ class SqlAlchemyJournalQueries:
 
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return self._entries(
             sa.select(*ENTRY_COLUMNS)
             .where(
@@ -238,7 +248,7 @@ class SqlAlchemyJournalQueries:
 
     def events_for_repository(
         self, forge: str, repo: str, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return self._entries(
             sa.select(*ENTRY_COLUMNS)
             .where(
@@ -310,7 +320,10 @@ class SqlAlchemyJournalQueries:
 
     def _entries(
         self, query: sa.Select[tuple[object, ...]]
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
+        """The entries ``query`` selects from the view, each with its
+        origin and the fact its typed table holds."""
+        selected = query.with_only_columns(journal.c.event_id).order_by(None)
         associations = repository_associations
         query = query.add_columns(associations.c.origin).select_from(
             journal.outerjoin(
@@ -324,4 +337,10 @@ class SqlAlchemyJournalQueries:
         )
         with self._engine.connect() as connection:
             rows = connection.execute(query).mappings().all()
-        return [from_columns(JournalEntry, row) for row in rows]
+            facts = read_facts(connection, selected)
+        return [
+            with_fact(
+                from_columns(JournalEntry, row), facts.get(row["event_id"])
+            )
+            for row in rows
+        ]

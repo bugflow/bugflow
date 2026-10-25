@@ -11,11 +11,14 @@ from bugflow.review.domain.models.history import (
     HistoryScope,
     StoredReviewEvent,
 )
+from bugflow.review.domain.models.journal_facts import ReviewAction
+from bugflow.review.domain.models.review_entry import from_payload
 from bugflow.review.dtos.read_review_record import (
     ReadReviewHistoryRequest,
     ReadReviewHistoryResponse,
 )
 from bugflow.review.infrastructure.in_memory_history import InMemoryHistory
+from bugflow.review.tests.payloads import whole
 from bugflow.review.usecases.read_review_record import ReadReviewHistoryUseCase
 from bugflow.shared.domain.models.journal_entry import JournalEntry, event_id
 from bugflow.shared.domain.values.correlation import Correlation
@@ -37,20 +40,22 @@ def fact(
     correlation = Correlation(workflow_id="evaluation", run_id=run)
     return StoredReviewEvent(
         snapshot_id=snapshot_id,
-        entry=JournalEntry(
-            event_id=event_id(correlation, kind, key),
-            occurred_at=NOW,
-            event_type=kind,
-            forge="github",
-            repo=repo,
-            pr_number=pr,
-            commit_sha="same-head",
-            corpus_version="corpus",
-            workflow_id="evaluation",
-            run_id=run,
-            payload=payload,
-            agent_id="reviewer",
-            build="build",
+        entry=from_payload(
+            JournalEntry(
+                event_id=event_id(correlation, kind, key),
+                occurred_at=NOW,
+                event_type=kind,
+                forge="github",
+                repo=repo,
+                pr_number=pr,
+                commit_sha="same-head",
+                corpus_version="corpus",
+                workflow_id="evaluation",
+                run_id=run,
+                payload=whole(kind, **payload),
+                agent_id="reviewer",
+                build="build",
+            )
         ),
         recorded_at=NOW,
         policy_repository="policies/repo",
@@ -204,7 +209,8 @@ def test_observations_and_publication_flags_survive_policy_selection() -> None:
         for e in result.runs[0].events
         if e.entry.event_type == "action.taken"
     )
-    assert action.payload == {"performed": False, "status": "observe"}
+    assert isinstance(action.fact, ReviewAction)
+    assert (action.fact.performed, action.fact.status) == (False, "observe")
 
 
 def test_references_do_not_claim_content_exists_or_has_been_deleted() -> None:

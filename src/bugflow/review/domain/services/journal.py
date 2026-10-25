@@ -11,7 +11,7 @@ from bugflow.review.domain.models.history import (
     StoredReviewEvent,
 )
 from bugflow.review.domain.models.observation import Observation
-from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.dismissal import Dismissal
@@ -31,9 +31,12 @@ class HistoryService(Protocol):
 
 
 class JournalService(RecordingService, Protocol):
-    """Read entries with their associated origin, or None if unresolved."""
+    """Read entries with their associated origin, or None if unresolved.
 
-    def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
+    An entry comes with the fact its typed table holds (ADR 007), or
+    none for a type this context has no table for."""
+
+    def entries_for_run(self, correlation: Correlation) -> list[ReviewEntry]:
         """Return every entry one workflow run recorded, oldest first."""
         ...
 
@@ -48,14 +51,14 @@ class JournalService(RecordingService, Protocol):
 
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         """Return every entry of this type recorded for the pull
         request, oldest first."""
         ...
 
     def events_for_repository(
         self, forge: str, repo: str, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         """Return every entry of this type recorded for the repository,
         oldest first, whether or not it belongs to a pull request. A
         stocktake reads these."""
