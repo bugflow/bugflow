@@ -13,6 +13,7 @@ from bugflow.apps.worker.tests.activities import (
     FakeDoctrine,
     FixedClock,
 )
+from bugflow.apps.worker.tests.journal import ActivityJournal
 from bugflow.forge.domain.errors import ForgeRejectedError
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
 from bugflow.forge.infrastructure.in_memory_snapshots import (
@@ -24,7 +25,6 @@ from bugflow.review.dtos.collect_at_close import CollectAtCloseRequest
 from bugflow.review.infrastructure.in_memory_judge_archive import (
     InMemoryJudgeArchive,
 )
-from bugflow.review.tests.journal import QueryableJournal
 from bugflow.review.tests.payloads import whole
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -63,7 +63,7 @@ class Conversing:
 
 
 def activities(
-    journal: QueryableJournal, conversation: Conversing | None
+    journal: ActivityJournal, conversation: Conversing | None
 ) -> ReviewActivities:
     return ReviewActivities(
         forge=NoForge(),  # type: ignore[arg-type]
@@ -77,7 +77,7 @@ def activities(
     )
 
 
-def posted(journal: QueryableJournal) -> None:
+def posted(journal: ActivityJournal) -> None:
     """Record that an evaluation posted a comment on the pull request."""
     evaluation = Correlation(
         workflow_id=f"{CLOSING.workflow_id}/evaluation/d", run_id="e"
@@ -102,7 +102,7 @@ def posted(journal: QueryableJournal) -> None:
 def test_the_activity_records_what_the_forge_says_of_the_conversation() -> (
     None
 ):
-    journal = QueryableJournal()
+    journal = ActivityJournal()
     posted(journal)
 
     response = activities(journal, Conversing()).collect_at_close(
@@ -120,7 +120,7 @@ def test_the_activity_records_what_the_forge_says_of_the_conversation() -> (
 
 
 def test_a_forge_that_refuses_fails_the_activity_for_good() -> None:
-    journal = QueryableJournal()
+    journal = ActivityJournal()
     posted(journal)
     refusing = activities(journal, Conversing(ForgeRejectedError("403")))
 
@@ -133,7 +133,7 @@ def test_a_forge_that_refuses_fails_the_activity_for_good() -> None:
 
 
 def test_no_forge_that_reads_a_conversation_fails_it_for_good_too() -> None:
-    built = activities(QueryableJournal(), None)
+    built = activities(ActivityJournal(), None)
 
     with pytest.raises(ApplicationError) as raised:
         built.collect_at_close(
@@ -148,7 +148,7 @@ def test_no_forge_that_reads_a_conversation_fails_it_for_good_too() -> None:
 def test_provenance_refusal_is_not_automatically_retried(
     origin: str | None,
 ) -> None:
-    journal = QueryableJournal()
+    journal = ActivityJournal()
     held = Recorder(REF, CLOSING, None, AT, origin=origin).entry(
         "delivery.received", "delivery", {}
     )

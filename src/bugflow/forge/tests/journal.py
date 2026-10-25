@@ -3,6 +3,7 @@ context asks of it."""
 
 from datetime import datetime
 
+from bugflow.forge.domain.models.judgement import RecordedJudgement
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
@@ -11,6 +12,21 @@ from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 class QueryableJournal(InMemoryJournal):
     """The in-memory journal, with the three queries declared in
     ``forge/domain/services/journal_history.py``."""
+
+    def judgements_for_pull_request(
+        self, ref: PullRequestRef
+    ) -> list[RecordedJudgement]:
+        """From the payloads this journal keeps, as the Postgres adapter
+        reads them from the judgement's table."""
+        return [
+            RecordedJudgement(
+                policy_id=e.payload.get("policy_id"),
+                input_hash=(e.payload.get("identity") or {}).get("input_hash"),
+                status=str(e.payload.get("status") or ""),
+                corpus_version=e.corpus_version,
+            )
+            for e in self.events_for_pull_request(ref, "judge.invoked")
+        ]
 
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str

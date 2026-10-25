@@ -8,10 +8,10 @@ from uuid import uuid4
 import pytest
 
 from bugflow.apps.shared.journals import review_journal
+from bugflow.apps.worker.tests.journal import ActivityJournal
 from bugflow.review.domain.models.grading import Grading
 from bugflow.review.dtos.review_range import CollectRangeReviewRequest
 from bugflow.review.dtos.take_stock import TakeStockRequest
-from bugflow.review.tests.journal import QueryableJournal
 from bugflow.review.tests.test_a_stocktake_reviews_its_range import (
     AT,
     RUN,
@@ -42,7 +42,7 @@ OTHER = f"other.test/{REPO}"
 @pytest.fixture(params=["memory", "postgres"])
 def store(request: pytest.FixtureRequest) -> Any:
     if request.param == "memory":
-        journal = QueryableJournal()
+        journal = ActivityJournal()
         return journal, journal._associations
     url = request.getfixturevalue("database_url")
     return review_journal(url, None), SqlAlchemyRepositoryAssociations(url)

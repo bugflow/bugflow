@@ -21,6 +21,7 @@ from bugflow.apps.worker.tests.activities import (
     NarrowingJudge,
     at_attempt,
 )
+from bugflow.apps.worker.tests.journal import ActivityJournal
 from bugflow.forge.domain.errors import ForgeRejectedError
 from bugflow.forge.domain.models.pull_request import PullRequestSnapshot
 from bugflow.forge.infrastructure.in_memory_snapshots import (
@@ -34,7 +35,6 @@ from bugflow.review.dtos.assess_policy import AssessPolicyRequest
 from bugflow.review.infrastructure.in_memory_judge_archive import (
     InMemoryJudgeArchive,
 )
-from bugflow.review.tests.journal import QueryableJournal
 
 DASH = "\u2014"
 DASHED = PullRequestSnapshot(
@@ -54,7 +54,7 @@ class Built:
 
     def __init__(self) -> None:
         self.judge = NarrowingJudge(("P-01",))
-        self.journal = QueryableJournal()
+        self.journal = ActivityJournal()
         self.snapshots = InMemorySnapshotStore()
         self.activities = ReviewActivities(
             forge=FailingForge(ForgeRejectedError("unused")),
