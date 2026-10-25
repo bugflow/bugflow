@@ -331,6 +331,9 @@ class ReviewActivities:
         agents: Mapping[str, tuple[str, ...]] | None = None,
         governance: GovernanceService | None = None,
         summaries: Mapping[str, str] | None = None,
+        # Where each reviewer's gnome publishes its pages, by reviewer
+        # id, which a comment links each clause it cites to.
+        sites: Mapping[str, str] | None = None,
         reviewers: Mapping[str, ReviewerSettings] | None = None,
         worktrees: WorkWorktreeService | None = None,
         # The runner a review is dispatched to. None, and no review is
@@ -482,6 +485,7 @@ class ReviewActivities:
             governance=governance,
             summaries=summaries,
             submissions=submissions,
+            sites=sites,
         )
         # Asked directly and not through a use case: whether a pull
         # request is still open is one call to the forge with no

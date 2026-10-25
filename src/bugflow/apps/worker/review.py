@@ -74,6 +74,7 @@ from bugflow.apps.worker.reviewer_judges import (
 from bugflow.apps.worker.reviewers import (
     Boundaries,
     ReviewerSettings,
+    clause_sites,
     corpus_of,
     dispatchable,
     governing_by_default,
@@ -408,6 +409,7 @@ def activities_from_environment(
             {runner.runner: runner.fingerprint} if runner else {},
         ),
         summaries=policy_summaries(reviewers.policies),
+        sites=clause_sites(agents),
         reviewers=dispatch,
         # The reviewers of every layer on a clock, so a stocktake
         # dispatches what its own layer holds. By the runner that was

@@ -29,7 +29,8 @@ holds a copy of each gnome at one commit.
 
 | Part | File | What it is |
 |---|---|---|
-| The heading, and the paragraph under it | `<reviewer>/doctrine/*.md` | One clause of the doctrine, by its id and name |
+| The clause a finding names | `<reviewer>/doctrine/*.md` | One clause of the doctrine, by its id and name |
+| Where the clause's name links to | `<reviewer>/manifest.md` | Its `site` line, the address the gnome publishes its pages at |
 | The finding | `<reviewer>/policies/<ID>-<name>.md` | The policy whose question the judge answered. Its header lists the clauses it may cite |
 | The grade | The same policy | Its instructions say what earns `warn` and what earns `fail`, and its `ceiling` caps the worst |
 | The words quoted | The pull request | The part the policy's `evidence` line names: the title, the description, the commits or the patches |
