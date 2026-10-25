@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0015"
+LAST = "0016"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -682,6 +682,83 @@ def test_a_stocktake_with_an_unknown_key_stops_the_script(
     )
     seed_before_keys(
         empty, _engine(empty), odd, run=False, table="stocktake_journal"
+    )
+
+    with pytest.raises(Exception, match="keys the inventory did not find"):
+        upgrade(empty)
+
+
+def test_the_policy_deploys_already_there_are_unpacked(empty: str) -> None:
+    """A deploy written before the typed table existed is unpacked by
+    the script that makes it, the replaced deployment flattened, and a
+    calibration, which a deployment writes, is left as it is."""
+    upgrade(empty)
+    downgrade(empty, "0015")
+    deployed = replace(
+        entry("deployed-before"),
+        event_type="policies.deployed",
+        payload={
+            "repository": "o/policies",
+            "commit": "def",
+            "content_hash": "h2",
+            "files": 13,
+            "sent_by": "deployer",
+            "replaced": {
+                "repository": "o/policies",
+                "commit": "abc",
+                "content_hash": "h1",
+            },
+        },
+    )
+    calibrated = replace(
+        entry("calibrated-before"),
+        event_type="policy.calibrated",
+        payload={"policy_id": "narrative", "fidelity": "whole"},
+    )
+    engine = _engine(empty)
+    for made in (deployed, calibrated):
+        seed_before_keys(
+            empty, engine, made, run=False, table="policy_journal"
+        )
+
+    upgrade(empty)
+
+    try:
+        with engine.connect() as connection:
+            deploy = connection.execute(
+                sa.text(
+                    "select commit, files, replaced_commit "
+                    "from policy_deploy where event_id = :id"
+                ),
+                {"id": deployed.event_id},
+            ).one()
+            deploys = connection.execute(
+                sa.text("select count(*) from policy_deploy")
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert tuple(deploy) == ("def", 13, "abc")
+    assert deploys == 1
+
+
+def test_a_deploy_with_an_unknown_key_stops_the_script(empty: str) -> None:
+    upgrade(empty)
+    downgrade(empty, "0015")
+    odd = replace(
+        entry("odd-deploy"),
+        event_type="policies.deployed",
+        payload={
+            "repository": "o/policies",
+            "commit": "abc",
+            "content_hash": "h1",
+            "files": 12,
+            "sent_by": "deployer",
+            "replaced": None,
+            "declared": 3,
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), odd, run=False, table="policy_journal"
     )
 
     with pytest.raises(Exception, match="keys the inventory did not find"):
