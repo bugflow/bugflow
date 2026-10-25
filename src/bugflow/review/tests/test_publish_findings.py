@@ -764,15 +764,13 @@ def cited(*findings: Finding) -> PublishFindingsRequest:
     return request(*findings).model_copy(update={"clauses": CLAUSES})
 
 
-def test_a_rule_is_stated_once_with_its_violations_under_it() -> None:
+def test_a_finding_quotes_the_passage_and_names_the_clause() -> None:
     body = publisher().execute(cited(NARRATION)).comment
+    assert "Descriptions describe the change" not in body
     assert (
-        "**Narrating yourself.** Descriptions describe the change, not the "
-        "process of arriving at it." in body
-    )
-    assert (
-        '- **Warning.** In the description: "measured and discarded"\\\n'
-        "  The text narrates false starts." in body
+        "<summary>Falls short of <b>Narrating yourself</b> in the "
+        "description.</summary>\n\n> measured and discarded\n\n"
+        "The text narrates false starts." in body
     )
     assert "RULE-19" not in body.split("-->", 1)[1]
 
@@ -790,12 +788,12 @@ def test_a_named_rule_is_named_and_an_unnamed_one_summarised() -> None:
         },
     )
     named = publish.execute(cited(NARRATION)).comment
-    assert "**Narrating yourself.**" in named
+    assert "<b>Narrating yourself</b>" in named
     unnamed = publish.execute(
         request(replace(NARRATION, clause="RULE-2"))
     ).comment
     assert (
-        "**The title and description read as an engineer wrote them.**"
+        "<b>The title and description read as an engineer wrote them</b>"
         in unnamed
     )
 
@@ -810,7 +808,7 @@ def dash(quote: str) -> Finding:
     )
 
 
-def test_one_fault_in_many_passages_is_said_once() -> None:
+def test_each_passage_is_folded_with_its_fault() -> None:
     body = (
         publisher()
         .execute(
@@ -827,9 +825,12 @@ def test_one_fault_in_many_passages_is_said_once() -> None:
         )
         .comment
     )
-    assert body.count("An em dash stands here") == 1
-    assert body.count("- **Warning.** In the description:") == 2
-    assert '"…yet — they need a calibration run against Haiku to…"' in body
+    assert body.count("An em dash stands here") == 2
+    assert (
+        body.count("<summary><b>Warning</b> in the description.</summary>")
+        == 2
+    )
+    assert "> …yet — they need a calibration run against Haiku to…\n" in body
 
 
 SNAPSHOT = "s" * 64
@@ -932,10 +933,10 @@ def test_the_rule_with_the_worst_violation_comes_first() -> None:
         NARRATION, clause="RULE-104", severity="fail", policy_id="Q-01"
     )
     body = publisher().execute(cited(NARRATION, again)).comment
-    assert body.index("**One reason.**") < body.index(
-        "**Narrating yourself.**"
+    assert body.index("<b>One reason</b>") < body.index(
+        "<b>Narrating yourself</b>"
     )
-    assert body.count('"measured and discarded"') == 2
+    assert body.count("> measured and discarded") == 2
 
 
 SAFETY = "safety"

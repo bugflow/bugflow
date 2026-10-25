@@ -5,6 +5,7 @@ from bugflow.review.domain.models.grading import author_note
 from bugflow.review.domain.models.review import ReviewNote
 from bugflow.review.domain.values.review_comments import (
     agent_comment,
+    clause_page,
     clean_comment,
     findings_comment,
     passage_of,
@@ -47,8 +48,22 @@ def test_a_passage_in_a_commit_says_which() -> None:
         [said('"Added it": Past tense.', subject='commit 1a2b3c4 "Added it"')],
         [],
         [said('"Added it": Past tense.')],
+        clauses=CLAUSES,
     )
-    assert 'In commit 1a2b3c4: "Added it"' in body
+    assert (
+        "<details><summary>Falls short of <b>No narration</b> in commit "
+        "1a2b3c4.</summary>\n\n> Added it\n\nPast tense.\n\n</details>"
+    ) in body
+
+
+def test_a_passage_with_no_clause_to_name_is_graded_alone() -> None:
+    finding = said("Past tense.", subject="1a2b3c4")
+    body = findings_comment(MARKER, "prose", [finding], [], [finding])
+    assert (
+        "<summary><b>Warning</b> in commit 1a2b3c4.</summary>\n\nPast tense."
+        in body
+    )
+    assert "RULE-19" not in body
 
 
 def test_the_first_line_counts_what_stands_and_what_is_new_follows() -> None:
@@ -111,16 +126,23 @@ CLAUSES = {
 }
 
 
-def test_a_rule_is_given_once_by_its_name_and_in_the_doctrines_words() -> None:
+def test_each_finding_is_folded_under_the_clause_it_breaks() -> None:
     one = said('"First we tried": Narrates.', subject='description "First"')
     two = said('"Then we found": Narrates.', subject='description "Then"')
     body = findings_comment(
         MARKER, "prose", [one, two], [], [one, two], clauses=CLAUSES
     )
-    assert body.count("**No narration.** Say what the change does.") == 1
+    assert "Say what the change does" not in body
     assert "RULE-19" not in body
-    assert 'In the description: "First we tried"\\\n  Narrates.' in body
-    assert 'In the description: "Then we found"\n' in body
+    assert (
+        body.count(
+            "<summary>Falls short of <b>No narration</b> in the description."
+            "</summary>"
+        )
+        == 2
+    )
+    assert "> First we tried\n\nNarrates.\n\n</details>" in body
+    assert "> Then we found\n\nNarrates.\n\n</details>" in body
 
 
 def test_a_clause_with_no_name_takes_the_policys_summary() -> None:
@@ -141,8 +163,11 @@ def test_a_clause_with_no_name_takes_the_policys_summary() -> None:
         clauses=CLAUSES,
     )
     assert "**Prose review:** 1 failure." in body
-    assert "**A useful description.** Keep it short." in body
-    assert "- **Failure.** The description runs to four screens." in body
+    assert "Keep it short" not in body
+    assert (
+        "<summary>Violates <b>A useful description</b> in the pull request."
+        "</summary>\n\nThe description runs to four screens." in body
+    )
 
 
 def test_a_checked_passage_loses_its_cut_off_first_and_last_words() -> None:
@@ -155,12 +180,81 @@ def test_a_checked_passage_loses_its_cut_off_first_and_last_words() -> None:
         message='"ller It polls now and then aga": Narrates.',
         judged_by="a-model",
     )
-    assert '"…It polls now and then…"' in findings_comment(
+    assert "> …It polls now and then…\n" in findings_comment(
         MARKER, "prose", [checked], [], [checked]
     )
-    assert '"ller It polls now and then aga"' in findings_comment(
+    assert "> ller It polls now and then aga\n" in findings_comment(
         MARKER, "prose", [judged], [], [judged]
     )
+
+
+SITE = "https://example.github.io/prose/"
+
+
+def test_a_finding_quotes_the_passage_then_links_the_clause_it_breaks() -> (
+    None
+):
+    finding = Finding(
+        policy_id="P-01",
+        severity="fail",
+        clause="RULE-19",
+        subject='description "First we tried"',
+        message='"First we tried": Narrates the discovery.',
+        judged_by="a-model",
+    )
+    body = findings_comment(
+        MARKER, "prose", [finding], [], [finding], clauses=CLAUSES, site=SITE
+    )
+    assert (
+        '<summary>Violates <a href="https://example.github.io/prose/doctrine/'
+        '#RULE-19">No narration</a> in the description.</summary>\n\n'
+        "> First we tried\n\nNarrates the discovery.\n"
+    ) in body
+
+
+def test_the_clauses_page_is_the_doctrines_anchored_by_its_id() -> None:
+    assert (
+        clause_page("https://example.github.io/prose", "RULE-19")
+        == "https://example.github.io/prose/doctrine/#RULE-19"
+    )
+    assert clause_page("", "RULE-19") == ""
+
+
+def test_a_passage_of_several_lines_is_quoted_whole() -> None:
+    finding = said('"First line\nsecond line": Two lines.')
+    body = findings_comment(MARKER, "prose", [finding], [], [finding])
+    assert "> First line\n> second line\n\nTwo lines." in body
+
+
+def test_the_severity_is_the_verb() -> None:
+    def graded(severity: str) -> Finding:
+        return Finding(
+            policy_id="P-01",
+            severity=severity,  # type: ignore[arg-type]
+            clause="RULE-19",
+            subject="pull request",
+            message="So.",
+        )
+
+    for severity, verb in (
+        ("fail", "Violates"),
+        ("warn", "Falls short of"),
+        ("info", "Bears on"),
+    ):
+        finding = graded(severity)
+        body = findings_comment(
+            MARKER, "prose", [finding], [], [finding], clauses=CLAUSES
+        )
+        assert f"{verb} <b>No narration</b> in the pull request." in body
+
+
+def test_a_passage_in_the_title_says_so() -> None:
+    finding = said('"Fixes stuff": Vague.', subject='title "Fixes stuff"')
+    body = findings_comment(
+        MARKER, "prose", [finding], [], [finding], clauses=CLAUSES
+    )
+    assert "Falls short of <b>No narration</b> in the title." in body
+    assert "> Fixes stuff\n\nVague." in body
 
 
 def test_a_review_that_changed_while_the_pull_request_did_not_says_so() -> (
