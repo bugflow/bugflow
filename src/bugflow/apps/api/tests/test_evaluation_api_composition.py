@@ -17,9 +17,13 @@ from bugflow.forge.domain.models.pull_request import (
     CommitSnapshot,
     PullRequestSnapshot,
 )
+from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
+    UNPACKERS as FORGE_UNPACKERS,
+)
 from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
     SqlAlchemySnapshotStore,
 )
+from bugflow.forge.tests.payloads import observed
 from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.review.infrastructure.sqlalchemy_judge_archive import (
     SqlAlchemyJudgeArchive,
@@ -62,7 +66,9 @@ def contributor_headers() -> dict[str, str]:
 def seeded(database_url: str) -> str:
     snapshots = SqlAlchemySnapshotStore(database_url)
     archive = SqlAlchemyJudgeArchive(database_url)
-    journal = SqlAlchemyJournal(database_url, build="b" * 40)
+    journal = SqlAlchemyJournal(
+        database_url, build="b" * 40, unpackers=FORGE_UNPACKERS
+    )
     for number, email in [(7, ALIAS), (8, "somebody-else@commits.example")]:
         ref = PullRequestRef(owner="owner", repo="repo", number=number)
         snapshot = snapshots.put(
@@ -97,9 +103,7 @@ def seeded(database_url: str) -> str:
         journal.append(
             [
                 recorder.entry(
-                    "pr.observed",
-                    "snapshot",
-                    {"snapshot_id": snapshot.snapshot_id},
+                    "pr.observed", "snapshot", observed(snapshot.snapshot_id)
                 ),
                 recorder.entry(
                     "judge.invoked",

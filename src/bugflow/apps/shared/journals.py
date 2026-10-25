@@ -31,6 +31,7 @@ from bugflow.method.infrastructure.deployment_watch import DeployedFrom
 from bugflow.method.infrastructure.sqlalchemy_method_facts import (
     UNPACKERS as METHOD_UNPACKERS,
 )
+from bugflow.review.domain.models.observation import Observation
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries as ReviewJournalQueries,
 )
@@ -42,6 +43,7 @@ from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
 )
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
+from bugflow.shared.domain.values.dismissal import Dismissal
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     SqlAlchemyJournal,
@@ -183,6 +185,16 @@ class ReviewJournal:
         self, forge: str, repo: str, event_type: str
     ) -> list[JournalEntry]:
         return self._queries.events_for_repository(forge, repo, event_type)
+
+    def observations_for_pull_request(
+        self, ref: PullRequestRef, origin: str | None = None
+    ) -> list[Observation]:
+        return self._queries.observations_for_pull_request(ref, origin)
+
+    def dismissals_for_pull_request(
+        self, ref: PullRequestRef, origin: str | None = None
+    ) -> list[Dismissal]:
+        return self._queries.dismissals_for_pull_request(ref, origin)
 
 
 def review_journal(

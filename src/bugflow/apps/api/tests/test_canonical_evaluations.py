@@ -30,10 +30,14 @@ from bugflow.forge.dtos.observe_pull_request import ObservePullRequestRequest
 from bugflow.forge.infrastructure.in_memory_snapshots import (
     InMemorySnapshotStore,
 )
+from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
+    UNPACKERS as FORGE_UNPACKERS,
+)
 from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
     SqlAlchemySnapshotStore,
 )
 from bugflow.forge.tests.journal import QueryableJournal
+from bugflow.forge.tests.payloads import observed, received
 from bugflow.forge.tests.test_observe_pull_request import Clock, Regime
 from bugflow.forge.usecases.observe_pull_request import (
     ObservePullRequestUseCase,
@@ -92,7 +96,13 @@ class Reading:
             if database_url
             else InMemoryHistory(associations=self.associations)
         )
-        self.writer = SqlAlchemyJournal(database_url) if database_url else None
+        # The forge's facts are unpacked as they are written, as every
+        # program writes them, so the reader finds an observation's row.
+        self.writer = (
+            SqlAlchemyJournal(database_url, unpackers=FORGE_UNPACKERS)
+            if database_url
+            else None
+        )
         self.access = ContributionEvaluationAccess(
             "issuer",
             "admin",
@@ -153,7 +163,7 @@ class Reading:
             entry=Recorder(ref, run, "build", NOW).entry(
                 "pr.observed",
                 marker,
-                {"snapshot_id": cited_snapshot or snapshot.snapshot_id},
+                observed(cited_snapshot or snapshot.snapshot_id),
             )
         )
         if self.writer is not None:
@@ -520,7 +530,7 @@ def test_observed_evaluation_is_canonical_without_manual_mapping(
         Correlation(workflow_id="delivery", run_id="delivery-run"),
         None,
         NOW,
-    ).entry("delivery.received", "delivery", {})
+    ).entry("delivery.received", "delivery", received("delivery"))
     writer.append([delivery])
     if isinstance(writer, InMemoryJournal):
         assert isinstance(reading.history, InMemoryHistory)
