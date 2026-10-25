@@ -26,6 +26,11 @@ from bugflow.forge.domain.models.polling import (
     PolledPullRequest,
 )
 from bugflow.forge.infrastructure.signatures import digest
+from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
+    delivery,
+    finding_dismissal,
+    pull_request_merge,
+)
 from bugflow.forge.infrastructure.webhook_sink import SignedWebhookSink
 from bugflow.forge.tests.journal import QueryableJournal
 from bugflow.forge.usecases.poll_pull_requests import (
@@ -83,18 +88,25 @@ def test_delivery_facts_are_associated_together(
     response = client.post("/webhooks/github", content=body, headers=headers)
     assert response.status_code == 202
     if backend == "postgres":
-        from bugflow.shared.infrastructure.sqlalchemy_journal import (
-            journal as table,
-        )
-
         engine = sa.create_engine(
             engine_url(request.getfixturevalue("database_url"))
         )
+        # The delivery's id is a column of each fact's own table (ADR
+        # 007): the delivery's, and the merge's or the dismissal's.
         with engine.connect() as connection:
             ids = (
                 connection.execute(
-                    sa.select(table.c.event_id).where(
-                        table.c.payload["delivery_id"].astext == delivery_id
+                    sa.union_all(
+                        *(
+                            sa.select(table.c.event_id).where(
+                                table.c.delivery_id == delivery_id
+                            )
+                            for table in (
+                                delivery,
+                                pull_request_merge,
+                                finding_dismissal,
+                            )
+                        )
                     )
                 )
                 .scalars()

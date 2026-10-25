@@ -100,25 +100,25 @@ def test_observation_origin_applies_to_later_records_and_retries(
         assert (
             str(associations.origin_for("journal", str(entry.event_id))) == ONE
         )
-    # Existing event ids and payloads survive retries, including legacy ones.
-    writer.append([replace(observed, origin=None, payload={"changed": True})])
+    # An existing event's row survives a retry, a legacy one included.
+    writer.append([replace(observed, origin=None, commit_sha="changed")])
     if isinstance(writer, InMemoryJournal):
         held = next(
             entry
             for entry in writer.entries
             if entry.event_id == observed.event_id
         )
-        assert held.payload == observed.payload
+        assert held.commit_sha == observed.commit_sha
         assert held.origin is None
     else:
         with writer._engine.connect() as connection:
             assert (
                 connection.execute(
-                    sa.select(journal.c.payload).where(
+                    sa.select(journal.c.commit_sha).where(
                         journal.c.event_id == observed.event_id
                     )
                 ).scalar_one()
-                == observed.payload
+                == observed.commit_sha
             )
 
 

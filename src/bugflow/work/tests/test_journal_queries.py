@@ -109,20 +109,20 @@ def test_a_pull_requests_entries_of_one_type_come_back_oldest_first(
     recording, queries = make((AGENT_DISPATCHED,))
     name = unique("pear-tree")
     repo = f"orchard/{name}"
-    later = entry(PR_OBSERVED, {"n": 2}, repo=repo, day=3)
-    earlier = entry(PR_OBSERVED, {"n": 1}, repo=repo, day=2)
+    later = entry(AGENT_DISPATCHED, {"n": 2}, repo=repo, day=3)
+    earlier = entry(AGENT_DISPATCHED, {"n": 1}, repo=repo, day=2)
     recording.append(
         [
             later,
             earlier,
-            entry(AGENT_DISPATCHED, {}, repo=repo),
-            entry(PR_OBSERVED, {}, repo=repo, pr_number=8),
-            entry(PR_OBSERVED, {}, repo=f"orchard/{unique('other')}"),
+            entry(PR_OBSERVED, {}, repo=repo),
+            entry(AGENT_DISPATCHED, {}, repo=repo, pr_number=8),
+            entry(AGENT_DISPATCHED, {}, repo=f"orchard/{unique('other')}"),
         ]
     )
 
     found = queries.events_for_pull_request(
-        PullRequestRef(owner="orchard", repo=name, number=7), PR_OBSERVED
+        PullRequestRef(owner="orchard", repo=name, number=7), AGENT_DISPATCHED
     )
 
     assert [e.event_id for e in found] == [earlier.event_id, later.event_id]

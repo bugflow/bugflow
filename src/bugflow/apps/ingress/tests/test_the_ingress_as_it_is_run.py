@@ -27,6 +27,7 @@ from bugflow.apps.ingress.ingress import (
 )
 from bugflow.apps.shared.temporal import TemporalSettings
 from bugflow.apps.worker.pull_request import DEBOUNCE
+from bugflow.forge.infrastructure.sqlalchemy_forge_facts import delivery
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.sqlalchemy_journal import journal
 
@@ -136,9 +137,13 @@ def test_a_delivery_it_does_nothing_with_is_journalled_with_the_build(
         with engine.connect() as connection:
             rows = list(
                 connection.execute(
-                    sa.select(journal.c.event_type, journal.c.build).where(
-                        journal.c.payload["delivery_id"].astext == "d-nothing"
+                    sa.select(journal.c.event_type, journal.c.build)
+                    .select_from(
+                        journal.join(
+                            delivery, delivery.c.event_id == journal.c.event_id
+                        )
                     )
+                    .where(delivery.c.delivery_id == "d-nothing")
                 )
             )
     finally:

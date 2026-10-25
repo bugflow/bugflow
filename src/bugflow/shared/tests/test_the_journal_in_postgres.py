@@ -31,7 +31,7 @@ JOURNALS = [f"{kind}_journal" for kind in KINDS]
 
 #: The journals whose payload column has gone, a table holding each of
 #: their types (ADR 007). The view reads null for it.
-PAYLOAD_GONE = {"archive_journal"}
+PAYLOAD_GONE = {"archive_journal", "forge_journal"}
 
 # The columns other software relies on: name -> (type, nullable)
 CONTRACT = {
@@ -98,12 +98,20 @@ def columns(
 def test_an_entry_is_kept_as_it_was_made(
     engine: sa.Engine, database_url: str
 ) -> None:
-    made = entry("kept", pr_number=7, commit_sha="abc", agent_id="an-agent")
+    # A fact of a journal that keeps its payload column.
+    made = entry(
+        "kept",
+        event_type="stocktake.taken",
+        payload={"layer": "weekly"},
+        pr_number=7,
+        commit_sha="abc",
+        agent_id="an-agent",
+    )
     SqlAlchemyJournal(database_url).append([made])
 
     (row,) = rows(engine, made.event_id)
     assert row["occurred_at"] == made.occurred_at
-    assert row["event_type"] == "pr.merged"
+    assert row["event_type"] == "stocktake.taken"
     assert (row["pr_number"], row["commit_sha"]) == (7, "abc")
     assert row["agent_id"] == "an-agent"
     assert row["payload"] == made.payload
@@ -114,7 +122,7 @@ def test_a_repeated_event_id_is_ignored(
     engine: sa.Engine, database_url: str
 ) -> None:
     stored = SqlAlchemyJournal(database_url)
-    first = entry("twice")
+    first = entry("twice", event_type="stocktake.taken", payload={"n": 1})
     stored.append([first])
     stored.append([replace(first, payload={"later": True}), entry("other")])
 

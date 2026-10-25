@@ -6,10 +6,18 @@ from typing import Any
 
 import httpx2
 import pytest
+import sqlalchemy as sa
 
 from bugflow.apps.shared.journals import review_journal
 from bugflow.apps.worker.conversation import ForgeConversation
 from bugflow.forge.infrastructure.github import GitHubForge
+from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
+    pull_request_closure_outstanding,
+    reaction_agent,
+)
+from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
+    reaction as reactions,
+)
 from bugflow.review.domain.models.conversation import Closing, Reaction
 from bugflow.review.domain.models.recorder import Recorder
 from bugflow.review.dtos.collect_at_close import CollectAtCloseRequest
@@ -28,6 +36,7 @@ from bugflow.shared.domain.values.repository_association import (
     AssociationConflictError,
     RepositoryAssociationUnresolvedError,
 )
+from bugflow.shared.infrastructure.database import engine_url
 
 ORIGIN = "github.com/orchard/pear-tree"
 
@@ -66,7 +75,7 @@ def seed(journal: Any, origin: str | None, name: str, hours: int = 0) -> None:
 
 
 def test_close_uses_only_same_origin_history_and_associates_every_fact(
-    journal: Any,
+    journal: Any, request: pytest.FixtureRequest
 ) -> None:
     seed(journal, ORIGIN, "same")
     seed(journal, "other.test/orchard/pear-tree", "foreign", 1)
@@ -92,17 +101,53 @@ def test_close_uses_only_same_origin_history_and_associates_every_fact(
         GitHubForge("token", transport=httpx2.MockTransport(serve))
     )
     use_case = CollectAtCloseUseCase(journal, conversation, FixedClock())
-    request = CollectAtCloseRequest(ref=REF, correlation=CLOSING)
-    result = use_case.execute(request)
+    asked = CollectAtCloseRequest(ref=REF, correlation=CLOSING)
+    result = use_case.execute(asked)
     assert result.reactions == result.outstanding == 1
     entries = journal.entries_for_run(CLOSING)
     assert len(entries) == 2
     assert {entry.origin for entry in entries} == {ORIGIN}
     reaction = next(e for e in entries if e.event_type == "reaction.recorded")
-    assert reaction.payload["agents"] == ["same"]
-    assert reaction.payload["evaluated_in"] == "same"
     closed = next(e for e in entries if e.event_type == "pr.closed")
-    assert closed.payload["outstanding"][0]["subject"] == "same"
+    if isinstance(journal, QueryableJournal):
+        agents = reaction.payload["agents"]
+        evaluated_in = reaction.payload["evaluated_in"]
+        outstanding = [f["subject"] for f in closed.payload["outstanding"]]
+    else:
+        # The forge journal keeps no payload: the facts' own rows hold
+        # what the close recorded (ADR 007).
+        engine = sa.create_engine(
+            engine_url(request.getfixturevalue("database_url"))
+        )
+        try:
+            with engine.connect() as connection:
+                agents = list(
+                    connection.execute(
+                        sa.select(reaction_agent.c.agent_id)
+                        .where(reaction_agent.c.event_id == reaction.event_id)
+                        .order_by(reaction_agent.c.position)
+                    ).scalars()
+                )
+                evaluated_in = connection.execute(
+                    sa.select(reactions.c.evaluated_in).where(
+                        reactions.c.event_id == reaction.event_id
+                    )
+                ).scalar_one()
+                outstanding = list(
+                    connection.execute(
+                        sa.select(pull_request_closure_outstanding.c.subject)
+                        .where(
+                            pull_request_closure_outstanding.c.event_id
+                            == closed.event_id
+                        )
+                        .order_by(pull_request_closure_outstanding.c.position)
+                    ).scalars()
+                )
+        finally:
+            engine.dispose()
+    assert agents == ["same"]
+    assert evaluated_in == "same"
+    assert outstanding == ["same"]
     assert seen == [
         "/repos/orchard/pear-tree/pulls/7",
         "/repos/orchard/pear-tree/issues/comments/41/reactions",
@@ -111,7 +156,7 @@ def test_close_uses_only_same_origin_history_and_associates_every_fact(
         "pr.closed", "closed", {}
     )
     assert closed.event_id == expected.event_id
-    assert use_case.execute(request) == result
+    assert use_case.execute(asked) == result
     assert journal.entries_for_run(CLOSING) == entries
 
 

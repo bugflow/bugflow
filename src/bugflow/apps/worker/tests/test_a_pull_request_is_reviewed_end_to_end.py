@@ -40,6 +40,9 @@ from bugflow.forge.domain.models.pull_request import (
 )
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
+from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
+    reaction as reactions,
+)
 from bugflow.review.domain.facts import (
     ACTION_TAKEN,
     FINDING_RAISED,
@@ -237,12 +240,17 @@ def test_a_pull_request_is_reviewed_and_a_finding_published(
     assert any(e.payload.get("performed") for e in acted)
     # The close read the conversation the comment started.
     (reaction,) = read.events_for_pull_request(REF, "reaction.recorded")
-    assert reaction.payload["login"] == "a-reader"
-    # Every row names the build and the deployment it was written
-    # under.
     engine = sa.create_engine(engine_url(database_url))
     try:
         with engine.connect() as connection:
+            # The reaction's row holds who reacted (ADR 007).
+            login = connection.execute(
+                sa.select(reactions.c.login).where(
+                    reactions.c.event_id == reaction.event_id
+                )
+            ).scalar_one()
+            # Every row names the build and the deployment it was
+            # written under.
             stamps = {
                 tuple(row)
                 for row in connection.execute(
@@ -255,4 +263,5 @@ def test_a_pull_request_is_reviewed_and_a_finding_published(
             }
     finally:
         engine.dispose()
+    assert login == "a-reader"
     assert stamps == {("b" * 40, REPOSITORY, "c" * 40)}
