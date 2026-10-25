@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0014"
+LAST = "0015"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -585,6 +585,106 @@ def test_an_action_the_inventory_did_not_find_stops_the_script(
     )
 
     with pytest.raises(Exception, match="action the inventory did not find"):
+        upgrade(empty)
+
+
+def test_the_stocktakes_facts_already_there_are_unpacked(empty: str) -> None:
+    """A stocktake and a dispatch written before the typed tables
+    existed are unpacked by the script that makes them, the pull
+    requests the stocktake covered as rows."""
+    upgrade(empty)
+    downgrade(empty, "0014")
+    taken = replace(
+        entry("taken-before"),
+        event_type="stocktake.taken",
+        payload={
+            "layer": "weekly",
+            "since": None,
+            "until": "2026-10-18T09:00:00+00:00",
+            "merged": 2,
+            "pull_requests": [7, 9],
+            "base_sha": None,
+            "head_sha": "abc",
+        },
+    )
+    dispatched = replace(
+        entry("dispatched-before"),
+        event_type="stocktake.dispatched",
+        payload={
+            "layer": "weekly",
+            "agent_id": "security",
+            "base_sha": None,
+            "head_sha": "abc",
+            "step": "dispatched",
+            "remote_id": "r-1",
+        },
+    )
+    engine = _engine(empty)
+    for made in (taken, dispatched):
+        seed_before_keys(
+            empty, engine, made, run=False, table="stocktake_journal"
+        )
+
+    upgrade(empty)
+
+    try:
+        with engine.connect() as connection:
+            stocktake = connection.execute(
+                sa.text(
+                    "select since, merged, head_sha "
+                    "from stocktake where event_id = :id"
+                ),
+                {"id": taken.event_id},
+            ).one()
+            covered = (
+                connection.execute(
+                    sa.text(
+                        "select pull_request from stocktake_pull_request "
+                        "where event_id = :id order by position"
+                    ),
+                    {"id": taken.event_id},
+                )
+                .scalars()
+                .all()
+            )
+            dispatch = connection.execute(
+                sa.text(
+                    "select step, runner, remote_id "
+                    "from stocktake_dispatch where event_id = :id"
+                ),
+                {"id": dispatched.event_id},
+            ).one()
+    finally:
+        engine.dispose()
+    assert tuple(stocktake) == (None, 2, "abc")
+    assert covered == [7, 9]
+    assert tuple(dispatch) == ("dispatched", None, "r-1")
+
+
+def test_a_stocktake_with_an_unknown_key_stops_the_script(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0014")
+    odd = replace(
+        entry("odd-stocktake"),
+        event_type="stocktake.taken",
+        payload={
+            "layer": "weekly",
+            "since": None,
+            "until": "2026-10-18T09:00:00+00:00",
+            "merged": 0,
+            "pull_requests": [],
+            "base_sha": None,
+            "head_sha": None,
+            "repositories": 3,
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), odd, run=False, table="stocktake_journal"
+    )
+
+    with pytest.raises(Exception, match="keys the inventory did not find"):
         upgrade(empty)
 
 
