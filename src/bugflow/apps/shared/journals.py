@@ -34,6 +34,9 @@ from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
 from bugflow.review.infrastructure.sqlalchemy_review_facts import (
     UNPACKERS as REVIEW_UNPACKERS,
 )
+from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
+    UNPACKERS as STOCKTAKE_UNPACKERS,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -51,6 +54,7 @@ UNPACKERS: dict[str, Unpacker] = {
     **ARCHIVE_UNPACKERS,
     **FORGE_UNPACKERS,
     **REVIEW_UNPACKERS,
+    **STOCKTAKE_UNPACKERS,
     **WORK_UNPACKERS,
 }
 

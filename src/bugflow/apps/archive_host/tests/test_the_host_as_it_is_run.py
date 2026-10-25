@@ -146,6 +146,12 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "policy_check",
             "review_grade",
             "completion",
+            "stocktake",
+            "stocktake_pull_request",
+            "stocktake_dispatch",
+            "stocktake_review",
+            "stocktake_finding",
+            "stocktake_grade",
         }
     finally:
         engine.dispose()
