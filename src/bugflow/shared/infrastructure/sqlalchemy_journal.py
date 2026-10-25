@@ -197,6 +197,13 @@ ENTRY_COLUMNS: tuple[sa.ColumnElement[Any], ...] = tuple(
     if column.name not in _NOT_OF_AN_ENTRY
 )
 
+#: Every column of the view, the payload read as an entry's, for an
+#: adapter that reads entries back with what the database recorded
+#: about them.
+VIEW_COLUMNS: tuple[sa.ColumnElement[Any], ...] = tuple(
+    _entry_column(column) for column in journal.c
+)
+
 
 class SqlAlchemyJournal:
     def __init__(

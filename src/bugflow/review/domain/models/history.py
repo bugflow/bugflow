@@ -59,6 +59,9 @@ class StoredReviewEvent:
     policy_repository: str | None = None
     policy_commit: str | None = None
     policy_content: str | None = None
+    #: For a ``pr.observed`` fact, the stored submission the observation
+    #: read, from the observation's own row (ADR 007). None otherwise.
+    snapshot_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -187,7 +190,7 @@ def observed_review_run(
         entry = event.entry
         named: tuple[tuple[str, object], ...] = ()
         if entry.event_type == "pr.observed":
-            named = (("snapshot", entry.payload.get("snapshot_id")),)
+            named = (("snapshot", event.snapshot_id),)
         elif entry.event_type == "judge.invoked":
             identity = entry.payload.get("identity") or {}
             named = (

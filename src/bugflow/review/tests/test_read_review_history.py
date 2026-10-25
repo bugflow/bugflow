@@ -32,9 +32,11 @@ def fact(
     run: str = "one",
     repo: str = "owner/repo",
     pr: int = 30,
+    snapshot_id: str | None = None,
 ) -> StoredReviewEvent:
     correlation = Correlation(workflow_id="evaluation", run_id=run)
     return StoredReviewEvent(
+        snapshot_id=snapshot_id,
         entry=JournalEntry(
             event_id=event_id(correlation, kind, key),
             occurred_at=NOW,
@@ -69,9 +71,9 @@ def read(
 
 
 def test_repeated_evaluations_keep_their_input_and_provenance() -> None:
-    first = fact("pr.observed", "snapshot", {"snapshot_id": "before"})
+    first = fact("pr.observed", "snapshot", {}, snapshot_id="before")
     second = fact(
-        "pr.observed", "snapshot", {"snapshot_id": "after"}, run="two"
+        "pr.observed", "snapshot", {}, run="two", snapshot_id="after"
     )
     result = read([second, first, first])
     assert result.event_count == 2
@@ -233,6 +235,16 @@ def test_references_do_not_claim_content_exists_or_has_been_deleted() -> None:
         ("exchange", "not_checked"),
         (None, "not_recorded"),
     }
+
+
+def test_an_observation_names_the_submission_it_read() -> None:
+    """The reference comes from the observation's own row, not from the
+    entry's payload, which the forge journal no longer carries."""
+    run = read([fact("pr.observed", "snapshot", {}, snapshot_id="before")])
+    assert [
+        (r.kind, r.content_id, r.availability)
+        for r in run.runs[0].content_references
+    ] == [("snapshot", "before", "not_checked")]
 
 
 def test_an_empty_scope_returns_coverage_without_inventing_runs() -> None:

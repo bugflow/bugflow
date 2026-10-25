@@ -1,8 +1,13 @@
-"""A bounded history reader over stored events supplied in memory."""
+"""A bounded history reader over stored events supplied in memory.
+
+An observation's snapshot is read from the payload the event keeps, as
+the Postgres reader reads it from the observation's row (ADR 007), so a
+test's event carries the snapshot in its payload or names it itself.
+"""
 
 import json
 from collections.abc import Sequence
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -66,6 +71,12 @@ class InMemoryHistory:
                     )
                 if associated is None or str(associated) != scope.origin:
                     continue
+            if entry.event_type == "pr.observed" and event.snapshot_id is None:
+                snapshot_id = entry.payload.get("snapshot_id")
+                event = replace(
+                    event,
+                    snapshot_id=str(snapshot_id) if snapshot_id else None,
+                )
             found.append(event)
             if len(found) > limits.max_events:
                 raise HistoryTooLargeError("history exceeds the event limit")

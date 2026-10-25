@@ -4,10 +4,12 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from bugflow.review.domain.facts import ACTION_TAKEN
+from bugflow.review.domain.models.observation import Observation
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.models.journal_provenance import resolve_origin
 from bugflow.shared.domain.values.correlation import Correlation
+from bugflow.shared.domain.values.dismissal import Dismissal
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_association import (
     AssociationConflictError,
@@ -109,6 +111,16 @@ class OriginJournal:
         return self._matching(
             self._journal.events_for_repository(forge, repo, event_type)
         )
+
+    def observations_for_pull_request(
+        self, ref: PullRequestRef, origin: str | None = None
+    ) -> list[Observation]:
+        return self._journal.observations_for_pull_request(ref, self._origin)
+
+    def dismissals_for_pull_request(
+        self, ref: PullRequestRef, origin: str | None = None
+    ) -> list[Dismissal]:
+        return self._journal.dismissals_for_pull_request(ref, self._origin)
 
     def latest_acted_run(
         self, ref: PullRequestRef, excluding: Correlation
