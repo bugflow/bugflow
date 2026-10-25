@@ -8,8 +8,10 @@ This class only reads. Writing to the journal is done by
 from datetime import datetime
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from bugflow.forge.domain import facts
+from bugflow.forge.domain.models.judgement import RecordedJudgement
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.database import engine_url
@@ -20,6 +22,16 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
 )
 from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
     association_exists,
+)
+
+#: The review's table a judgement is read from (ADR 007), named with the
+#: columns this context reads. The review context defines the table.
+judge_invocation = sa.table(
+    "judge_invocation",
+    sa.column("event_id", PG_UUID(as_uuid=True)),
+    sa.column("policy_id", sa.Text),
+    sa.column("identity_input_hash", sa.Text),
+    sa.column("status", sa.Text),
 )
 
 
@@ -47,6 +59,40 @@ class SqlAlchemyJournalQueries:
         with self._engine.connect() as connection:
             rows = connection.execute(query).mappings().all()
         return [from_columns(JournalEntry, row) for row in rows]
+
+    def judgements_for_pull_request(
+        self, ref: PullRequestRef
+    ) -> list[RecordedJudgement]:
+        judged = judge_invocation
+        query = (
+            sa.select(
+                judged.c.policy_id,
+                judged.c.identity_input_hash,
+                judged.c.status,
+                journal.c.corpus_version,
+            )
+            .select_from(
+                journal.join(judged, judged.c.event_id == journal.c.event_id)
+            )
+            .where(
+                journal.c.forge == ref.forge,
+                journal.c.repo == f"{ref.owner}/{ref.repo}",
+                journal.c.pr_number == ref.number,
+                journal.c.event_type == facts.JUDGE_INVOKED,
+            )
+            .order_by(journal.c.occurred_at, journal.c.recorded_at)
+        )
+        with self._engine.connect() as connection:
+            rows = connection.execute(query).all()
+        return [
+            RecordedJudgement(
+                policy_id=row.policy_id,
+                input_hash=row.identity_input_hash,
+                status=row.status,
+                corpus_version=row.corpus_version,
+            )
+            for row in rows
+        ]
 
     def repositories_with(self, event_type: str) -> list[tuple[str, str]]:
         query = (

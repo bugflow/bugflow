@@ -10,6 +10,7 @@ import sqlalchemy as sa
 
 from bugflow.apps.shared.journals import review_journal
 from bugflow.apps.worker.conversation import ForgeConversation
+from bugflow.apps.worker.tests.journal import ActivityJournal
 from bugflow.forge.infrastructure.github import GitHubForge
 from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
     pull_request_closure_outstanding,
@@ -21,7 +22,6 @@ from bugflow.forge.infrastructure.sqlalchemy_forge_facts import (
 from bugflow.review.domain.models.conversation import Closing, Reaction
 from bugflow.review.domain.models.recorder import Recorder
 from bugflow.review.dtos.collect_at_close import CollectAtCloseRequest
-from bugflow.review.tests.journal import QueryableJournal
 from bugflow.review.tests.test_collect_at_close import (
     AT,
     CLOSING,
@@ -44,7 +44,7 @@ ORIGIN = "github.com/orchard/pear-tree"
 @pytest.fixture(params=["memory", "postgres"])
 def journal(request: pytest.FixtureRequest) -> Any:
     if request.param == "memory":
-        return QueryableJournal()
+        return ActivityJournal()
     return review_journal(request.getfixturevalue("database_url"), None)
 
 
@@ -109,7 +109,7 @@ def test_close_uses_only_same_origin_history_and_associates_every_fact(
     assert {entry.origin for entry in entries} == {ORIGIN}
     reaction = next(e for e in entries if e.event_type == "reaction.recorded")
     closed = next(e for e in entries if e.event_type == "pr.closed")
-    if isinstance(journal, QueryableJournal):
+    if isinstance(journal, ActivityJournal):
         agents = reaction.payload["agents"]
         evaluated_in = reaction.payload["evaluated_in"]
         outstanding = [f["subject"] for f in closed.payload["outstanding"]]

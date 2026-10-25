@@ -22,6 +22,7 @@ from bugflow.apps.worker.tests.activities import (
     at_attempt,
     gating,
 )
+from bugflow.apps.worker.tests.journal import ActivityJournal
 from bugflow.forge.domain.errors import (
     ForgeRejectedError,
     ForgeUnavailableError,
@@ -41,7 +42,6 @@ from bugflow.review.dtos.publish_findings import PublishFindingsRequest
 from bugflow.review.infrastructure.in_memory_judge_archive import (
     InMemoryJudgeArchive,
 )
-from bugflow.review.tests.journal import QueryableJournal
 
 JUDGE_WAIT = timedelta(seconds=40)
 
@@ -64,8 +64,8 @@ class RateLimitedJudge:
 
 def activities(
     forge_error: Exception | None = None,
-) -> tuple[ReviewActivities, QueryableJournal, InMemorySnapshotStore]:
-    journal, snapshots = QueryableJournal(), InMemorySnapshotStore()
+) -> tuple[ReviewActivities, ActivityJournal, InMemorySnapshotStore]:
+    journal, snapshots = ActivityJournal(), InMemorySnapshotStore()
     built = ReviewActivities(
         forge=FailingForge(forge_error or ForgeRejectedError("unused")),
         doctrine=FakeDoctrine(),
