@@ -54,10 +54,8 @@ from bugflow.review.domain.errors import (
 )
 from bugflow.review.domain.facts import (
     ACTION_TAKEN,
-    FINDING_DISMISSED,
     FINDING_RAISED,
     FINDING_REWRITTEN,
-    PR_OBSERVED,
 )
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement, fails
@@ -100,7 +98,6 @@ from bugflow.review.dtos.publish_findings import (
 )
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.values.correlation import Correlation
-from bugflow.shared.domain.values.dismissal import Dismissal
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
 #: Each comment starts with a hidden marker that holds the workflow
@@ -417,8 +414,8 @@ class PublishFindingsUseCase:
         if text is None:
             return []
         corpus_of_run = {
-            e.run_id: e.corpus_version
-            for e in journal.events_for_pull_request(request.ref, PR_OBSERVED)
+            o.correlation.run_id: o.corpus_version
+            for o in journal.observations_for_pull_request(request.ref)
         }
         latest: dict[tuple[str, str, str], tuple[str | None, Finding]] = {}
         for e in journal.events_for_pull_request(request.ref, FINDING_RAISED):
@@ -488,20 +485,17 @@ class PublishFindingsUseCase:
         by identity.
 
         The entry for a finding does not say what text its evaluation
-        read. The evaluation recorded that once, when it read the pull
-        request: the id of the stored submission, or the commit if there
-        is none. If no evaluation of this text has recorded a finding, or
-        there is no last commit, this evaluation's own findings are
-        returned.
+        read. The evaluation recorded that once, when it observed the
+        pull request: the id of the stored submission. If no evaluation
+        of this text has recorded a finding, or there is no last commit,
+        this evaluation's own findings are returned.
         """
         if request.head_sha is None:
             return {_identity(f) for f in request.findings}
-        read_by: dict[str, str] = {}
-        for entry in journal.events_for_pull_request(request.ref, PR_OBSERVED):
-            snapshot = entry.payload.get("snapshot_id")
-            read_by[entry.run_id] = (
-                str(snapshot) if snapshot else entry.commit_sha or ""
-            )
+        read_by = {
+            observed.correlation.run_id: observed.snapshot_id
+            for observed in journal.observations_for_pull_request(request.ref)
+        }
         here = read_by.setdefault(
             request.correlation.run_id,
             request.snapshot_id or request.head_sha,
@@ -521,16 +515,19 @@ class PublishFindingsUseCase:
         return {_identity(f) for f in worth_saying(history, read=here)}
 
     def _observed(
-        self, journal: JournalService, run: Correlation | None
+        self,
+        journal: JournalService,
+        ref: PullRequestRef,
+        run: Correlation | None,
     ) -> tuple[str | None, str | None]:
         """The submission an earlier evaluation read and the corpus version
         it ran under.
         """
         if run is None:
             return None, None
-        for e in journal.entries_for_run(run):
-            if e.event_type == PR_OBSERVED:
-                return e.payload.get("snapshot_id"), e.corpus_version
+        for observed in journal.observations_for_pull_request(ref):
+            if observed.correlation == run:
+                return observed.snapshot_id, observed.corpus_version
         return None, None
 
     def _spoken(
@@ -559,13 +556,10 @@ class PublishFindingsUseCase:
         resolved = resolved_since(
             previous_findings, request.findings, request.answered
         )
-        dismissals = [
-            Dismissal.from_payload(e.payload)
-            for e in journal.events_for_pull_request(
-                request.ref, FINDING_DISMISSED
-            )
-        ]
-        dismissed_policies = {d.policy_id for d in dismissals}
+        dismissed_policies = {
+            d.policy_id
+            for d in journal.dismissals_for_pull_request(request.ref)
+        }
         dismissed = tuple(
             f for f in request.findings if f.policy_id in dismissed_policies
         )
@@ -626,7 +620,7 @@ class PublishFindingsUseCase:
 
         # The same text read again under a new corpus: the review
         # changed and the pull request did not.
-        snapshot, corpus = self._observed(journal, previous)
+        snapshot, corpus = self._observed(journal, request.ref, previous)
         rejudged = (
             request.snapshot_id is not None
             and snapshot == request.snapshot_id

@@ -6,16 +6,23 @@ This class only reads. Writing to the journal is done by
 """
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from bugflow.review.domain.errors import HistoryTooLargeError
-from bugflow.review.domain.facts import ACTION_TAKEN
+from bugflow.review.domain.facts import (
+    ACTION_TAKEN,
+    FINDING_DISMISSED,
+    PR_OBSERVED,
+)
 from bugflow.review.domain.models.history import (
     HistoryLimits,
     HistoryScope,
     StoredReviewEvent,
 )
+from bugflow.review.domain.models.observation import Observation
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
+from bugflow.shared.domain.values.dismissal import Dismissal
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_association import (
     RepositoryAssociationUnresolvedError,
@@ -24,6 +31,7 @@ from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.serde import from_columns
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     ENTRY_COLUMNS,
+    VIEW_COLUMNS,
     journal,
 )
 from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
@@ -31,10 +39,45 @@ from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
     repository_associations,
 )
 
+#: The forge's tables this context reads an observation and a dismissal
+#: from (ADR 007), named with the columns it reads. The forge context
+#: defines the tables; a fact's row is keyed by its event's id.
+pull_request_observation = sa.table(
+    "pull_request_observation",
+    sa.column("event_id", PG_UUID(as_uuid=True)),
+    sa.column("snapshot_id", sa.Text),
+)
+finding_dismissal = sa.table(
+    "finding_dismissal",
+    sa.column("event_id", PG_UUID(as_uuid=True)),
+    sa.column("policy_id", sa.Text),
+    sa.column("reason", sa.Text),
+    sa.column("actor", sa.Text),
+)
+
+
+def _about(
+    ref: PullRequestRef, event_type: str, origin: str | None
+) -> list[sa.ColumnElement[bool]]:
+    """The predicates for the facts of one type about a pull request,
+    and with ``origin`` for those the journal associates with it."""
+    predicates: list[sa.ColumnElement[bool]] = [
+        journal.c.forge == ref.forge,
+        journal.c.repo == f"{ref.owner}/{ref.repo}",
+        journal.c.pr_number == ref.number,
+        journal.c.event_type == event_type,
+    ]
+    if origin is not None:
+        predicates.append(
+            association_exists(
+                "journal", sa.cast(journal.c.event_id, sa.Text), origin
+            )
+        )
+    return predicates
+
 
 class SqlAlchemyJournalQueries:
-    """The four queries declared in
-    ``review/domain/services/journal.py``."""
+    """The queries declared in ``review/domain/services/journal.py``."""
 
     def __init__(self, database_url: str) -> None:
         self._engine = sa.create_engine(
@@ -105,8 +148,14 @@ class SqlAlchemyJournalQueries:
             sa.func.count(),
             sa.func.coalesce(sa.func.sum(candidates.c.bytes), 0),
         ).select_from(candidates)
+        observed = pull_request_observation
         query = (
-            sa.select(journal)
+            sa.select(*VIEW_COLUMNS, observed.c.snapshot_id)
+            .select_from(
+                journal.outerjoin(
+                    observed, observed.c.event_id == journal.c.event_id
+                )
+            )
             .where(*predicates)
             .order_by(
                 journal.c.occurred_at,
@@ -140,6 +189,7 @@ class SqlAlchemyJournalQueries:
                 policy_repository=row["policy_repository"],
                 policy_commit=row["policy_commit"],
                 policy_content=row["policy_content"],
+                snapshot_id=row["snapshot_id"],
             )
             for row in rows
         )
@@ -198,6 +248,65 @@ class SqlAlchemyJournalQueries:
             )
             .order_by(journal.c.occurred_at, journal.c.recorded_at)
         )
+
+    def observations_for_pull_request(
+        self, ref: PullRequestRef, origin: str | None = None
+    ) -> list[Observation]:
+        observed = pull_request_observation
+        query = (
+            sa.select(
+                journal.c.workflow_id,
+                journal.c.run_id,
+                journal.c.commit_sha,
+                journal.c.corpus_version,
+                observed.c.snapshot_id,
+            )
+            .select_from(
+                journal.join(
+                    observed, observed.c.event_id == journal.c.event_id
+                )
+            )
+            .where(*_about(ref, PR_OBSERVED, origin))
+            .order_by(journal.c.occurred_at, journal.c.recorded_at)
+        )
+        with self._engine.connect() as connection:
+            rows = connection.execute(query).all()
+        return [
+            Observation(
+                correlation=Correlation(
+                    workflow_id=row.workflow_id, run_id=row.run_id
+                ),
+                commit_sha=row.commit_sha,
+                corpus_version=row.corpus_version,
+                snapshot_id=row.snapshot_id,
+            )
+            for row in rows
+        ]
+
+    def dismissals_for_pull_request(
+        self, ref: PullRequestRef, origin: str | None = None
+    ) -> list[Dismissal]:
+        dismissed = finding_dismissal
+        query = (
+            sa.select(
+                dismissed.c.policy_id, dismissed.c.reason, dismissed.c.actor
+            )
+            .select_from(
+                journal.join(
+                    dismissed, dismissed.c.event_id == journal.c.event_id
+                )
+            )
+            .where(*_about(ref, FINDING_DISMISSED, origin))
+            .order_by(journal.c.occurred_at, journal.c.recorded_at)
+        )
+        with self._engine.connect() as connection:
+            rows = connection.execute(query).all()
+        return [
+            Dismissal(
+                policy_id=row.policy_id, reason=row.reason, actor=row.actor
+            )
+            for row in rows
+        ]
 
     def _entries(
         self, query: sa.Select[tuple[object, ...]]

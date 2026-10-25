@@ -18,8 +18,8 @@ from sqlalchemy.exc import StatementError
 
 from bugflow.review.domain.facts import (
     ACTION_TAKEN,
-    FINDING_DISMISSED,
     FINDING_RAISED,
+    FINDING_WITHHELD,
 )
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
@@ -151,14 +151,14 @@ def test_a_pull_requests_entries_of_one_type_come_back_oldest_first(
     run = new_run()
     recording.append(
         [
-            entry(run, "12", FINDING_DISMISSED, repo, day=12),
+            entry(run, "12", FINDING_WITHHELD, repo, day=12),
             entry(run, "10", FINDING_RAISED, repo, day=10),
-            entry(run, "9", FINDING_DISMISSED, repo, number=7, day=9),
-            entry(run, "11", FINDING_DISMISSED, repo, day=11),
+            entry(run, "9", FINDING_WITHHELD, repo, number=7, day=9),
+            entry(run, "11", FINDING_WITHHELD, repo, day=11),
         ]
     )
 
-    found = queries.events_for_pull_request(ref, FINDING_DISMISSED)
+    found = queries.events_for_pull_request(ref, FINDING_WITHHELD)
 
     assert [e.payload["key"] for e in found] == ["11", "12"]
 
