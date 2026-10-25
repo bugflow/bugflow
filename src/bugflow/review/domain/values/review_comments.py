@@ -6,12 +6,13 @@ a machine: ids, hashes and the name of the model are in the journal.
 
 There are three kinds of comment:
 
-- ``findings_comment``, from a reviewer that judges or checks. It is
-  arranged by rule. Each rule that was broken is given once, by its
-  name and in the doctrine's words, with every passage that breaks it
-  beneath: where the passage is, its words, and what is wrong with
-  them. What has been fixed is given as a count, with the passages
-  folded away.
+- ``findings_comment``, from a reviewer that judges or checks. Each
+  finding is one folded line: a sentence that names the clause it
+  breaks, linked to the clause's page on the gnome's site, and where
+  the passage is. Unfolded, it shows the passage at fault, quoted, and
+  what is wrong with it. Findings that break one clause stand
+  together, the most severe clause first. What has been fixed is given
+  as a count, with the passages folded away.
 - ``clean_comment``, the first comment of such a reviewer when it found
   nothing.
 - ``agent_comment``, from a checkout agent. It is the agent's note to
@@ -21,6 +22,7 @@ There are three kinds of comment:
 Every function here only builds text from what it is given.
 """
 
+import html
 import re
 from collections.abc import Mapping, Sequence
 
@@ -31,6 +33,12 @@ from bugflow.review.domain.models.review import ReviewNote, ReviewStatus
 _SEVERITY_ORDER = {"fail": 0, "warn": 1, "info": 2}
 _SEVERITY_WORD = {"fail": "Failure", "warn": "Warning", "info": "Note"}
 _COUNTED = {"fail": "failure", "warn": "warning", "info": "note"}
+# How a finding of each severity relates the passage to its clause.
+_VERB = {"fail": "Violates", "warn": "Falls short of", "info": "Bears on"}
+
+# A commit's short or full id, which a finding's subject may be on its
+# own.
+_COMMIT_ID = re.compile(r"^[0-9a-f]{7,40}$")
 
 # The words a checkout agent's comment opens with, for each verdict.
 _VERDICT = {
@@ -46,9 +54,6 @@ _QUOTED = re.compile(r'^"(?P<quote>.+?)": (?P<said>.*)$', re.DOTALL)
 # The name of a clause that has one, as in "**RULE-4. One reason.** A
 # commit ...".
 _CLAUSE_NAME = re.compile(r"^\*\*[A-Z]+-\d+\. (?P<name>[^*]+?)\.\*\*")
-# The start of a clause, with or without a name: "**RULE-4. One
-# reason.**" or "**RULE-2.**".
-_CLAUSE_OPENING = re.compile(r"^\*\*[A-Z]+-\d+\.(?: [^*]+?\.)?\*\*\s*")
 
 
 def reviewer_name(agent_id: str) -> str:
@@ -56,6 +61,16 @@ def reviewer_name(agent_id: str) -> str:
     gives "Prose review".
     """
     return f"{agent_id[:1].upper()}{agent_id[1:]} review"
+
+
+def clause_page(site: str, clause: str) -> str:
+    """The address of a clause's page on a gnome's site, which renders
+    the doctrine as one page with a section for each clause, anchored
+    by the clause's id. Empty if the gnome has no site.
+    """
+    if not site:
+        return ""
+    return f"{site.rstrip('/')}/doctrine/#{clause}"
 
 
 def _count(n: int, noun: str) -> str:
@@ -99,31 +114,43 @@ def passage_of(finding: Finding) -> tuple[str, str, str]:
     )
 
 
-def _rule_block(
+def _rule_name(
     finding: Finding,
     summaries: Mapping[str, str],
     clauses: Mapping[str, str],
 ) -> str:
-    """The rule a finding breaks, as one paragraph: its name in bold,
-    then its words.
+    """The name of the clause a finding breaks.
 
     The name is the clause's own if it has one. Otherwise it is the
-    policy's summary. The words are the clause's text without the id
-    that starts it, because a reader cannot do anything with an id.
+    policy's summary. Empty when neither is known: a clause's id is
+    for a machine, and is not shown in its place.
     """
-    text = clauses.get(finding.clause, "")
-    named = _CLAUSE_NAME.match(text)
-    name = (
-        named.group("name")
-        if named
-        else summaries.get(finding.policy_id, "").strip().rstrip(".")
-    )
-    body = " ".join(_CLAUSE_OPENING.sub("", text, count=1).split())
-    if name and body:
-        return f"**{name}.** {body}"
-    if name:
-        return f"**{name}.**"
-    return body
+    named = _CLAUSE_NAME.match(clauses.get(finding.clause, ""))
+    if named:
+        return named.group("name")
+    return summaries.get(finding.policy_id, "").strip().rstrip(".")
+
+
+def _rule(name: str, page: str) -> str:
+    """A clause as a finding names it: a link to its page, or its name
+    in bold when the gnome has no site to link to. In HTML, because
+    the sentence is a fold's summary, and a forge renders no Markdown
+    there.
+    """
+    shown = html.escape(name)
+    if page:
+        return f'<a href="{html.escape(page, quote=True)}">{shown}</a>'
+    return f"<b>{shown}</b>"
+
+
+def _verdict(finding: Finding, rule: str, where: str) -> str:
+    """The sentence that relates a passage to its clause: "Violates
+    <a>One reason</a> in commit 1a2b3c4." With no clause to name, the
+    severity stands alone: "<b>Failure</b> in commit 1a2b3c4."
+    """
+    if rule:
+        return f"{_VERB[finding.severity]} {rule} {_at(where)}."
+    return f"<b>{_SEVERITY_WORD[finding.severity]}</b> {_at(where)}."
 
 
 def _shown(finding: Finding, quote: str) -> str:
@@ -141,6 +168,22 @@ def _shown(finding: Finding, quote: str) -> str:
     return "…" + " ".join(words[1:-1]) + "…"
 
 
+def _quoted(passage: str) -> str:
+    """A passage as a block quotation, every line of it."""
+    return "\n".join(f"> {line}".rstrip() for line in passage.splitlines())
+
+
+def _at(where: str) -> str:
+    """The words that say where a passage is: "in the description",
+    "in the title", "in the pull request" or "in commit 1a2b3c4".
+    """
+    if where in ("description", "title", "pull request"):
+        return f"in the {where}"
+    if _COMMIT_ID.match(where):
+        return f"in commit {where}"
+    return f"in {where}"
+
+
 def _fold(summary: str, body: str) -> list[str]:
     """The lines of a folded section, which a reader opens by clicking
     its summary.
@@ -155,15 +198,6 @@ def _fold(summary: str, body: str) -> list[str]:
     ]
 
 
-def _in(where: str) -> str:
-    """The words that say where a passage is: "In the description:" or
-    "In commit 1a2b3c4:".
-    """
-    if where in ("description", "title", "pull request"):
-        return f"In the {where}:"
-    return f"In {where}:"
-
-
 def findings_comment(
     marker: str,
     agent_id: str,
@@ -173,6 +207,7 @@ def findings_comment(
     summaries: Mapping[str, str] | None = None,
     clauses: Mapping[str, str] | None = None,
     rejudged: bool = False,
+    site: str = "",
 ) -> str:
     """Build a reviewer's comment about its findings.
 
@@ -183,7 +218,10 @@ def findings_comment(
     reads the present state first.
 
     ``summaries`` gives each policy's summary by policy id, and
-    ``clauses`` the text of each clause by clause id.
+    ``clauses`` the text of each clause by clause id. ``site`` is the
+    address the reviewer's gnome publishes its pages at, which each
+    finding links the clause it cites to; empty, and the clause is
+    named and not linked.
 
     ``rejudged`` is True when the pull request did not change and the
     reviewer did. The comment then says so, because nothing the author
@@ -208,33 +246,29 @@ def findings_comment(
             "",
         ]
 
-    # One block for each rule, the most severe first: the rule in the
-    # doctrine's words, then every passage that breaks it.
+    # The findings of each clause together, the most severe first. Each
+    # is one fold: the clause it breaks and where, and beneath, the
+    # passage, quoted, and what is wrong.
     ordered = sorted(raised, key=lambda f: _SEVERITY_ORDER[f.severity])
     by_rule: dict[tuple[str, str], list[Finding]] = {}
     for f in ordered:
         by_rule.setdefault((f.policy_id, f.clause), []).append(f)
 
     for found in by_rule.values():
-        rule = _rule_block(found[0], summaries, clauses)
-        if rule:
-            lines += [rule, ""]
-        said_before = ""
+        name = _rule_name(found[0], summaries, clauses)
+        rule = _rule(name, clause_page(site, found[0].clause)) if name else ""
         for f in found:
             where, quote, said = passage_of(f)
-            said = said[:1].upper() + said[1:]
-            item = f"- **{_SEVERITY_WORD[f.severity]}.** "
+            inside = []
             if quote:
-                item += f'{_in(where)} "{_shown(f, quote)}"'
-                # The same explanation is not repeated under one rule.
-                # Only the passages differ.
-                if said != said_before:
-                    item += f"\\\n  {said}"
+                inside.append(_quoted(_shown(f, quote)))
+            if said:
+                inside.append(f"{said[:1].upper()}{said[1:]}")
+            sentence = _verdict(f, rule, where)
+            if inside:
+                lines += _fold(sentence, "\n\n".join(inside))
             else:
-                item += said
-            said_before = said
-            lines.append(item)
-        lines.append("")
+                lines += [sentence, ""]
 
     # The first line counts everything that stands. What is new is
     # listed above, so the rest is accounted for here.

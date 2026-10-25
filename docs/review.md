@@ -12,8 +12,9 @@ About a minute after the last push, the server writes three things on
 the pull request, one set for each reviewer the binding declares for
 the repository:
 
-- a comment, with a heading for each clause that findings cite and
-  each finding under its heading, quoting the words at fault;
+- a comment, one folded line per finding naming the clause it breaks,
+  linked to the clause's page on the gnome's site, and where; unfolded,
+  the words at fault and what is wrong with them;
 - a label, with the reviewer's verdict;
 - a commit status named by the reviewer's id, `pass`, `warn` or
   `fail`.
