@@ -140,6 +140,21 @@ def policy_summaries(
     }
 
 
+def clause_sites(
+    agents: Mapping[str, DomainSpecificReviewAgent],
+) -> dict[str, str]:
+    """Return the address each installed reviewer's gnome publishes
+    its pages at, by reviewer id. A comment links each clause it cites
+    to that site. A reviewer whose manifest names no site is left out,
+    and its comments name the clause and link nothing.
+    """
+    return {
+        agent_id: agent.site
+        for agent_id, agent in agents.items()
+        if agent.site
+    }
+
+
 def corpus_of(
     agents: Mapping[str, DomainSpecificReviewAgent],
     prose: Mapping[str, str],

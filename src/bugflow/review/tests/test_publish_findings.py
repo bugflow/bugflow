@@ -775,6 +775,23 @@ def test_a_finding_quotes_the_passage_and_names_the_clause() -> None:
     assert "RULE-19" not in body.split("-->", 1)[1]
 
 
+def test_a_finding_links_the_clause_to_the_reviewers_site() -> None:
+    publish = PublishFindingsUseCase(
+        RecordingForge(),
+        QueryableJournal(),
+        FixedClock(),
+        enforcement=BoundTo(OBSERVE),
+        agents=AGENTS,
+        governance=Governing(*GOVERNING),
+        sites={"prose": "https://example.github.io/prose/"},
+    )
+    body = publish.execute(cited(NARRATION)).comment
+    assert (
+        'Falls short of <a href="https://example.github.io/prose/doctrine/'
+        '#RULE-19">Narrating yourself</a> in the description.' in body
+    )
+
+
 def test_a_named_rule_is_named_and_an_unnamed_one_summarised() -> None:
     publish = PublishFindingsUseCase(
         RecordingForge(),
