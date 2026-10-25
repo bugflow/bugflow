@@ -19,7 +19,9 @@ from bugflow.review.domain.facts import (
     REACTION_RECORDED,
 )
 from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.journal_facts import ReviewAction
 from bugflow.review.domain.models.recorder import Recorder
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.review.domain.services.conversation import ConversationService
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.review.domain.services.scoped_journal import for_origin
@@ -63,7 +65,9 @@ class CollectAtCloseUseCase:
         )
         entries: list[JournalEntry] = []
         drew_on = self._reviewers_by_comment(request, journal)
-        for comment_id, posted in self._posted(request, journal).items():
+        for comment_id, (posted, said) in self._posted(
+            request, journal
+        ).items():
             for reaction in self._conversation.reactions(ref, comment_id):
                 entries.append(
                     recorder.entry(
@@ -77,7 +81,7 @@ class CollectAtCloseUseCase:
                             # not known which part earned it, and
                             # "agent_id" is then None.
                             "agents": drew_on.get(comment_id, []),
-                            "agent_id": posted.payload.get("agent_id")
+                            "agent_id": said.agent_id
                             if len(drew_on.get(comment_id, [])) == 1
                             else None,
                             "evaluated_in": posted.run_id,
@@ -118,19 +122,20 @@ class CollectAtCloseUseCase:
 
     def _posted(
         self, request: CollectAtCloseRequest, journal: JournalService
-    ) -> dict[int, JournalEntry]:
+    ) -> dict[int, tuple[ReviewEntry, ReviewAction]]:
         """Each comment that was posted, by its id, with the journal entry
-        that recorded posting it.
+        that recorded posting it and the action it recorded.
         """
-        posted: dict[int, JournalEntry] = {}
+        posted: dict[int, tuple[ReviewEntry, ReviewAction]] = {}
         for e in journal.events_for_pull_request(request.ref, ACTION_TAKEN):
-            comment_id = e.payload.get("comment_id")
+            action = e.fact
             if (
-                e.payload.get("action") == "review_comment"
-                and e.payload.get("performed") is True
-                and isinstance(comment_id, int)
+                isinstance(action, ReviewAction)
+                and action.action == "review_comment"
+                and action.performed
+                and action.comment_id is not None
             ):
-                posted.setdefault(comment_id, e)
+                posted.setdefault(action.comment_id, (e, action))
         return posted
 
     def _reviewers_by_comment(
@@ -139,15 +144,17 @@ class CollectAtCloseUseCase:
         """The reviewers that had a part in each posted comment, sorted."""
         drew_on: dict[int, set[str]] = {}
         for e in journal.events_for_pull_request(request.ref, ACTION_TAKEN):
-            comment_id = e.payload.get("comment_id")
-            agent_id = e.payload.get("agent_id")
+            action = e.fact
             if (
-                e.payload.get("action") == "review_comment"
-                and e.payload.get("performed") is True
-                and isinstance(comment_id, int)
-                and isinstance(agent_id, str)
+                isinstance(action, ReviewAction)
+                and action.action == "review_comment"
+                and action.performed
+                and action.comment_id is not None
+                and action.agent_id is not None
             ):
-                drew_on.setdefault(comment_id, set()).add(agent_id)
+                drew_on.setdefault(action.comment_id, set()).add(
+                    action.agent_id
+                )
         return {
             comment_id: sorted(agents)
             for comment_id, agents in drew_on.items()
@@ -166,7 +173,7 @@ class CollectAtCloseUseCase:
         if last is None:
             return []
         return [
-            Finding.from_payload(e.payload)
+            e.fact
             for e in journal.entries_for_run(last)
-            if e.event_type == FINDING_RAISED
+            if e.event_type == FINDING_RAISED and isinstance(e.fact, Finding)
         ]

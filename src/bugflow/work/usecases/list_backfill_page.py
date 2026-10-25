@@ -22,7 +22,7 @@ has pull requests judged:
 from collections.abc import Mapping
 
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
-from bugflow.work.domain.facts import JUDGE_INVOKED, PR_OBSERVED
+from bugflow.work.domain.facts import PR_OBSERVED
 from bugflow.work.domain.models.backfill import WatchedRepository
 from bugflow.work.domain.repositories.backfill import (
     ClosedPullRequestFeedRepository,
@@ -90,9 +90,6 @@ class ListBackfillPageUseCase:
         if not runs or not use_judge:
             return bool(runs)
         return any(
-            (entry.workflow_id, entry.run_id) in runs
-            and str(entry.payload.get("status", "")).startswith("judged")
-            for entry in self._journal.events_for_pull_request(
-                ref, JUDGE_INVOKED
-            )
+            (run.workflow_id, run.run_id) in runs
+            for run in self._journal.judged_runs(ref)
         )

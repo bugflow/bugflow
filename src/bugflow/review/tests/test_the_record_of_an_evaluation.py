@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.review.domain.models.record import review_record
+from bugflow.review.domain.models.review_entry import ReviewEntry, from_payload
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 
@@ -21,20 +22,22 @@ def entry(
     agent_id: str | None = None,
     commit_sha: str | None = "abc1234",
     corpus_version: str | None = "corpus-1",
-) -> JournalEntry:
-    return JournalEntry(
-        event_id=uuid4(),
-        occurred_at=AT,
-        event_type=event_type,
-        forge="github",
-        repo="orchard/pear-tree",
-        pr_number=7,
-        commit_sha=commit_sha,
-        corpus_version=corpus_version,
-        workflow_id=RUN.workflow_id,
-        run_id=RUN.run_id,
-        agent_id=agent_id,
-        payload=payload,
+) -> ReviewEntry:
+    return from_payload(
+        JournalEntry(
+            event_id=uuid4(),
+            occurred_at=AT,
+            event_type=event_type,
+            forge="github",
+            repo="orchard/pear-tree",
+            pr_number=7,
+            commit_sha=commit_sha,
+            corpus_version=corpus_version,
+            workflow_id=RUN.workflow_id,
+            run_id=RUN.run_id,
+            agent_id=agent_id,
+            payload=payload,
+        )
     )
 
 
@@ -58,7 +61,7 @@ def finding(
 
 def judged(
     policy: str = "P-01", exchange_id: str | None = "x1"
-) -> JournalEntry:
+) -> ReviewEntry:
     return entry(
         "judge.invoked",
         {
@@ -121,7 +124,11 @@ def test_what_this_evaluation_withdrew_is_kept_apart() -> None:
         RUN,
         [
             entry("finding.raised", finding()),
-            entry("finding.resolved", finding(policy="P-02")),
+            entry(
+                "finding.resolved",
+                finding(policy="P-02")
+                | {"raised_in_workflow_id": "pr-1", "raised_in_run_id": "r0"},
+            ),
         ],
     )
     assert [f.policy_id for f in record.findings] == ["P-01"]

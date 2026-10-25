@@ -15,7 +15,7 @@ and the triggers are made by the scripts in ``migrations``.
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict
+from dataclasses import fields
 from typing import Any
 from uuid import UUID
 
@@ -310,7 +310,12 @@ class SqlAlchemyJournal:
             # Stable event order prevents overlapping batches from taking
             # unique-index locks in opposite orders.
             for entry in sorted(entries, key=lambda one: str(one.event_id)):
-                row = asdict(entry) | self._stamps
+                # The envelope's fields alone: a context's subclass of an
+                # entry carries what it read beside them.
+                row = {
+                    f.name: getattr(entry, f.name)
+                    for f in fields(JournalEntry)
+                } | self._stamps
                 row.pop("origin")
                 row.pop("origin_asserted")
                 pull_request_id, workflow_run_id = resolve_keys(

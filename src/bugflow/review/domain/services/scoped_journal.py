@@ -5,6 +5,7 @@ from uuid import UUID
 
 from bugflow.review.domain.facts import ACTION_TAKEN
 from bugflow.review.domain.models.observation import Observation
+from bugflow.review.domain.models.review_entry import ReviewEntry
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.models.journal_provenance import resolve_origin
@@ -85,10 +86,10 @@ class OriginJournal:
     def has_event(self, event_id: UUID) -> bool:
         return self._journal.has_event(event_id)
 
-    def _matching(self, entries: list[JournalEntry]) -> list[JournalEntry]:
+    def _matching(self, entries: list[ReviewEntry]) -> list[ReviewEntry]:
         return [entry for entry in entries if entry.origin == self._origin]
 
-    def entries_for_run(self, correlation: Correlation) -> list[JournalEntry]:
+    def entries_for_run(self, correlation: Correlation) -> list[ReviewEntry]:
         return [
             entry
             for entry in self._matching(
@@ -100,14 +101,14 @@ class OriginJournal:
 
     def events_for_pull_request(
         self, ref: PullRequestRef, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return self._matching(
             self._journal.events_for_pull_request(ref, event_type)
         )
 
     def events_for_repository(
         self, forge: str, repo: str, event_type: str
-    ) -> list[JournalEntry]:
+    ) -> list[ReviewEntry]:
         return self._matching(
             self._journal.events_for_repository(forge, repo, event_type)
         )

@@ -12,11 +12,21 @@ from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 
+from bugflow.review.infrastructure.sqlalchemy_review_facts import (
+    UNPACKERS as REVIEW_UNPACKERS,
+)
 from bugflow.review.infrastructure.sqlalchemy_spend_record import (
     SqlAlchemySpendRecord,
 )
+from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
+    UNPACKERS as STOCKTAKE_UNPACKERS,
+)
+from bugflow.review.tests.payloads import whole
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.sqlalchemy_journal import SqlAlchemyJournal
+
+#: Every cost table's unpacker, so that a fact written here has its row.
+UNPACKERS = {**REVIEW_UNPACKERS, **STOCKTAKE_UNPACKERS}
 
 AT = datetime(2026, 9, 24, 12, 0, tzinfo=UTC)
 WINDOW = (AT - timedelta(hours=1), AT + timedelta(hours=1))
@@ -46,7 +56,7 @@ def entry(
         corpus_version=None,
         workflow_id="test/spend",
         run_id=run_id or str(uuid.uuid4()),
-        payload=payload,
+        payload=whole(event_type, **payload),
         agent_id=agent,
     )
 
@@ -55,7 +65,7 @@ def test_a_runs_session_cost_is_counted_in_dollars(
     engine: sa.Engine, database_url: str
 ) -> None:
     name = repo()
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(
                 name,
@@ -74,7 +84,7 @@ def test_a_model_calls_nanodollars_are_counted_as_dollars(
     """The proxy's figures are kept as integers so a million summed is
     still exact, and a ceiling is in dollars."""
     name = repo()
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(name, "llm.called", {"cost_nanodollars": 250_000_000}),
             entry(name, "llm.called", {"cost_nanodollars": 750_000_000}),
@@ -88,13 +98,13 @@ def test_both_kinds_of_cost_are_one_figure(
     engine: sa.Engine, database_url: str
 ) -> None:
     name = repo()
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(name, "llm.called", {"cost_nanodollars": 500_000_000}),
             entry(
                 name,
                 "agent.dispatched",
-                {"layer": "pull-request", "cost": {"usd": 0.31}},
+                {"step": "collected", "cost": {"usd": 0.31}},
             ),
         ]
     )
@@ -115,7 +125,7 @@ def test_only_what_the_scope_names_is_counted(
     engine: sa.Engine, database_url: str
 ) -> None:
     name = repo()
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(
                 name,
@@ -125,7 +135,7 @@ def test_only_what_the_scope_names_is_counted(
             entry(
                 name,
                 "agent.dispatched",
-                {"layer": "pull-request", "cost": {"usd": 5.0}},
+                {"step": "collected", "cost": {"usd": 5.0}},
             ),
         ]
     )
@@ -142,7 +152,7 @@ def test_a_cost_outside_the_window_is_not_counted(
     engine: sa.Engine, database_url: str
 ) -> None:
     name = repo()
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(
                 name,
@@ -163,7 +173,7 @@ def test_a_checked_policys_cost_is_counted_like_any_other(
     spend reader counts what a fact says it cost, whatever produced
     it."""
     name = repo()
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(
                 name,
@@ -184,7 +194,7 @@ def test_a_runs_own_spending_is_read_by_its_run_id(
     asked for by its id and nothing else is counted."""
     name = repo()
     run = str(uuid.uuid4())
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(
                 name,
@@ -195,7 +205,7 @@ def test_a_runs_own_spending_is_read_by_its_run_id(
             entry(
                 name,
                 "agent.dispatched",
-                {"layer": "pull-request", "cost": {"usd": 0.31}},
+                {"step": "collected", "cost": {"usd": 0.31}},
                 run_id=run,
             ),
             entry(name, "llm.called", {"cost_nanodollars": 900_000_000}),
@@ -221,7 +231,7 @@ def test_spend_is_read_through_the_relation_named(
     """A deployment that keeps a view over the journal reads spend
     through it, so a row the view leaves out is not counted."""
     name = repo()
-    SqlAlchemyJournal(database_url).append(
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
         [
             entry(
                 name,

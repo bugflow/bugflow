@@ -9,6 +9,7 @@ of its own. This is this context's.
 from typing import Protocol
 
 from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.work.domain.models.journal import DispatchedRun
 
@@ -19,6 +20,13 @@ class JournalService(Protocol):
     ) -> list[JournalEntry]:
         """Return every entry of this type recorded for the pull
         request, oldest first."""
+        ...
+
+    def judged_runs(self, ref: PullRequestRef) -> set[Correlation]:
+        """Return the workflow runs in which a judge answered about the
+        pull request: those with a ``judge.invoked`` fact whose status
+        says a model judged, read from the judgement's table (ADR 007).
+        """
         ...
 
     def dispatched_run(

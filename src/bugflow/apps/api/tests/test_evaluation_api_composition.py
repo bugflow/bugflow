@@ -28,6 +28,10 @@ from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.review.infrastructure.sqlalchemy_judge_archive import (
     SqlAlchemyJudgeArchive,
 )
+from bugflow.review.infrastructure.sqlalchemy_review_facts import (
+    UNPACKERS as REVIEW_UNPACKERS,
+)
+from bugflow.review.tests.payloads import whole
 from bugflow.shared.domain.models.recorder import Recorder
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -67,7 +71,9 @@ def seeded(database_url: str) -> str:
     snapshots = SqlAlchemySnapshotStore(database_url)
     archive = SqlAlchemyJudgeArchive(database_url)
     journal = SqlAlchemyJournal(
-        database_url, build="b" * 40, unpackers=FORGE_UNPACKERS
+        database_url,
+        build="b" * 40,
+        unpackers={**FORGE_UNPACKERS, **REVIEW_UNPACKERS},
     )
     for number, email in [(7, ALIAS), (8, "somebody-else@commits.example")]:
         ref = PullRequestRef(owner="owner", repo="repo", number=number)
@@ -108,15 +114,15 @@ def seeded(database_url: str) -> str:
                 recorder.entry(
                     "judge.invoked",
                     "judge",
-                    {
-                        "policy_id": "ED-02",
-                        "status": "judged by model",
-                        "finding_count": 0,
-                        "identity": {
+                    whole(
+                        "judge.invoked",
+                        policy_id="ED-02",
+                        status="judged by model",
+                        identity={
                             "input_hash": snapshot.snapshot_id,
                             "exchange_id": exchange,
                         },
-                    },
+                    ),
                 ),
             ]
         )
