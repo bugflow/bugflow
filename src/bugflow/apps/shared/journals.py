@@ -28,6 +28,9 @@ from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
 )
 from bugflow.method.infrastructure.deployment_watch import DeployedFrom
+from bugflow.method.infrastructure.sqlalchemy_method_facts import (
+    UNPACKERS as METHOD_UNPACKERS,
+)
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries as ReviewJournalQueries,
 )
@@ -53,6 +56,7 @@ from bugflow.work.infrastructure.sqlalchemy_work_facts import (
 UNPACKERS: dict[str, Unpacker] = {
     **ARCHIVE_UNPACKERS,
     **FORGE_UNPACKERS,
+    **METHOD_UNPACKERS,
     **REVIEW_UNPACKERS,
     **STOCKTAKE_UNPACKERS,
     **WORK_UNPACKERS,

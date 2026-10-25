@@ -23,7 +23,10 @@ from bugflow.forge.infrastructure import (
     sqlalchemy_forge_facts,
     sqlalchemy_snapshots,
 )
-from bugflow.method.infrastructure import sqlalchemy_policy_deployments
+from bugflow.method.infrastructure import (
+    sqlalchemy_method_facts,
+    sqlalchemy_policy_deployments,
+)
 from bugflow.review.infrastructure import (
     sqlalchemy_cadence_boundaries,
     sqlalchemy_enforcement,
@@ -61,6 +64,7 @@ def defined() -> sa.MetaData:
         sqlalchemy_forge_facts.metadata,
         sqlalchemy_review_facts.metadata,
         sqlalchemy_stocktake_facts.metadata,
+        sqlalchemy_method_facts.metadata,
         sqlalchemy_work_facts.metadata,
         sqlalchemy_judge_archive.metadata,
         sqlalchemy_write_up_archive.metadata,
