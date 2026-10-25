@@ -133,7 +133,12 @@ def test_a_payload_json_cannot_hold_is_refused_and_records_nothing(
 ) -> None:
     recording, queries = journals
     run = new_run()
-    unsayable = replace(entry(run, "a"), payload={"at": datetime.now(UTC)})
+    # A journal that keeps its payload, since the review's does not.
+    unsayable = replace(
+        entry(run, "a"),
+        event_type="stocktake.taken",
+        payload={"at": datetime.now(UTC)},
+    )
     with pytest.raises((TypeError, StatementError)):
         recording.append([entry(run, "b"), unsayable])
     assert queries.entries_for_run(run) == []
