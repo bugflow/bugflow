@@ -40,9 +40,9 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
   [words](https://github.com/ClankaOperatingSystem/clankos/blob/master/docs/words.txt).
   A gnome's skill, `skills/<skill>/`, holds a copy of the doctrine and
   the policies in its `references/`. [What a gnome is](gnomes.md).
-- **Manifest.** `manifest.md`: the gnome's id and the lists of its
-  subjects, policies and checks. [The policy package](policy-package.md),
-  "The manifest".
+- **Manifest.** `manifest.md`: the gnome's id, the lists of its
+  subjects, policies and checks, and the address of its site.
+  [The policy package](policy-package.md), "The manifest".
 - **Calibration.** One run of a policy over all of its cases, counting
   the cases the judge answered correctly, recorded in the policy's
   notes below `=== calibration`. [What a gnome is](gnomes.md),

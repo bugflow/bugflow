@@ -18,11 +18,15 @@ instructions in prose. The header is lines of the form ``key: value``::
     governs: yes
     policies: P-01, P-02, P-04
     checks: em-dash P-04 RULE-21
+    site: https://example.github.io/prose/
     ---
     The reviewer's instructions.
 
 ``agent_id`` and ``summary`` are required. ``runner`` is ``judge`` when
-absent, and ``governs`` is ``yes``. A key this server does not read,
+absent, and ``governs`` is ``yes``. ``site`` is the address the
+reviewer's gnome publishes its pages at, which a comment links each
+clause it cites to; absent, a comment names the clause and links
+nothing. A key this server does not read,
 such as a gnome's ``subjects``, is kept out of the way.
 ``docs/policy-package.md`` specifies the file.
 
@@ -87,6 +91,9 @@ class DomainSpecificReviewAgent:
     description: str
     #: The policies that a check answers.
     checks: tuple[CheckedPolicy, ...] = ()
+    #: The address the gnome publishes its pages at, with a trailing
+    #: slash or without. Empty if it publishes none.
+    site: str = ""
 
     @property
     def references(self) -> Path:
@@ -125,6 +132,14 @@ def _flag(name: str, field: str, value: str) -> bool:
     if value not in ("yes", "no"):
         raise ValueError(f"{name}: {field} is {value!r}, not yes or no")
     return value == "yes"
+
+
+def _site(name: str, value: str) -> str:
+    """Read the ``site`` field of a header: an https address, or
+    nothing."""
+    if value and not value.startswith("https://"):
+        raise ValueError(f"{name}: site is {value!r}, not an https:// address")
+    return value
 
 
 def _checks(
@@ -170,8 +185,8 @@ def parse_agent(
 
     Raises ``ValueError``, naming the file, if the manifest has no line
     of three dashes, a header line that is not ``key: value``, a
-    required field missing, a field that cannot be read, or a check
-    not among ``checks``.
+    required field missing, a field that cannot be read, a site that
+    is not an https address, or a check not among ``checks``.
     """
     name = path.name
     header, separator, description = text.partition(_SEPARATOR)
@@ -202,6 +217,7 @@ def parse_agent(
         directory=path.parent,
         description=description.strip("\n"),
         checks=_checks(name, fields.get("checks", ""), policies, checks),
+        site=_site(name, fields.get("site", "")),
     )
 
 
