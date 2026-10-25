@@ -339,6 +339,7 @@ class PublishFindingsUseCase:
         governance: GovernanceService | None = None,
         summaries: Mapping[str, str] | None = None,
         submissions: SubmissionSourceRepository | None = None,
+        sites: Mapping[str, str] | None = None,
     ) -> None:
         """``forge`` writes to the pull request. ``enforcement`` says what
         may be published for a repository. ``agents`` gives the policies
@@ -348,7 +349,9 @@ class PublishFindingsUseCase:
         summary, which a comment uses to name a rule. ``submissions``
         reads back the text of the pull request, so that a finding raised
         earlier can be checked against it; with none, no finding is
-        carried and none is recorded as rewritten.
+        carried and none is recorded as rewritten. ``sites`` gives the
+        address each reviewer's gnome publishes its pages at, by agent
+        id, which a comment links each clause it cites to.
         """
         self._forge = forge
         self._journal = journal
@@ -358,6 +361,7 @@ class PublishFindingsUseCase:
         self._agents = dict(agents or {})
         self._governance = governance
         self._summaries = dict(summaries or {})
+        self._sites = dict(sites or {})
 
     def _governing_for(self, ref: PullRequestRef) -> frozenset[str]:
         """The reviewers that decide this repository's label."""
@@ -852,6 +856,7 @@ class PublishFindingsUseCase:
                         self._summaries,
                         request.clauses,
                         rejudged=True,
+                        site=self._sites.get(agent_id, ""),
                     )
                     if moved
                     else ""
@@ -870,6 +875,7 @@ class PublishFindingsUseCase:
                     said_of,
                     self._summaries,
                     request.clauses,
+                    site=self._sites.get(agent_id, ""),
                 )
             elif first and not unanswered and request.head_sha:
                 body = clean_comment(
