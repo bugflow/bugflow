@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0018"
+LAST = "0019"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -810,7 +810,7 @@ def test_the_archive_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "archive_journal")
-    assert "payload" in _columns(empty, "review_journal")
+    assert "payload" in _columns(empty, "stocktake_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, refused.event_id)
@@ -869,7 +869,7 @@ def test_the_forge_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "forge_journal")
-    assert "payload" in _columns(empty, "review_journal")
+    assert "payload" in _columns(empty, "stocktake_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, merged.event_id)
@@ -911,3 +911,106 @@ def test_a_forge_fact_with_no_typed_row_stops_the_column_going(
 
 def _engine(database_url: str) -> sa.Engine:
     return sa.create_engine(engine_url(database_url))
+
+
+def test_the_review_journals_payload_column_goes_once_its_facts_have_tables(
+    empty: str,
+) -> None:
+    """A review fact written before the typed tables is unpacked by 0014
+    and loses its payload to 0019: the column is gone from the table,
+    the view reads null for it, and the typed row holds the fact."""
+    upgrade(empty)
+    downgrade(empty, "0013")
+    checked = replace(
+        entry("checked-before"),
+        event_type="policy.checked",
+        payload={"policy_id": "P-01", "clause": "RULE-1", "finding_count": 0},
+    )
+    seed_before_keys(
+        empty, _engine(empty), checked, run=False, table="review_journal"
+    )
+
+    upgrade(empty)
+
+    assert "payload" not in _columns(empty, "review_journal")
+    assert "payload" in _columns(empty, "stocktake_journal")
+    engine = _engine(empty)
+    try:
+        (row,) = rows(engine, checked.event_id)
+        assert row["payload"] is None
+        with engine.connect() as connection:
+            clause = connection.execute(
+                sa.text(
+                    "select clause from policy_check where event_id = :id"
+                ),
+                {"id": checked.event_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert clause == "RULE-1"
+
+
+def test_a_review_fact_with_no_typed_row_stops_the_column_going(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0018")
+    unpacked_by_nothing = replace(
+        entry("never-unpacked"),
+        event_type="policy.checked",
+        payload={"policy_id": "P-01", "clause": "RULE-1", "finding_count": 0},
+    )
+    seed_before_keys(
+        empty,
+        _engine(empty),
+        unpacked_by_nothing,
+        run=False,
+        table="review_journal",
+    )
+
+    with pytest.raises(Exception, match=r"1 of type policy\.checked"):
+        upgrade(empty)
+
+
+def test_a_deployments_own_table_keyed_to_the_review_journal_holds_its_fact(
+    empty: str,
+) -> None:
+    """A type a deployment places in the review journal is held by a
+    table the deployment's own script made, found by its key to the
+    journal, so the column goes with that fact in its table."""
+    upgrade(empty)
+    downgrade(empty, "0018")
+    labelled = replace(
+        entry("labelled-before"),
+        event_type="finding.labelled",
+        payload={"finding": "f", "verdict": "right"},
+    )
+    engine = _engine(empty)
+    seed_before_keys(
+        empty, engine, labelled, run=False, table="review_journal"
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "create table deployment_label ("
+                "event_id uuid primary key "
+                "references review_journal (event_id), "
+                "verdict text not null)"
+            )
+        )
+        connection.execute(
+            sa.text(
+                "insert into deployment_label (event_id, verdict) "
+                "values (:id, 'right')"
+            ),
+            {"id": labelled.event_id},
+        )
+
+    upgrade(empty)
+
+    assert "payload" not in _columns(empty, "review_journal")
+    try:
+        (row,) = rows(engine, labelled.event_id)
+        assert row["payload"] is None
+    finally:
+        engine.dispose()

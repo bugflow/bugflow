@@ -15,7 +15,7 @@ from bugflow.review.domain.models.history import (
     HistoryScope,
     StoredReviewEvent,
 )
-from bugflow.review.domain.models.review_entry import from_payload
+from bugflow.review.domain.models.review_entry import ReviewEntry, from_payload
 from bugflow.review.domain.services.journal import HistoryService
 from bugflow.review.infrastructure.in_memory_history import InMemoryHistory
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
@@ -25,7 +25,6 @@ from bugflow.review.infrastructure.sqlalchemy_review_facts import (
     UNPACKERS as REVIEW_UNPACKERS,
 )
 from bugflow.review.tests.payloads import whole
-from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     SqlAlchemyJournal,
@@ -41,23 +40,21 @@ def event(
     scope: HistoryScope, *, number: int = 1, run: str = "run"
 ) -> StoredReviewEvent:
     return StoredReviewEvent(
-        entry=from_payload(
-            JournalEntry(
-                event_id=uuid4(),
-                occurred_at=AT,
-                event_type="judge.invoked",
-                forge=scope.forge,
-                repo=scope.repo,
-                pr_number=number,
-                commit_sha="head",
-                corpus_version="corpus",
-                workflow_id="workflow",
-                run_id=run,
-                payload=whole(
-                    "judge.invoked", policy_id="P-01", status="unavailable"
-                ),
-                build="build",
-            )
+        entry=ReviewEntry(
+            event_id=uuid4(),
+            occurred_at=AT,
+            event_type="judge.invoked",
+            forge=scope.forge,
+            repo=scope.repo,
+            pr_number=number,
+            commit_sha="head",
+            corpus_version="corpus",
+            workflow_id="workflow",
+            run_id=run,
+            payload=whole(
+                "judge.invoked", policy_id="P-01", status="unavailable"
+            ),
+            build="build",
         ),
         recorded_at=AT,
         policy_repository="policies/repo",
@@ -67,13 +64,27 @@ def event(
 
 
 def with_payload(
-    stored: StoredReviewEvent, payload: dict[str, Any]
+    stored: StoredReviewEvent,
+    payload: dict[str, Any],
+    event_type: str | None = None,
 ) -> StoredReviewEvent:
-    """The event with another payload, its fact read from it again."""
+    """The event as written with another payload, and another type where
+    one is given."""
     return replace(
         stored,
-        entry=from_payload(replace(stored.entry, payload=payload, fact=None)),
+        entry=replace(
+            stored.entry,
+            payload=payload,
+            fact=None,
+            event_type=event_type or stored.entry.event_type,
+        ),
     )
+
+
+def read(stored: StoredReviewEvent) -> StoredReviewEvent:
+    """The event as a reader returns it: the fact from its table, the
+    review journal's payload empty."""
+    return replace(stored, entry=from_payload(stored.entry))
 
 
 def columns(stored: StoredReviewEvent) -> dict[str, Any]:
@@ -81,6 +92,8 @@ def columns(stored: StoredReviewEvent) -> dict[str, Any]:
     values.pop("origin")  # Provenance is stored in the association table.
     values.pop("origin_asserted")
     values.pop("fact")  # Read from the fact's table, not a column.
+    if "payload" not in table_for(stored.entry.event_type).c:
+        values.pop("payload")
     return values | {
         "recorded_at": stored.recorded_at,
         "policy_repository": stored.policy_repository,
@@ -140,7 +153,7 @@ def test_scope_includes_forge_repository_pr_and_optional_run(
     selected = replace(
         scope, correlation=Correlation(workflow_id="workflow", run_id="run")
     )
-    assert reader.entries_for_history(selected, LIMITS) == (first,)
+    assert reader.entries_for_history(selected, LIMITS) == (read(first),)
     assert (
         reader.entries_for_history(
             replace(scope, repo=f"absent/{uuid4().hex}"), LIMITS
@@ -163,9 +176,9 @@ def test_equal_times_are_ordered_by_event_id_and_duplicates_keep_first(
     reader = reader_factory([second, first, earlier, oldest, duplicate])
 
     assert reader.entries_for_history(scope, LIMITS) == (
-        oldest,
-        earlier,
-        *sorted((first, second), key=lambda e: e.entry.event_id),
+        read(oldest),
+        read(earlier),
+        *sorted((read(first), read(second)), key=lambda e: e.entry.event_id),
     )
 
 
@@ -188,13 +201,14 @@ def test_byte_guard_counts_multibyte_payloads_and_provenance(
 ) -> None:
     one = event(scope)
     if large_field == "payload":
-        one = with_payload(one, whole("judge.invoked", status="é" * 4096))
+        # A journal that keeps its payload, since the review's does not.
+        one = with_payload(one, {"text": "é" * 4096}, "stocktake.taken")
     else:
         one = replace(one, policy_repository="é" * 4096)
     reader = reader_factory([one])
     with pytest.raises(HistoryTooLargeError, match="byte limit"):
         reader.entries_for_history(scope, HistoryLimits(max_bytes=4096))
-    assert reader.entries_for_history(scope, LIMITS) == (one,)
+    assert reader.entries_for_history(scope, LIMITS) == (read(one),)
 
 
 def test_missing_deployment_stamps_remain_missing(
@@ -206,7 +220,9 @@ def test_missing_deployment_stamps_remain_missing(
         policy_commit=None,
         policy_content=None,
     )
-    assert reader_factory([one]).entries_for_history(scope, LIMITS) == (one,)
+    assert reader_factory([one]).entries_for_history(scope, LIMITS) == (
+        read(one),
+    )
 
 
 def test_postgres_returns_the_writers_provenance(
@@ -249,6 +265,7 @@ def test_preflight_and_fetch_share_a_snapshot_despite_a_late_commit(
         values.pop("origin")
         values.pop("origin_asserted")
         values.pop("fact")
+        values.pop("payload")  # The review journal has no column for it.
         writer.execute(
             sa.insert(table_for(late.entry.event_type)).values(values)
         )
@@ -288,10 +305,14 @@ def test_oversized_payload_is_refused_before_payload_fetch(
     database_url: str, scope: HistoryScope
 ) -> None:
     one = event(scope)
+    # A journal that keeps its payload, since the review's does not.
     SqlAlchemyJournal(database_url, unpackers=REVIEW_UNPACKERS).append(
         [
             replace(
-                one.entry, payload=whole("judge.invoked", status="x" * 10000)
+                one.entry,
+                event_type="stocktake.taken",
+                payload={"text": "x" * 10000},
+                fact=None,
             )
         ]
     )

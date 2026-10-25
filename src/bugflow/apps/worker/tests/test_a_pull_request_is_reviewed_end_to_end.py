@@ -52,6 +52,10 @@ from bugflow.review.domain.facts import (
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import ADVISE
 from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.journal_facts import (
+    PolicyCheck,
+    ReviewAction,
+)
 from bugflow.review.domain.models.judge_assessment import JudgeAssessment
 from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.review.domain.models.submission import Submission
@@ -226,18 +230,22 @@ def test_a_pull_request_is_reviewed_and_a_finding_published(
     # The journal holds the review, each fact naming the pull request.
     read = review_journal(database_url, None)
     (raised,) = read.events_for_pull_request(REF, FINDING_RAISED)
-    assert raised.payload["policy_id"] == "P-01"
-    assert raised.payload["clause"] == "EX-1"
-    assert raised.payload["agent_id"] == "prose"
+    assert isinstance(raised.fact, Finding)
+    assert raised.fact.policy_id == "P-01"
+    assert raised.fact.clause == "EX-1"
+    assert raised.fact.agent_id == "prose"
     (observed,) = read.events_for_pull_request(REF, PR_OBSERVED)
     assert observed.commit_sha == HEAD
     assert len(read.events_for_pull_request(REF, JUDGE_INVOKED)) == 1
     # The policy the manifest gives to a check was answered by the
     # check, which found no dash.
     (checked,) = read.events_for_pull_request(REF, POLICY_CHECKED)
-    assert checked.payload["policy_id"] == "P-09"
+    assert isinstance(checked.fact, PolicyCheck)
+    assert checked.fact.policy_id == "P-09"
     acted = read.events_for_pull_request(REF, ACTION_TAKEN)
-    assert any(e.payload.get("performed") for e in acted)
+    assert any(
+        isinstance(e.fact, ReviewAction) and e.fact.performed for e in acted
+    )
     # The close read the conversation the comment started.
     (reaction,) = read.events_for_pull_request(REF, "reaction.recorded")
     engine = sa.create_engine(engine_url(database_url))
