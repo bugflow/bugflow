@@ -24,9 +24,8 @@ def seed(database_url: str) -> tuple[str, str, str]:
                 sa.text("""
                 INSERT INTO forge_journal
                     (event_id, occurred_at, event_type, forge, repo,
-                     workflow_id, run_id, payload)
-                VALUES (:id, now(), 'pr.observed', 'forgejo', 'a/b', '', '',
-                        '{}')
+                     workflow_id, run_id)
+                VALUES (:id, now(), 'pr.observed', 'forgejo', 'a/b', '', '')
             """),
                 {"id": event},
             )
@@ -109,11 +108,11 @@ def test_inventory_and_mapping_preserve_identifiers_and_bytes(
             assert (
                 connection.execute(
                     sa.text(
-                        "SELECT payload FROM journal WHERE event_id = :id"
+                        "SELECT event_type FROM journal WHERE event_id = :id"
                     ),
                     {"id": event},
                 ).scalar_one()
-                == {}
+                == "pr.observed"
             )
     finally:
         engine.dispose()
