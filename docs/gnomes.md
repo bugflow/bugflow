@@ -27,7 +27,7 @@ A gnome has seven parts.
 | Case | `cases/<ID>/*.md` | An example with the answer a correct judge gives it |
 | Check | `skills/<skill>/scripts/check-<name>` | A script that answers a policy in code, with no model |
 | Skill | `skills/<skill>/SKILL.md` | Instructions for an agent that writes or tidies to the doctrine |
-| Manifest | `manifest.md` | The gnome's id, and the lists of its subjects, policies and checks |
+| Manifest | `manifest.md` | The gnome's id, the lists of its subjects, policies and checks, and the address of its site |
 
 The doctrine and the policies are kept in `doctrine/` and `policies/`
 at the root of the gnome. Each skill has a copy of both in its
@@ -73,7 +73,7 @@ one alone.
 
 | Part | A bugflow server | A garden |
 |---|---|---|
-| Manifest | Reads the id, policies and checks | Not read |
+| Manifest | Reads the id, policies, checks and site | Not read |
 | Doctrine | Given to the model with each policy | Read by the skill |
 | A policy a model answers | Asked about each pull request, if a binding declares it | Not read |
 | A policy a check answers | Answered only if the server has that check | The lint runs the check |
