@@ -41,7 +41,8 @@ different positive limits when assembling the reader. An oversized request
 raises `HistoryTooLargeError`; no partial response is returned.
 
 The PostgreSQL adapter checks row count and stored bytes before transferring
-payloads. That check and the fetch share a repeatable-read transaction.
+the rows and the facts their typed tables hold. That check and the fetch
+share a repeatable-read transaction.
 Counts derive from those fetched rows. Events are ordered by event time,
 recording time and event ID. A transaction that commits after the read's
 snapshot cannot alter its result, even with an earlier recording timestamp.
