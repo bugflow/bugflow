@@ -31,7 +31,12 @@ JOURNALS = [f"{kind}_journal" for kind in KINDS]
 
 #: The journals whose payload column has gone, a table holding each of
 #: their types (ADR 007). The view reads null for it.
-PAYLOAD_GONE = {"archive_journal", "forge_journal", "review_journal"}
+PAYLOAD_GONE = {
+    "archive_journal",
+    "forge_journal",
+    "review_journal",
+    "stocktake_journal",
+}
 
 # The columns other software relies on: name -> (type, nullable)
 CONTRACT = {

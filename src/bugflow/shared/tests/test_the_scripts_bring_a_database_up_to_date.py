@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0019"
+LAST = "0020"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -810,7 +810,7 @@ def test_the_archive_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "archive_journal")
-    assert "payload" in _columns(empty, "stocktake_journal")
+    assert "payload" in _columns(empty, "policy_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, refused.event_id)
@@ -869,7 +869,7 @@ def test_the_forge_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "forge_journal")
-    assert "payload" in _columns(empty, "stocktake_journal")
+    assert "payload" in _columns(empty, "policy_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, merged.event_id)
@@ -933,7 +933,7 @@ def test_the_review_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "review_journal")
-    assert "payload" in _columns(empty, "stocktake_journal")
+    assert "payload" in _columns(empty, "policy_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, checked.event_id)
@@ -1011,6 +1011,120 @@ def test_a_deployments_own_table_keyed_to_the_review_journal_holds_its_fact(
     assert "payload" not in _columns(empty, "review_journal")
     try:
         (row,) = rows(engine, labelled.event_id)
+        assert row["payload"] is None
+    finally:
+        engine.dispose()
+
+
+def test_the_stocktake_journals_payload_column_goes_once_its_facts_have_tables(
+    empty: str,
+) -> None:
+    """A stocktake fact written before the typed tables is unpacked by
+    0015 and loses its payload to 0020: the column is gone from the
+    table, the view reads null for it, and the typed row holds the
+    fact."""
+    upgrade(empty)
+    downgrade(empty, "0014")
+    graded = replace(
+        entry("graded-before"),
+        event_type="stocktake.graded",
+        payload={
+            "layer": "weekly",
+            "agent_id": "security",
+            "status": "pass",
+            "detail": "all well",
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), graded, run=False, table="stocktake_journal"
+    )
+
+    upgrade(empty)
+
+    assert "payload" not in _columns(empty, "stocktake_journal")
+    assert "payload" in _columns(empty, "policy_journal")
+    engine = _engine(empty)
+    try:
+        (row,) = rows(engine, graded.event_id)
+        assert row["payload"] is None
+        with engine.connect() as connection:
+            detail = connection.execute(
+                sa.text(
+                    "select detail from stocktake_grade where event_id = :id"
+                ),
+                {"id": graded.event_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert detail == "all well"
+
+
+def test_a_stocktake_fact_with_no_typed_row_stops_the_column_going(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0019")
+    unpacked_by_nothing = replace(
+        entry("never-unpacked"),
+        event_type="stocktake.graded",
+        payload={
+            "layer": "weekly",
+            "agent_id": "security",
+            "status": "pass",
+            "detail": "",
+        },
+    )
+    seed_before_keys(
+        empty,
+        _engine(empty),
+        unpacked_by_nothing,
+        run=False,
+        table="stocktake_journal",
+    )
+
+    with pytest.raises(Exception, match=r"1 of type stocktake\.graded"):
+        upgrade(empty)
+
+
+def test_a_deployments_own_table_keyed_to_the_stocktake_journal_holds_its_fact(
+    empty: str,
+) -> None:
+    """A type a deployment places in the stocktake journal is held by a
+    table the deployment's own script made, found by its key to the
+    journal, so the column goes with that fact in its table."""
+    upgrade(empty)
+    downgrade(empty, "0019")
+    noted = replace(
+        entry("noted-before"),
+        event_type="stocktake.noted",
+        payload={"note": "quiet week"},
+    )
+    engine = _engine(empty)
+    seed_before_keys(
+        empty, engine, noted, run=False, table="stocktake_journal"
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "create table deployment_note ("
+                "event_id uuid primary key "
+                "references stocktake_journal (event_id), "
+                "note text not null)"
+            )
+        )
+        connection.execute(
+            sa.text(
+                "insert into deployment_note (event_id, note) "
+                "values (:id, 'quiet week')"
+            ),
+            {"id": noted.event_id},
+        )
+
+    upgrade(empty)
+
+    assert "payload" not in _columns(empty, "stocktake_journal")
+    try:
+        (row,) = rows(engine, noted.event_id)
         assert row["payload"] is None
     finally:
         engine.dispose()

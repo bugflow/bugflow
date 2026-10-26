@@ -116,8 +116,8 @@ def _journal_table(
 
 #: The journals whose payload column has gone, a table holding each of
 #: their types (ADR 007): the archive's, by script 0017, the forge's, by
-#: 0018, and the review's, by 0019.
-WITHOUT_PAYLOAD = frozenset({"archive", "forge", "review"})
+#: 0018, the review's, by 0019, and the stocktake's, by 0020.
+WITHOUT_PAYLOAD = frozenset({"archive", "forge", "review", "stocktake"})
 
 # The journals share their metadata with the entity tables they refer to
 # by key (ADR 005).
