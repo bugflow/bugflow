@@ -1,11 +1,12 @@
 """A journal entry as the review context reads it: the envelope, with
 the fact its typed table holds (ADR 007).
 
-The review journal's envelope carries no payload, so a reader takes the
-fact from here and not from the payload, and an entry read with a fact
-has an empty payload, as the stored journal reads it. An entry of a
-type this context has no table for, a forge's or a stocktake's fact it
-also reads, has no fact and keeps its payload.
+The review journal's envelope carries no payload, and the stocktake
+journal's carries none, so a reader takes the fact from here and not
+from the payload, and an entry read with a fact has an empty payload, as
+the stored journal reads it. An entry of a type this context has no
+table for, a forge's fact it also reads, has no fact and keeps its
+payload.
 """
 
 from dataclasses import dataclass, fields, replace

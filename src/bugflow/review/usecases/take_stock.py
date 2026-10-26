@@ -9,6 +9,7 @@ It reviews nothing. What is done with the range is up to the caller.
 """
 
 from bugflow.review.domain.facts import PR_MERGED, STOCKTAKE_TAKEN
+from bugflow.review.domain.models.journal_facts import StocktakeTaken
 from bugflow.review.domain.models.stocktake import (
     Mark,
     Merged,
@@ -97,26 +98,24 @@ class TakeStockUseCase:
         left none.
 
         Journal entries are never changed, so there is a mark for every
-        stocktake, and the last one is the mark.
+        stocktake, and the last one is the mark. A mark is read from its
+        table, which the entry carries as its fact (ADR 007).
         """
         marks = [
-            entry
+            (entry.occurred_at, entry.fact)
             for entry in journal.events(STOCKTAKE_TAKEN)
-            if entry.payload.get("layer") == request.layer
+            if isinstance(entry.fact, StocktakeTaken)
+            and entry.fact.layer == request.layer
         ]
         if not marks:
             return None
-        last = marks[-1]
+        taken_at, _ = marks[-1]
         # The commit is taken from the latest mark that has one. A
         # stocktake of an empty range records the time and no commit,
         # so a quiet period does not change what the next review
         # compares against.
         stopped_at = next(
-            (
-                one.payload.get("head_sha")
-                for one in reversed(marks)
-                if one.payload.get("head_sha")
-            ),
+            (fact.head_sha for _, fact in reversed(marks) if fact.head_sha),
             None,
         )
-        return Mark(taken_at=last.occurred_at, head_sha=stopped_at)
+        return Mark(taken_at=taken_at, head_sha=stopped_at)

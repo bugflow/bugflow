@@ -10,6 +10,7 @@ import pytest
 from bugflow.apps.shared.journals import review_journal
 from bugflow.apps.worker.tests.journal import ActivityJournal
 from bugflow.review.domain.models.grading import Grading
+from bugflow.review.domain.models.journal_facts import StocktakeTaken
 from bugflow.review.dtos.review_range import CollectRangeReviewRequest
 from bugflow.review.dtos.take_stock import TakeStockRequest
 from bugflow.review.tests.test_a_stocktake_reviews_its_range import (
@@ -119,7 +120,8 @@ def test_only_same_origin_merges_and_marks_define_the_range(
     assert result.since == AT - timedelta(days=7)
     entries = journal.entries_for_run(RUN)
     assert len(entries) == 1 and entries[0].origin == ORIGIN
-    assert entries[0].payload["pull_requests"] == [1]
+    assert isinstance(entries[0].fact, StocktakeTaken)
+    assert entries[0].fact.pull_requests == (1,)
     assert entries[0].pr_number is None
 
 

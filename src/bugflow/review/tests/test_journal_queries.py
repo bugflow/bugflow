@@ -136,7 +136,7 @@ def test_a_payload_json_cannot_hold_is_refused_and_records_nothing(
     # A journal that keeps its payload, since the review's does not.
     unsayable = replace(
         entry(run, "a"),
-        event_type="stocktake.taken",
+        event_type="policy.calibrated",
         payload={"at": datetime.now(UTC)},
     )
     with pytest.raises((TypeError, StatementError)):
