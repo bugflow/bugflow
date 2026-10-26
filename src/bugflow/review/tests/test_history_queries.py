@@ -195,14 +195,13 @@ def test_the_event_bound_refuses_the_whole_request(
         reader.entries_for_history(scope, HistoryLimits(max_events=1))
 
 
-@pytest.mark.parametrize("large_field", ["payload", "provenance"])
-def test_byte_guard_counts_multibyte_payloads_and_provenance(
+@pytest.mark.parametrize("large_field", ["envelope", "provenance"])
+def test_byte_guard_counts_multibyte_envelopes_and_provenance(
     reader_factory: ReaderFactory, scope: HistoryScope, large_field: str
 ) -> None:
     one = event(scope)
-    if large_field == "payload":
-        # A journal that keeps its payload, since the review's does not.
-        one = with_payload(one, {"text": "é" * 4096}, "policy.calibrated")
+    if large_field == "envelope":
+        one = replace(one, entry=replace(one.entry, commit_sha="é" * 4096))
     else:
         one = replace(one, policy_repository="é" * 4096)
     reader = reader_factory([one])
@@ -301,21 +300,15 @@ def test_preflight_and_fetch_share_a_snapshot_despite_a_late_commit(
     assert len(reader.entries_for_history(scope, LIMITS)) == 2
 
 
-def test_oversized_payload_is_refused_before_payload_fetch(
+def test_oversized_history_is_refused_before_the_fetch(
     database_url: str, scope: HistoryScope
 ) -> None:
     one = event(scope)
-    # A journal that keeps its payload, since the review's does not.
-    SqlAlchemyJournal(database_url, unpackers=REVIEW_UNPACKERS).append(
-        [
-            replace(
-                one.entry,
-                event_type="policy.calibrated",
-                payload={"text": "x" * 10000},
-                fact=None,
-            )
-        ]
-    )
+    SqlAlchemyJournal(
+        database_url,
+        policy_repository="x" * 10000,
+        unpackers=REVIEW_UNPACKERS,
+    ).append([one.entry])
     reader = SqlAlchemyJournalQueries(database_url)
     statements: list[str] = []
 
