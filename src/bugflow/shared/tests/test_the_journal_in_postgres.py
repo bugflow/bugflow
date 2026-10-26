@@ -101,8 +101,8 @@ def test_an_entry_is_kept_as_it_was_made(
     # A fact of a journal that keeps its payload column.
     made = entry(
         "kept",
-        event_type="stocktake.taken",
-        payload={"layer": "weekly"},
+        event_type="policy.calibrated",
+        payload={"policy_id": "P-01"},
         pr_number=7,
         commit_sha="abc",
         agent_id="an-agent",
@@ -111,7 +111,7 @@ def test_an_entry_is_kept_as_it_was_made(
 
     (row,) = rows(engine, made.event_id)
     assert row["occurred_at"] == made.occurred_at
-    assert row["event_type"] == "stocktake.taken"
+    assert row["event_type"] == "policy.calibrated"
     assert (row["pr_number"], row["commit_sha"]) == (7, "abc")
     assert row["agent_id"] == "an-agent"
     assert row["payload"] == made.payload
@@ -122,7 +122,7 @@ def test_a_repeated_event_id_is_ignored(
     engine: sa.Engine, database_url: str
 ) -> None:
     stored = SqlAlchemyJournal(database_url)
-    first = entry("twice", event_type="stocktake.taken", payload={"n": 1})
+    first = entry("twice", event_type="policy.calibrated", payload={"n": 1})
     stored.append([first])
     stored.append([replace(first, payload={"later": True}), entry("other")])
 
