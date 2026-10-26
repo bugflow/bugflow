@@ -1,6 +1,8 @@
-"""Tests of the Postgres journal: that it stores entries, that the database
-refuses changes to them in any of the five journals, and that the view
-and the tables have the columns other software relies on (ADR 006).
+"""Tests of the Postgres journal: that it stores envelopes, that the
+database refuses changes to them in any of the five journals, and that
+the view and the tables have the columns other software relies on (ADR
+006), the payload read null from the view since no journal keeps the
+column (ADR 007).
 
 Skipped unless DATABASE_URL names a Postgres server.
 """
@@ -30,13 +32,8 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
 JOURNALS = [f"{kind}_journal" for kind in KINDS]
 
 #: The journals whose payload column has gone, a table holding each of
-#: their types (ADR 007). The view reads null for it.
-PAYLOAD_GONE = {
-    "archive_journal",
-    "forge_journal",
-    "review_journal",
-    "stocktake_journal",
-}
+#: their types (ADR 007): every one. The view reads null for it.
+PAYLOAD_GONE = set(JOURNALS)
 
 # The columns other software relies on: name -> (type, nullable)
 CONTRACT = {
@@ -100,10 +97,12 @@ def columns(
         }
 
 
-def test_an_entry_is_kept_as_it_was_made(
+def test_an_entrys_envelope_is_kept_as_it_was_made(
     engine: sa.Engine, database_url: str
 ) -> None:
-    # A fact of a journal that keeps its payload column.
+    """The envelope is the row; the payload is no journal's column (ADR
+    007), and the fact is its typed table's row, which the unpacker the
+    adapter is given writes."""
     made = entry(
         "kept",
         event_type="policy.calibrated",
@@ -119,7 +118,7 @@ def test_an_entry_is_kept_as_it_was_made(
     assert row["event_type"] == "policy.calibrated"
     assert (row["pr_number"], row["commit_sha"]) == (7, "abc")
     assert row["agent_id"] == "an-agent"
-    assert row["payload"] == made.payload
+    assert row["payload"] is None
     assert row["recorded_at"] is not None
 
 
@@ -127,12 +126,12 @@ def test_a_repeated_event_id_is_ignored(
     engine: sa.Engine, database_url: str
 ) -> None:
     stored = SqlAlchemyJournal(database_url)
-    first = entry("twice", event_type="policy.calibrated", payload={"n": 1})
+    first = entry("twice", commit_sha="first")
     stored.append([first])
-    stored.append([replace(first, payload={"later": True}), entry("other")])
+    stored.append([replace(first, commit_sha="later"), entry("other")])
 
     (row,) = rows(engine, first.event_id)
-    assert row["payload"] == first.payload
+    assert row["commit_sha"] == "first"
     assert stored.has_event(entry("other").event_id)
     assert not stored.has_event(fact_id("a-test", "never"))
 
@@ -214,7 +213,7 @@ def test_contract_columns_are_present_and_unchanged(
         assert actual[name][:2] == expected, f"{table} changed {name}"
 
 
-def test_a_fact_whose_journal_has_no_payload_column_is_kept_without_it(
+def test_a_fact_is_kept_without_its_payload(
     engine: sa.Engine, database_url: str
 ) -> None:
     """The envelope is stored, the view reads null for its payload, and

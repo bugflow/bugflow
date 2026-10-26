@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import StatementError
 
 from bugflow.review.domain.facts import (
     ACTION_TAKEN,
@@ -23,6 +22,9 @@ from bugflow.review.domain.facts import (
 )
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
+)
+from bugflow.review.infrastructure.sqlalchemy_review_facts import (
+    UNPACKERS as REVIEW_UNPACKERS,
 )
 from bugflow.review.tests.journal import QueryableJournal
 from bugflow.review.tests.payloads import whole
@@ -46,7 +48,9 @@ def journals(request: pytest.FixtureRequest) -> Journals:
         return journal, journal
     database_url: str = request.getfixturevalue("database_url")
     return (
-        SqlAlchemyJournal(database_url, build=BUILD),
+        SqlAlchemyJournal(
+            database_url, build=BUILD, unpackers=REVIEW_UNPACKERS
+        ),
         SqlAlchemyJournalQueries(database_url),
     )
 
@@ -128,18 +132,16 @@ def test_the_build_that_wrote_an_entry_comes_back_with_it(
     assert [e.build for e in queries.entries_for_run(run)] == [BUILD]
 
 
-def test_a_payload_json_cannot_hold_is_refused_and_records_nothing(
+def test_a_payload_the_journal_cannot_hold_is_refused_and_records_nothing(
     journals: Journals,
 ) -> None:
+    """The in-memory journal keeps a payload as JSON, and the Postgres
+    journal keeps it as the fact's typed row, which its unpacker writes
+    from the payload's keys; either refuses the whole batch."""
     recording, queries = journals
     run = new_run()
-    # A journal that keeps its payload, since the review's does not.
-    unsayable = replace(
-        entry(run, "a"),
-        event_type="policy.calibrated",
-        payload={"at": datetime.now(UTC)},
-    )
-    with pytest.raises((TypeError, StatementError)):
+    unsayable = replace(entry(run, "a"), payload={"at": datetime.now(UTC)})
+    with pytest.raises((TypeError, KeyError)):
         recording.append([entry(run, "b"), unsayable])
     assert queries.entries_for_run(run) == []
 
