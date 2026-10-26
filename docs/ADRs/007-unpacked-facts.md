@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed, 2026-10-24.
+Proposed, 2026-10-24. Accepted, 2026-10-27: every type has its table,
+the last payload column went by script 0021, and no reader reads a
+journal's JSON.
 
 ## Decision
 
