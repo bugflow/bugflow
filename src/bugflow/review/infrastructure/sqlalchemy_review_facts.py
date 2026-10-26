@@ -32,8 +32,8 @@ Each table is keyed by the event's id, a foreign key to the review
 journal. ``UNPACKERS`` writes the typed rows from the envelope's payload
 in the envelope's transaction; the script that made the tables filled
 them from the rows already there. ``read_facts`` reads them back as the
-domain's facts, for the queries that hand a reader an entry with its
-fact.
+domain's facts, and the stocktake's five tables with them, for the
+queries that hand a reader an entry with its fact.
 """
 
 from collections.abc import Callable, Iterable, Mapping
@@ -58,10 +58,23 @@ from bugflow.review.domain.models.journal_facts import (
     ReviewFact,
     ReviewGrade,
     RewrittenFinding,
+    StocktakeDispatch,
+    StocktakeFound,
+    StocktakeGrade,
+    StocktakeReview,
+    StocktakeTaken,
     StoredObject,
     WithheldFinding,
 )
 from bugflow.review.domain.models.judgement import JudgeIdentity
+from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
+    stocktake,
+    stocktake_dispatch,
+    stocktake_finding,
+    stocktake_grade,
+    stocktake_pull_request,
+    stocktake_review,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 
@@ -805,5 +818,68 @@ def read_facts(
     for row in _rows(connection, review_grade, event_ids):
         facts[row["event_id"]] = ReviewGrade(
             **_columns(row, "agent_id", "detail", "status")
+        )
+    pull_requests = _children(
+        connection, stocktake_pull_request, event_ids, "position"
+    )
+    for row in _rows(connection, stocktake, event_ids):
+        facts[row["event_id"]] = StocktakeTaken(
+            **_columns(
+                row,
+                "layer",
+                "since",
+                "until",
+                "merged",
+                "base_sha",
+                "head_sha",
+            ),
+            pull_requests=tuple(
+                child["pull_request"]
+                for child in pull_requests.get(row["event_id"], ())
+            ),
+        )
+    for row in _rows(connection, stocktake_dispatch, event_ids):
+        facts[row["event_id"]] = StocktakeDispatch(
+            **_columns(
+                row,
+                "layer",
+                "agent_id",
+                "step",
+                "base_sha",
+                "head_sha",
+                "runner",
+                "remote_id",
+                "reason",
+            )
+        )
+    for row in _rows(connection, stocktake_review, event_ids):
+        facts[row["event_id"]] = StocktakeReview(
+            **_columns(
+                row,
+                "layer",
+                "agent_id",
+                "outcome",
+                "detail",
+                "write_up",
+                "cost_usd",
+                "cost_seconds",
+            )
+        )
+    for row in _rows(connection, stocktake_finding, event_ids):
+        facts[row["event_id"]] = StocktakeFound(
+            **_columns(
+                row,
+                "layer",
+                "agent_id",
+                "index",
+                "location",
+                "quote",
+                "claim",
+                "kind",
+            )
+        )
+    for row in _rows(connection, stocktake_grade, event_ids):
+        facts[row["event_id"]] = StocktakeGrade(
+            **_columns(row, "layer", "agent_id", "detail", "status")
         )
     return facts

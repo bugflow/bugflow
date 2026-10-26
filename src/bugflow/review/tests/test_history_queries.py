@@ -202,7 +202,7 @@ def test_byte_guard_counts_multibyte_payloads_and_provenance(
     one = event(scope)
     if large_field == "payload":
         # A journal that keeps its payload, since the review's does not.
-        one = with_payload(one, {"text": "é" * 4096}, "stocktake.taken")
+        one = with_payload(one, {"text": "é" * 4096}, "policy.calibrated")
     else:
         one = replace(one, policy_repository="é" * 4096)
     reader = reader_factory([one])
@@ -310,7 +310,7 @@ def test_oversized_payload_is_refused_before_payload_fetch(
         [
             replace(
                 one.entry,
-                event_type="stocktake.taken",
+                event_type="policy.calibrated",
                 payload={"text": "x" * 10000},
                 fact=None,
             )

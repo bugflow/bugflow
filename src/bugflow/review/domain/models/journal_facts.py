@@ -1,12 +1,14 @@
-"""The review's facts as their tables hold them (ADR 007).
+"""The review's facts and the stocktake's as their tables hold them (ADR
+007).
 
 Each class here is one row of the table named for it: a ``ReviewAction``
 is a row of ``review_action``, an ``AgentDispatch`` of
-``agent_dispatch``, and so on. A raised finding's row is a ``Finding``.
-A resolved, rewritten or withheld finding carries the finding and what
-its own table adds. A fact's child rows, the labels an action removed,
-the files a dispatch withheld, the verdicts a judgement dropped and a
-call's finish reasons and stored objects, are tuples in their order.
+``agent_dispatch``, a ``StocktakeTaken`` of ``stocktake``, and so on. A
+raised finding's row is a ``Finding``. A resolved, rewritten or withheld
+finding carries the finding and what its own table adds. A fact's child
+rows, the labels an action removed, the files a dispatch withheld, the
+verdicts a judgement dropped, a call's finish reasons and stored objects
+and the pull requests a stocktake covered, are tuples in their order.
 
 The Postgres adapter builds these from the typed tables, and the
 in-memory journal from the payload the entry was written with, through
@@ -30,6 +32,11 @@ from bugflow.review.domain.facts import (
     LLM_CALLED,
     POLICY_CHECKED,
     REVIEW_GRADED,
+    STOCKTAKE_DISPATCHED,
+    STOCKTAKE_FOUND,
+    STOCKTAKE_GRADED,
+    STOCKTAKE_REVIEWED,
+    STOCKTAKE_TAKEN,
 )
 from bugflow.review.domain.models.finding import Finding
 from bugflow.review.domain.models.judgement import JudgeIdentity
@@ -204,6 +211,77 @@ class ReviewGrade:
     status: str | None = None
 
 
+@dataclass(frozen=True, kw_only=True)
+class StocktakeTaken:
+    """One stocktake of a layer: the period it covered, the two commits
+    a review of it compares and the pull requests that merged in it.
+    ``since`` is None on a layer's first stocktake, and the commits are
+    None where the stocktake recorded none."""
+
+    layer: str
+    since: datetime | None
+    until: datetime
+    merged: int
+    base_sha: str | None = None
+    head_sha: str | None = None
+    pull_requests: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
+class StocktakeDispatch:
+    """A step of a stocktake review's dispatch, named by ``step``: the
+    runner and its name for the work where a run started, and the
+    reason where none did."""
+
+    layer: str
+    agent_id: str
+    step: str
+    base_sha: str | None = None
+    head_sha: str | None = None
+    runner: str | None = None
+    remote_id: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class StocktakeReview:
+    """A finished review of a stocktake's range, with its outcome, its
+    cost and its write-up."""
+
+    layer: str
+    agent_id: str
+    outcome: str
+    detail: str
+    write_up: str
+    cost_usd: float | None = None
+    cost_seconds: float | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class StocktakeFound:
+    """One finding a stocktake's review stated, with where it was found
+    in ``location``."""
+
+    layer: str
+    agent_id: str
+    index: int
+    location: str
+    quote: str
+    claim: str
+    kind: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class StocktakeGrade:
+    """A grader's verdict on a stocktake review's write-up: ``status``
+    is None where the write-up supports none."""
+
+    layer: str
+    agent_id: str
+    detail: str
+    status: str | None = None
+
+
 ReviewFact = (
     Finding
     | ResolvedFinding
@@ -215,6 +293,11 @@ ReviewFact = (
     | ReviewGrade
     | AgentDispatch
     | ReviewAction
+    | StocktakeTaken
+    | StocktakeDispatch
+    | StocktakeReview
+    | StocktakeFound
+    | StocktakeGrade
 )
 
 F = TypeVar("F")
@@ -396,11 +479,74 @@ def _grade(p: Mapping[str, Any]) -> ReviewGrade:
     )
 
 
+def _taken(p: Mapping[str, Any]) -> StocktakeTaken:
+    until = _when(p["until"])
+    assert until is not None
+    return StocktakeTaken(
+        layer=str(p["layer"]),
+        since=_when(p["since"]),
+        until=until,
+        merged=int(p["merged"]),
+        base_sha=_text(p["base_sha"]),
+        head_sha=_text(p["head_sha"]),
+        pull_requests=tuple(int(n) for n in p["pull_requests"]),
+    )
+
+
+def _stocktake_dispatch(p: Mapping[str, Any]) -> StocktakeDispatch:
+    return StocktakeDispatch(
+        layer=str(p["layer"]),
+        agent_id=str(p["agent_id"]),
+        step=str(p["step"]),
+        base_sha=_text(p["base_sha"]),
+        head_sha=_text(p["head_sha"]),
+        runner=_text(p.get("runner")),
+        remote_id=_text(p.get("remote_id")),
+        reason=_text(p.get("reason")),
+    )
+
+
+def _stocktake_review(p: Mapping[str, Any]) -> StocktakeReview:
+    cost = p["cost"] or {}
+    return StocktakeReview(
+        layer=str(p["layer"]),
+        agent_id=str(p["agent_id"]),
+        outcome=str(p["outcome"]),
+        detail=str(p["detail"]),
+        write_up=str(p["write_up"]),
+        cost_usd=_number(cost.get("usd")),
+        cost_seconds=_number(cost.get("seconds")),
+    )
+
+
+def _found(p: Mapping[str, Any]) -> StocktakeFound:
+    return StocktakeFound(
+        layer=str(p["layer"]),
+        agent_id=str(p["agent_id"]),
+        index=int(p["index"]),
+        location=str(p["where"]),
+        quote=str(p["quote"]),
+        claim=str(p["claim"]),
+        kind=str(p["kind"]),
+    )
+
+
+def _stocktake_grade(p: Mapping[str, Any]) -> StocktakeGrade:
+    return StocktakeGrade(
+        layer=str(p["layer"]),
+        agent_id=str(p["agent_id"]),
+        detail=str(p["detail"]),
+        status=_text(p["status"]),
+    )
+
+
 def fact_from_payload(
     event_type: str, payload: Mapping[str, Any]
 ) -> ReviewFact | None:
     """The fact a payload of this type holds, as its table would hold it,
-    or None for a type this context has no table for."""
+    or None for a type this context has no table for. A stocktake's
+    payload is read as its script read it: every key the table takes is
+    there, and a missing one is an error, as it would be in the script."""
     if event_type == FINDING_RAISED:
         return Finding.from_payload(payload)
     if event_type == FINDING_RESOLVED:
@@ -430,6 +576,16 @@ def fact_from_payload(
         return _dispatch(payload)
     if event_type == ACTION_TAKEN:
         return _action(payload)
+    if event_type == STOCKTAKE_TAKEN:
+        return _taken(payload)
+    if event_type == STOCKTAKE_DISPATCHED:
+        return _stocktake_dispatch(payload)
+    if event_type == STOCKTAKE_REVIEWED:
+        return _stocktake_review(payload)
+    if event_type == STOCKTAKE_FOUND:
+        return _found(payload)
+    if event_type == STOCKTAKE_GRADED:
+        return _stocktake_grade(payload)
     return None
 
 

@@ -227,6 +227,67 @@ def taken_stock(**fields: Any) -> dict[str, Any]:
     } | fields
 
 
+def marked(**fields: Any) -> dict[str, Any]:
+    """A stocktake of a layer, one that merged nothing unless the fields
+    say otherwise."""
+    return {
+        "layer": "weekly",
+        "since": None,
+        "until": "2030-01-05T00:00:00+00:00",
+        "merged": 0,
+        "pull_requests": [],
+        "base_sha": None,
+        "head_sha": None,
+    } | fields
+
+
+_STOCKTAKE_STEPS: dict[str, dict[str, Any]] = {
+    "dispatched": {"runner": "hosted", "remote_id": "s-1"},
+    "refused": {"reason": "refused"},
+    "unavailable": {"reason": "unavailable"},
+}
+
+
+def stocktake_dispatched(**fields: Any) -> dict[str, Any]:
+    """A step of a stocktake review's dispatch, ``dispatched`` unless
+    the fields say which."""
+    step = fields.get("step", "dispatched")
+    return (
+        {
+            "layer": "weekly",
+            "agent_id": "security",
+            "base_sha": None,
+            "head_sha": "a" * 40,
+            "step": step,
+        }
+        | _STOCKTAKE_STEPS[step]
+        | fields
+    )
+
+
+def found(**fields: Any) -> dict[str, Any]:
+    """One finding a stocktake's review stated."""
+    return {
+        "layer": "weekly",
+        "agent_id": "security",
+        "index": 0,
+        "where": "src/app.py:1",
+        "quote": "",
+        "claim": "",
+        "kind": "",
+    } | fields
+
+
+def stocktake_graded(**fields: Any) -> dict[str, Any]:
+    """A grader's verdict on a stocktake review's write-up."""
+    return {
+        "layer": "weekly",
+        "agent_id": "security",
+        "status": "pass",
+        "detail": "",
+    } | fields
+
+
 _WHOLE = {
     "finding.raised": raised,
     "finding.resolved": resolved,
@@ -238,7 +299,11 @@ _WHOLE = {
     "review.graded": graded,
     "agent.dispatched": dispatched,
     "action.taken": acted,
+    "stocktake.taken": marked,
+    "stocktake.dispatched": stocktake_dispatched,
     "stocktake.reviewed": taken_stock,
+    "stocktake.found": found,
+    "stocktake.graded": stocktake_graded,
 }
 
 
