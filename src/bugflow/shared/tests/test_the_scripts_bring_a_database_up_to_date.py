@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0020"
+LAST = "0021"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -691,7 +691,8 @@ def test_a_stocktake_with_an_unknown_key_stops_the_script(
 def test_the_policy_deploys_already_there_are_unpacked(empty: str) -> None:
     """A deploy written before the typed table existed is unpacked by
     the script that makes it, the replaced deployment flattened, and a
-    calibration, which a deployment writes, is left as it is."""
+    calibration, which a deployment writes and holds in a table of its
+    own, is left to that table."""
     upgrade(empty)
     downgrade(empty, "0015")
     deployed = replace(
@@ -720,6 +721,7 @@ def test_the_policy_deploys_already_there_are_unpacked(empty: str) -> None:
         seed_before_keys(
             empty, engine, made, run=False, table="policy_journal"
         )
+    _hold_in_a_deployments_table(engine, calibrated)
 
     upgrade(empty)
 
@@ -763,6 +765,30 @@ def test_a_deploy_with_an_unknown_key_stops_the_script(empty: str) -> None:
 
     with pytest.raises(Exception, match="keys the inventory did not find"):
         upgrade(empty)
+
+
+def _hold_in_a_deployments_table(
+    engine: sa.Engine, made: JournalEntry
+) -> None:
+    """Give a calibration run, which a deployment writes to the policy
+    journal, the table its own script makes for it, keyed to the
+    journal, so the package's script finds the fact held."""
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "create table if not exists deployment_calibration ("
+                "event_id uuid primary key "
+                "references policy_journal (event_id), "
+                "policy_id text not null)"
+            )
+        )
+        connection.execute(
+            sa.text(
+                "insert into deployment_calibration (event_id, policy_id) "
+                "values (:id, :policy_id)"
+            ),
+            {"id": made.event_id, "policy_id": made.payload["policy_id"]},
+        )
 
 
 def _columns(database_url: str, table: str) -> set[str]:
@@ -810,7 +836,6 @@ def test_the_archive_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "archive_journal")
-    assert "payload" in _columns(empty, "policy_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, refused.event_id)
@@ -869,7 +894,6 @@ def test_the_forge_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "forge_journal")
-    assert "payload" in _columns(empty, "policy_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, merged.event_id)
@@ -933,7 +957,6 @@ def test_the_review_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "review_journal")
-    assert "payload" in _columns(empty, "policy_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, checked.event_id)
@@ -1042,7 +1065,6 @@ def test_the_stocktake_journals_payload_column_goes_once_its_facts_have_tables(
     upgrade(empty)
 
     assert "payload" not in _columns(empty, "stocktake_journal")
-    assert "payload" in _columns(empty, "policy_journal")
     engine = _engine(empty)
     try:
         (row,) = rows(engine, graded.event_id)
@@ -1125,6 +1147,103 @@ def test_a_deployments_own_table_keyed_to_the_stocktake_journal_holds_its_fact(
     assert "payload" not in _columns(empty, "stocktake_journal")
     try:
         (row,) = rows(engine, noted.event_id)
+        assert row["payload"] is None
+    finally:
+        engine.dispose()
+
+
+def test_the_policy_journals_payload_column_goes_once_its_facts_have_tables(
+    empty: str,
+) -> None:
+    """A deploy written before the typed table is unpacked by 0016 and
+    loses its payload to 0021: the column is gone from the table, as it
+    is from every journal, the view keeps the column and reads null for
+    it, and the typed row holds the fact."""
+    upgrade(empty)
+    downgrade(empty, "0015")
+    deployed = replace(
+        entry("deployed-before"),
+        event_type="policies.deployed",
+        payload={
+            "repository": "o/policies",
+            "commit": "def",
+            "content_hash": "h2",
+            "files": 13,
+            "sent_by": "deployer",
+            "replaced": None,
+        },
+    )
+    seed_before_keys(
+        empty, _engine(empty), deployed, run=False, table="policy_journal"
+    )
+
+    upgrade(empty)
+
+    for kind in ("archive", "forge", "review", "stocktake", "policy"):
+        assert "payload" not in _columns(empty, f"{kind}_journal")
+    assert "payload" in _columns(empty, "journal")
+    engine = _engine(empty)
+    try:
+        (row,) = rows(engine, deployed.event_id)
+        assert row["payload"] is None
+        with engine.connect() as connection:
+            commit = connection.execute(
+                sa.text(
+                    "select commit from policy_deploy where event_id = :id"
+                ),
+                {"id": deployed.event_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert commit == "def"
+
+
+def test_a_policy_fact_with_no_typed_row_stops_the_column_going(
+    empty: str,
+) -> None:
+    upgrade(empty)
+    downgrade(empty, "0020")
+    unpacked_by_nothing = replace(
+        entry("never-unpacked"),
+        event_type="policy.calibrated",
+        payload={"policy_id": "narrative", "fidelity": "whole"},
+    )
+    seed_before_keys(
+        empty,
+        _engine(empty),
+        unpacked_by_nothing,
+        run=False,
+        table="policy_journal",
+    )
+
+    with pytest.raises(Exception, match=r"1 of type policy\.calibrated"):
+        upgrade(empty)
+
+
+def test_a_deployments_own_table_keyed_to_the_policy_journal_holds_its_fact(
+    empty: str,
+) -> None:
+    """A type a deployment places in the policy journal is held by a
+    table the deployment's own script made, found by its key to the
+    journal, so the column goes with that fact in its table."""
+    upgrade(empty)
+    downgrade(empty, "0020")
+    calibrated = replace(
+        entry("calibrated-before"),
+        event_type="policy.calibrated",
+        payload={"policy_id": "narrative", "fidelity": "whole"},
+    )
+    engine = _engine(empty)
+    seed_before_keys(
+        empty, engine, calibrated, run=False, table="policy_journal"
+    )
+    _hold_in_a_deployments_table(engine, calibrated)
+
+    upgrade(empty)
+
+    assert "payload" not in _columns(empty, "policy_journal")
+    try:
+        (row,) = rows(engine, calibrated.event_id)
         assert row["payload"] is None
     finally:
         engine.dispose()
