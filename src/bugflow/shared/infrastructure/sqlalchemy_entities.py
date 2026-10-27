@@ -3,11 +3,14 @@
 A journal row names its forge, repository, pull request, workflow and
 run in text, and refers to its pull request and its run by key as well
 (ADR 005). These tables hold the entities; ``resolve_keys`` finds or
-makes the rows an entry refers to.
+makes the rows an entry refers to, and ``resolve_repository`` the row
+of a repository a record outside the journal refers to.
 
 An entity's identity is its unique constraint, never its key, so a
 renamed repository keeps its row.
 """
+
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
@@ -118,23 +121,30 @@ def _find_or_make(
     )
 
 
+def resolve_repository(
+    connection: sa.Connection, forge_name: str, name: str, seen: datetime
+) -> int:
+    """The key of the repository's row, made if it is not there, with
+    the name recorded as one it has had since ``seen``."""
+    forge_id = _find_or_make(connection, forge, name=forge_name)
+    repository_id = _find_or_make(
+        connection, repository, forge_id=forge_id, name=name
+    )
+    connection.execute(
+        insert(repository_name)
+        .values(repository_id=repository_id, name=name, first_seen=seen)
+        .on_conflict_do_nothing()
+    )
+    return repository_id
+
+
 def resolve_keys(
     connection: sa.Connection, entry: JournalEntry
 ) -> tuple[int | None, int]:
     """The keys of the entry's pull request, or None when it is about
     none, and of its workflow run, each made if it is not there."""
-    forge_id = _find_or_make(connection, forge, name=entry.forge)
-    repository_id = _find_or_make(
-        connection, repository, forge_id=forge_id, name=entry.repo
-    )
-    connection.execute(
-        insert(repository_name)
-        .values(
-            repository_id=repository_id,
-            name=entry.repo,
-            first_seen=entry.occurred_at,
-        )
-        .on_conflict_do_nothing()
+    repository_id = resolve_repository(
+        connection, entry.forge, entry.repo, entry.occurred_at
     )
     pull_request_id = (
         None

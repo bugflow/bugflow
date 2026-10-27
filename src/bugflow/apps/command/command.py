@@ -20,6 +20,9 @@ Its subcommands include::
     bugflow prune-webhooks OLD_INGRESS_URL [--dry-run]
     bugflow revoke [REPOSITORY] [--layer LAYER] [--agent REVIEWER]
         --per CADENCE
+    bugflow set REPOSITORY GNOME BEHAVIOUR [--profile PROFILE]
+    bugflow settings [REPOSITORY]
+    bugflow settle [--check]
     bugflow webhooks
     bugflow worker
 
@@ -53,6 +56,16 @@ person behind it. Four settings in its environment say how:
 Exit status: 0 if the server accepted the call. 1 if the files are not a
 deployment or the server refused them. 2 if the call could not be made
 or was not allowed.
+
+``set``, ``settings`` and ``settle`` write and read what each gnome
+does on each repository (ADR 008), in the database ``DATABASE_URL``
+names. ``set`` sets one gnome on one repository to a BEHAVIOUR, ``off``,
+``observe``, ``advise`` or ``gate``, judging by a PROFILE of the
+deployment in force, and records who set it. ``settings`` prints what
+is set. ``settle`` makes the settings once from what the server
+declared before them, and refuses, writing nothing, where a
+repository's declared policies for a gnome are no profile of the
+deployment in force. With ``--check`` it prints what it would make.
 
 ``declare``, ``allow``, ``revoke``, ``cadence`` and ``declared`` write
 and read what a repository is reviewed under, in the database
@@ -166,6 +179,7 @@ from bugflow.apps.command.declaring import (
     run_revoke,
 )
 from bugflow.apps.command.repository_origins import apply_mapping, inventory
+from bugflow.apps.command.setting import run_set, run_settings, run_settle
 from bugflow.apps.command.webhooks import (
     HookSettings,
     PruneSettings,
@@ -209,6 +223,7 @@ from bugflow.method.infrastructure.http_policy_server import (
 )
 from bugflow.method.infrastructure.policy_directory import PolicyDirectory
 from bugflow.method.usecases.send_policies import SendPoliciesUseCase
+from bugflow.review.domain.models.gnome_setting import BEHAVIOURS
 from bugflow.shared.domain.values.repository_association import (
     AssociationConflictError,
     AssociationRecordMissingError,
@@ -218,7 +233,16 @@ from bugflow.shared.infrastructure.system_clock import SystemClock
 
 #: The subcommands that write and read what a repository is reviewed
 #: under.
-DECLARING = ("allow", "cadence", "declare", "declared", "revoke")
+DECLARING = (
+    "allow",
+    "cadence",
+    "declare",
+    "declared",
+    "revoke",
+    "set",
+    "settings",
+    "settle",
+)
 
 #: The subcommands a deployment runs as a service, and the name each
 #: exports its telemetry under. The others are run by a person or a
@@ -365,6 +389,44 @@ def _declaring_parsers(
     commands: "argparse._SubParsersAction[argparse.ArgumentParser]",
 ) -> None:
     repository = "owner/name, or forgejo:owner/name for one on a Forgejo"
+    set_gnome = commands.add_parser(
+        "set",
+        help="set what one gnome does on one repository, and the profile "
+        "of its policies it judges by",
+    )
+    set_gnome.add_argument("repository", help=repository)
+    set_gnome.add_argument("gnome", help="the gnome's reviewer id")
+    set_gnome.add_argument(
+        "behaviour",
+        choices=BEHAVIOURS,
+        help="off judges nothing; observe judges and posts nothing; "
+        "advise posts its comment and a status that never fails; gate "
+        "also fails its status on a fail verdict and decides the label",
+    )
+    set_gnome.add_argument(
+        "--profile",
+        help="a profile of the gnome the deployment in force holds. "
+        "Omitted, the gnome keeps its profile there, or default",
+    )
+    settings = commands.add_parser(
+        "settings", help="print what each gnome is set to on each repository"
+    )
+    settings.add_argument(
+        "repository",
+        nargs="?",
+        default="",
+        help=repository + ", or omitted for every repository",
+    )
+    settle = commands.add_parser(
+        "settle",
+        help="make the gnomes' settings once from what this server "
+        "declared before them",
+    )
+    settle.add_argument(
+        "--check",
+        action="store_true",
+        help="print what would be made and write nothing",
+    )
     declare = commands.add_parser(
         "declare",
         help="say what a repository is judged on and dispatches, the "
@@ -722,6 +784,8 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
         )
     if args.command == "declared":
         return run_declared(database_url, args.repository)
+    if args.command == "settings":
+        return run_settings(database_url, args.repository)
     try:
         zone = periods_timezone(environ)
         build = build_sha(environ)
@@ -730,6 +794,20 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
         return 2
     if args.command == "cadence":
         return run_cadence(database_url, args.cadence, args.boundary, zone)
+    if args.command == "set":
+        return run_set(
+            database_url,
+            args.repository,
+            args.gnome,
+            args.behaviour,
+            args.profile,
+            checks_from(environ),
+            build,
+        )
+    if args.command == "settle":
+        return run_settle(
+            database_url, checks_from(environ), build, check_only=args.check
+        )
     return run_declare(
         database_url,
         args.repository,
