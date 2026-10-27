@@ -63,7 +63,7 @@ def project(
 
     The rules, in order:
 
-    - If no reviewer governs the repository, the label is "review:wip".
+    - If no reviewer decides the repository's label, it is "review:wip".
       A repository with every reviewer switched off has not passed.
     - If any governing reviewer failed the commit, it is
       "review:escalate", even if others have not answered yet.

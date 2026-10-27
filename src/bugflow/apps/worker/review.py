@@ -77,7 +77,6 @@ from bugflow.apps.worker.reviewers import (
     clause_sites,
     corpus_of,
     dispatchable,
-    governing_by_default,
     periods_timezone,
     policy_summaries,
     processes_on,
@@ -109,29 +108,27 @@ from bugflow.review.domain.errors import (
     JudgeTemporarilyUnavailableError,
     JudgeUnavailableError,
 )
-from bugflow.review.domain.services.enforcement import (
-    EnforcementProfileService,
+from bugflow.review.domain.services.gnome_settings import (
+    GnomeSettingsService,
 )
 from bugflow.review.domain.services.grader import GraderService
 from bugflow.review.domain.services.judge import JudgeService
+from bugflow.review.infrastructure.settled_review import (
+    SettledEnforcement,
+    SettledPolicies,
+    SettledProcesses,
+)
 from bugflow.review.infrastructure.sqlalchemy_cadence_boundaries import (
     SqlAlchemyCadenceBoundaries,
 )
-from bugflow.review.infrastructure.sqlalchemy_enforcement import (
-    SqlAlchemyEnforcement,
-)
-from bugflow.review.infrastructure.sqlalchemy_governance import (
-    SqlAlchemyGovernance,
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
 )
 from bugflow.review.infrastructure.sqlalchemy_judge_archive import (
     SqlAlchemyJudgeArchive,
 )
 from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
-)
-from bugflow.review.infrastructure.sqlalchemy_review_declaration import (
-    SqlAlchemyDispatchedProcesses,
-    SqlAlchemyJudgedPolicies,
 )
 from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
     SqlAlchemySpendBindings,
@@ -365,6 +362,9 @@ def activities_from_environment(
     database_url = environ["DATABASE_URL"]
     agents = dict(reviewers.agents)
     layers = reviewers.layers
+    # Each gnome's setting on each repository (ADR 008), read at every
+    # question, so a setting changes the next review without a restart.
+    settings = SqlAlchemyGnomeSettings(database_url)
     named = agent.runner if agent else environ.get("REVIEW_RUNNER", "")
     dispatch, runner = reviewing_from_environment(
         environ,
@@ -393,8 +393,13 @@ def activities_from_environment(
         clock=SystemClock(),
         archive=SqlAlchemyJudgeArchive(database_url),
         write_ups=SqlAlchemyWriteUpArchive(database_url),
-        enforcement=SqlAlchemyEnforcement(database_url),
-        withholding=SqlAlchemyWithholding(database_url),
+        enforcement=SettledEnforcement(
+            settings,
+            SqlAlchemyWithholding(database_url),
+            # A reviewer whose manifest says it does not govern, as one
+            # only a stocktake runs, never decides a label.
+            [agent_id for agent_id, agent in agents.items() if agent.governs],
+        ),
         boundaries=boundaries_from_environment(environ, reviewers),
         # What each installed reviewer answers for, which is what its
         # verdict covers.
@@ -429,8 +434,15 @@ def activities_from_environment(
         # Read at each dispatch and not here, so a ceiling can be
         # lowered without a restart.
         ceilings=SqlAlchemySpendBindings(database_url),
-        judged=SqlAlchemyJudgedPolicies(database_url),
-        dispatched=SqlAlchemyDispatchedProcesses(database_url),
+        judged=SettledPolicies(settings, reviewers.profiles),
+        dispatched=SettledProcesses(
+            settings,
+            {
+                process.name: process.reviewer
+                for layer in layers.values()
+                for process in layer.processes
+            },
+        ),
         processes={
             name: processes_on(layer) for name, layer in layers.items()
         },
@@ -439,9 +451,6 @@ def activities_from_environment(
         spend=SqlAlchemySpendRecord(database_url, spend_relation),
         agent=runner,
         grader=grader,
-        governance=SqlAlchemyGovernance(
-            database_url, governing_by_default(agents)
-        ),
     )
 
 
@@ -541,32 +550,34 @@ def check_judging_models(
 
 
 def refuse_without_a_forge(
-    environ: Mapping[str, str], enforcement: EnforcementProfileService
+    environ: Mapping[str, str], settings: GnomeSettingsService
 ) -> None:
     """Stop a worker that would publish and has no forge to publish to.
 
     Without a forge's settings, each evaluation of a pull request fails
-    with a reason that says so. If a repository is bound to a profile
-    that publishes, that is every evaluation of it, each saying the
-    same thing. This says it once, before any of them.
+    with a reason that says so. If a gnome publishes on a repository,
+    that is every evaluation of it, each saying the same thing. This
+    says it once, before any of them.
 
-    A binding is a record and may change while the worker runs, so this
+    A setting is a record and may change while the worker runs, so this
     holds for the moment the worker started. After that the failure of
     each evaluation is what says it.
 
-    Raises ``ValueError`` if a repository is bound to a profile that
-    publishes and neither forge's settings are given.
+    Raises ``ValueError`` if a gnome publishes on a repository and
+    neither forge's settings are given.
     """
     if forge_tokens(environ) or forgejo_settings(environ):
         return
     publishing = sorted(
-        f"{forge}:{repo}"
-        for (forge, repo), profile in enforcement.bindings().items()
-        if profile.publishes
+        {
+            f"{one.forge}:{one.repo}"
+            for one in settings.settings()
+            if one.publishes
+        }
     )
     if publishing:
         raise ValueError(
-            f"{', '.join(publishing)} is bound to a profile that "
+            f"{', '.join(publishing)} has a gnome that "
             "publishes, and FORGE_TOKEN is not set, nor "
             "FORGE_TOKENS_BY_OWNER, nor FORGEJO_URL and FORGEJO_TOKEN; the "
             "worker does not start without a forge to publish to"
@@ -682,7 +693,7 @@ def parts_from_environment(
     def a_forge_to_publish_to() -> None:
         if forge is None:
             refuse_without_a_forge(
-                environ, SqlAlchemyEnforcement(database_url)
+                environ, SqlAlchemyGnomeSettings(database_url)
             )
 
     def a_boundary_for_every_period() -> None:

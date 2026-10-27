@@ -112,16 +112,6 @@ def verdict_scope(
     }
 
 
-def governing_by_default(
-    agents: Mapping[str, DomainSpecificReviewAgent],
-) -> tuple[str, ...]:
-    """Return the reviewers whose manifest says they govern, for a
-    repository nobody has decided about."""
-    return tuple(
-        agent_id for agent_id, agent in agents.items() if agent.governs
-    )
-
-
 def policy_summaries(
     policies: Mapping[str, Mapping[str, PolicyText]],
 ) -> dict[str, str]:

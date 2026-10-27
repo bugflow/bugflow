@@ -6,9 +6,8 @@ Its subcommands include::
         [--usd DOLLARS | --no-money-limit]
         [--turns TURNS | --no-turn-limit] [--per CADENCE]
     bugflow cadence CADENCE [--boundary BOUNDARY]
-    bugflow declare REPOSITORY [--policy POLICY ... | --no-policies]
-        [--process PROCESS ... | --no-processes] [--profile PROFILE]
-        [--layer LAYER --boundary BOUNDARY] [--withhold SHARE]
+    bugflow declare REPOSITORY [--layer LAYER --boundary BOUNDARY]
+        [--withhold SHARE]
     bugflow declared [REPOSITORY]
     bugflow deploy-policies DIRECTORY --repository OWNER/NAME
         --commit SHA --api URL [--check]
@@ -22,7 +21,6 @@ Its subcommands include::
         --per CADENCE
     bugflow set REPOSITORY GNOME BEHAVIOUR [--profile PROFILE]
     bugflow settings [REPOSITORY]
-    bugflow settle [--check]
     bugflow webhooks
     bugflow worker
 
@@ -57,15 +55,12 @@ Exit status: 0 if the server accepted the call. 1 if the files are not a
 deployment or the server refused them. 2 if the call could not be made
 or was not allowed.
 
-``set``, ``settings`` and ``settle`` write and read what each gnome
-does on each repository (ADR 008), in the database ``DATABASE_URL``
-names. ``set`` sets one gnome on one repository to a BEHAVIOUR, ``off``,
-``observe``, ``advise`` or ``gate``, judging by a PROFILE of the
-deployment in force, and records who set it. ``settings`` prints what
-is set. ``settle`` makes the settings once from what the server
-declared before them, and refuses, writing nothing, where a
-repository's declared policies for a gnome are no profile of the
-deployment in force. With ``--check`` it prints what it would make.
+``set`` and ``settings`` write and read what each gnome does on each
+repository (ADR 008), in the database ``DATABASE_URL`` names. ``set``
+sets one gnome on one repository to a BEHAVIOUR, ``off``, ``observe``,
+``advise`` or ``gate``, judging by a PROFILE of the deployment in
+force, and records who set it. ``settings`` prints what is set. A
+repository is watched, judged and published to as its gnomes are set.
 
 ``declare``, ``allow``, ``revoke``, ``cadence`` and ``declared`` write
 and read what a repository is reviewed under, in the database
@@ -73,14 +68,9 @@ and read what a repository is reviewed under, in the database
 ``forgejo:owner/name`` on a Forgejo. Each prints what the database
 holds afterwards, read back and not echoed.
 
-``declare`` says, for one repository, any of: the policies it is judged
-on and the processes that run for it on a clock, each as a whole set;
-the profile that decides what is published, ``observe``, ``advise`` or
-``gate``; where its period on one layer begins; and the share of its
-warnings withheld from its pull requests. Only what the call names is
-written. While the policy deployment in force carries
-``declarations.toml``, the policies and processes come from it and
-naming them here is refused.
+``declare`` says, for one repository, any of: where its period on one
+layer begins, and the share of its warnings withheld from its pull
+requests. Only what the call names is written.
 
 ``allow`` binds what a run may spend, in dollars and turns, to a scope:
 a repository, a layer and a reviewer, each of which may be left out to
@@ -179,7 +169,7 @@ from bugflow.apps.command.declaring import (
     run_revoke,
 )
 from bugflow.apps.command.repository_origins import apply_mapping, inventory
-from bugflow.apps.command.setting import run_set, run_settings, run_settle
+from bugflow.apps.command.setting import run_set, run_settings
 from bugflow.apps.command.webhooks import (
     HookSettings,
     PruneSettings,
@@ -241,7 +231,6 @@ DECLARING = (
     "revoke",
     "set",
     "settings",
-    "settle",
 )
 
 #: The subcommands a deployment runs as a service, and the name each
@@ -417,58 +406,13 @@ def _declaring_parsers(
         default="",
         help=repository + ", or omitted for every repository",
     )
-    settle = commands.add_parser(
-        "settle",
-        help="make the gnomes' settings once from what this server "
-        "declared before them",
-    )
-    settle.add_argument(
-        "--check",
-        action="store_true",
-        help="print what would be made and write nothing",
-    )
     declare = commands.add_parser(
         "declare",
-        help="say what a repository is judged on and dispatches, the "
-        "profile that decides what is published, where its period on a "
-        "layer begins, the share of its warnings withheld, and a ledger "
-        "whose archive this server keeps",
+        help="say where a repository's period on a layer begins, the "
+        "share of its warnings withheld, and a ledger whose archive this "
+        "server keeps",
     )
     declare.add_argument("repository", help=repository)
-    declare.add_argument(
-        "--policy",
-        action="append",
-        help="a policy this repository is judged on; repeat for each. "
-        "The whole set: a policy left out is no longer declared. Omit "
-        "the flag to leave the policies as they are",
-    )
-    declare.add_argument(
-        "--no-policies",
-        action="store_true",
-        help="declare no policy, so the repository is judged on nothing",
-    )
-    declare.add_argument(
-        "--process",
-        action="append",
-        help="a process that runs for this repository on a layer a "
-        "clock fires, named as the deployment's pace-layers.toml names "
-        "it; repeat for each. The whole set, and omitted leaves the "
-        "processes as they are",
-    )
-    declare.add_argument(
-        "--no-processes",
-        action="store_true",
-        help="declare no process, so nothing runs for the repository "
-        "on a clock",
-    )
-    declare.add_argument(
-        "--profile",
-        help="observe: findings are recorded and nothing is published. "
-        "advise: comments, the label and commit statuses are published, "
-        "and no status fails. gate: the same, and a governing "
-        "reviewer's status fails on a failing verdict. Omit the flag to "
-        "leave it as it is; a repository bound to none is observed",
-    )
     declare.add_argument(
         "--layer",
         default="",
@@ -804,16 +748,10 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
             checks_from(environ),
             build,
         )
-    if args.command == "settle":
-        return run_settle(
-            database_url, checks_from(environ), build, check_only=args.check
-        )
+
     return run_declare(
         database_url,
         args.repository,
-        [] if args.no_policies else args.policy,
-        [] if args.no_processes else args.process,
-        args.profile,
         layer=args.layer,
         boundary=args.boundary,
         withhold=args.withhold,

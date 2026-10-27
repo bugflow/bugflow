@@ -8,18 +8,13 @@ from bugflow.apps.api.api import PolicyDeploying, create_api
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
 )
-from bugflow.apps.shared.deploying import (
-    Deploying,
-    DeployPoliciesAndDeclare,
-    deployment_check,
-)
+from bugflow.apps.shared.deploying import Deploying, deployment_check
 from bugflow.method.infrastructure.in_memory_policy_deployments import (
     InMemoryPolicyDeployments,
 )
 from bugflow.method.usecases.deploy_policies import DeployPoliciesUseCase
-from bugflow.review.infrastructure.in_memory_review_declaration import (
-    InMemoryDispatchedProcesses,
-    InMemoryJudgedPolicies,
+from bugflow.review.infrastructure.in_memory_gnome_settings import (
+    InMemoryGnomeSettings,
 )
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.values.caller import Caller
@@ -62,20 +57,13 @@ class Server:
     def __init__(self) -> None:
         self.deployments = InMemoryPolicyDeployments()
         self.journal = InMemoryJournal()
-        self.judged = InMemoryJudgedPolicies()
-        self.dispatched = InMemoryDispatchedProcesses()
+        self.settings = InMemoryGnomeSettings()
         self.deploying = Deploying(
-            deploy=DeployPoliciesAndDeclare(
-                DeployPoliciesUseCase(
-                    self.deployments,
-                    deployment_check(CHECKS),
-                    self.journal,
-                    Clock(),
-                ),
+            deploy=DeployPoliciesUseCase(
                 self.deployments,
-                self.judged,
-                self.dispatched,
-                CHECKS,
+                deployment_check(CHECKS, self.settings),
+                self.journal,
+                Clock(),
             ),
             deployments=self.deployments,
         )
