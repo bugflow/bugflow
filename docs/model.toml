@@ -8,7 +8,7 @@
 # The things the model names, each of which has a line in docs/words.md.
 things = [
     "gnome", "manifest", "doctrine", "clause", "policy", "subject",
-    "case", "skill", "binding", "declaration", "profile", "pace layer",
+    "case", "skill", "binding", "profile", "setting", "pace layer",
     "deployment", "server", "reviewer", "judge", "model class", "check",
     "finding", "grade", "ceiling", "verdict", "calibration", "glossary",
 ]
@@ -141,7 +141,11 @@ held_by = "the binding's pipeline"
 
 [[requirement]]
 group = "Binding"
-text = "A binding's declarations.toml pairs policies with repositories."
+text = "A binding's declarations.toml is refused."
+
+[[requirement]]
+group = "Binding"
+text = "A deployment in force that carries declarations.toml is read without it."
 
 [[requirement]]
 group = "Binding"
@@ -195,7 +199,7 @@ text = "A reviewer's id and policies are read from the manifest at deployment."
 
 [[requirement]]
 group = "Reviewer"
-text = "A deployment that declares a policy this server cannot answer is refused."
+text = "A profile of a policy this server cannot answer is refused."
 
 [[requirement]]
 group = "Reviewer"
@@ -316,4 +320,4 @@ text = "A document of document/glossary is a .org or .md file, or a .txt file un
 
 [[requirement]]
 group = "Glossary"
-text = "A declaration of a policy whose subject is document/glossary is accepted."
+text = "A profile of a policy whose subject is document/glossary is accepted."

@@ -17,7 +17,6 @@ and the gnomes it pins.
 ## Layout
 
     pace-layers.toml                  binding: the processes and when they run
-    declarations.toml                 binding: what each repository is reviewed for
     profiles.toml                     binding: named sets of each reviewer's policies
     glossary/**                       binding: the words documents it copies in,
                                       each a .md, .txt or .org file
@@ -129,8 +128,8 @@ policy's id.
 - `implemented`: `judge` or `check`; absent, `judge`. A checked policy's
   instructions are for a person: the server runs the check its manifest
   names, and the policy's `model_class` is `none`. A checked policy whose
-  check the server lacks is parsed and never declared: a declaration
-  naming it is refused.
+  check the server lacks is parsed and never judged: a profile naming it
+  is refused, and a default profile leaves it out.
 - `clause`: one clause the policy judges, its id and the name the policy
   gives it. It repeats.
 
@@ -143,7 +142,7 @@ under.
 ## Subjects
 
 A subject names the evidence a policy reads, as `KIND/PART`. A server
-renders the subjects it has code for, and a declaration naming a policy
+renders the subjects it has code for, and a profile naming a policy
 whose subject it does not render is refused; so a gnome may hold a
 policy for one consumer that another skips.
 
@@ -228,19 +227,6 @@ repository and the layer that gives it its cadence:
     cadence = "event"
     processes = ["evaluate-pull-request"]
 
-`declarations.toml` has one table for each repository, naming the
-policies judged and the processes dispatched:
-
-    [repository."owner/name"]
-    policies = ["CM-01", "ED-01"]
-    processes = ["evaluate-pull-request"]
-
-The key is `owner/name` for a repository on GitHub, or `forge:owner/name`.
-A policy must be one the deployment holds, by a file or a manifest's
-`checks` line, with a subject the server renders and, for a checked
-policy, a check the server has. A repository the file leaves out is
-reviewed for nothing once the file is deployed.
-
 `profiles.toml` names sets of each reviewer's policies, one table for
 each profile under the reviewer's id:
 
@@ -255,8 +241,13 @@ the server renders and, for a checked policy, a check the server has. A
 profile's name is lower case letters, digits and hyphens. Every reviewer
 has `default`: where the file does not name it, it holds every policy
 of the reviewer the server answers, so a binding with no `profiles.toml`
-has one profile for each reviewer. ADR 008 says how a repository is set
-to a reviewer's profile.
+has one profile for each reviewer.
+
+Which repositories a gnome judges is not the binding's: the server's
+operator sets each gnome on each repository to a behaviour and one of
+its profiles (ADR 008). A deployment that drops a profile a setting
+judges by is refused. `declarations.toml`, which named each
+repository's policies before, is refused.
 
 ## Deployment
 

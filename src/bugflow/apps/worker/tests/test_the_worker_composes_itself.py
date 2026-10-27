@@ -36,7 +36,11 @@ from bugflow.apps.worker.review import (
     watched_repositories,
 )
 from bugflow.apps.worker.reviewers import verdict_scope
-from bugflow.apps.worker.tests.deployed import WIDGETS, put_in_force
+from bugflow.apps.worker.tests.deployed import (
+    WIDGETS,
+    put_in_force,
+    set_gnomes,
+)
 from bugflow.apps.worker.worker import JudgeRates
 from bugflow.forge.domain.errors import ForgeError
 from bugflow.forge.infrastructure.forgejo import ForgejoForge
@@ -48,13 +52,13 @@ from bugflow.method.infrastructure.reviewer_packages import (
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
-from bugflow.review.domain.models.enforcement import ADVISE, OBSERVE
-from bugflow.review.domain.models.layer_boundary import LayerBoundary
-from bugflow.review.infrastructure.in_memory_enforcement import (
-    InMemoryEnforcement,
+from bugflow.review.domain.models.gnome_setting import (
+    Behaviour,
+    GnomeSetting,
 )
-from bugflow.review.infrastructure.sqlalchemy_enforcement import (
-    SqlAlchemyEnforcement,
+from bugflow.review.domain.models.layer_boundary import LayerBoundary
+from bugflow.review.infrastructure.in_memory_gnome_settings import (
+    InMemoryGnomeSettings,
 )
 from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
@@ -111,6 +115,16 @@ def test_a_closed_conversation_is_asked_of_the_pull_requests_own_forge() -> (
         forge.state(ON_FORGEJO)
 
 
+def prose_on(
+    forge: str, repo: str, behaviour: Behaviour
+) -> InMemoryGnomeSettings:
+    return InMemoryGnomeSettings(
+        GnomeSetting(
+            forge=forge, repo=repo, gnome="prose", behaviour=behaviour
+        )
+    )
+
+
 @pytest.mark.parametrize("token", [None, ""])
 def test_publishing_without_a_token_does_not_start(token: str | None) -> None:
     """One refusal at startup, and not every evaluation saying the same
@@ -118,24 +132,20 @@ def test_publishing_without_a_token_does_not_start(token: str | None) -> None:
     environ: dict[str, str] = {}
     if token is not None:
         environ["FORGE_TOKEN"] = token
-    enforcement = InMemoryEnforcement()
-    enforcement.bind(*WIDGETS, ADVISE)
-    with pytest.raises(ValueError, match="github:example-org/widgets is"):
-        refuse_without_a_forge(environ, enforcement)
+    with pytest.raises(ValueError, match="github:example-org/widgets has"):
+        refuse_without_a_forge(environ, prose_on(*WIDGETS, "advise"))
 
 
 def test_publishing_with_only_a_forgejo_configured_starts() -> None:
-    enforcement = InMemoryEnforcement()
-    enforcement.bind("forgejo", "example-org/widgets", ADVISE)
-    refuse_without_a_forge(FORGEJO, enforcement)
+    refuse_without_a_forge(
+        FORGEJO, prose_on("forgejo", "example-org/widgets", "advise")
+    )
 
 
 def test_an_observed_repository_needs_no_forge() -> None:
     """Observing is the default and publishes nothing, so a deployment
     that has decided about no repository starts without a forge."""
-    enforcement = InMemoryEnforcement()
-    enforcement.bind(*WIDGETS, OBSERVE)
-    refuse_without_a_forge({}, enforcement)
+    refuse_without_a_forge({}, prose_on(*WIDGETS, "observe"))
 
 
 STORE = {
@@ -411,7 +421,7 @@ def test_with_no_deployment_in_force_the_part_only_watches_for_one(
 ) -> None:
     """Nothing is registered and nothing is refused, whatever else is
     or is not set up."""
-    SqlAlchemyEnforcement(database_url).bind(*WIDGETS, ADVISE)
+    set_gnomes(database_url, "advise")
 
     parts = parts_from_environment(
         {
@@ -475,7 +485,7 @@ def test_a_deployment_that_publishes_with_no_forge_is_refused(
     database_url: str,
 ) -> None:
     put_in_force(database_url)
-    SqlAlchemyEnforcement(database_url).bind(*WIDGETS, ADVISE)
+    set_gnomes(database_url, "advise")
 
     refused = parts_from_environment({"DATABASE_URL": database_url})
     with pytest.raises(ValueError, match="without a forge to publish to"):

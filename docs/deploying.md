@@ -255,48 +255,36 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    month, or `"2026-09-01 09:00"`. A fortnight, a quarter and a year
    take only the last form.
 
-2. Say what the repository is judged on, unless the deployment does.
+2. Set each gnome on the repository.
 
-       bugflow declare OWNER/NAME --policy P-01 --policy P-02
+       bugflow set OWNER/NAME GNOME BEHAVIOUR [--profile PROFILE]
 
-   A repository that has declared no policy is judged on nothing.
-   `--process` names the processes of the layers a clock fires that
-   run for the repository, as `pace-layers.toml` names them. A
-   repository that has declared none has no reviewer run on a clock. A
-   pull request's reviewers do not depend on it. Each flag names the
-   whole set, and `--no-policies` and `--no-processes` empty one.
+   GNOME is a reviewer's id, and PROFILE one of its profiles in the
+   binding's `profiles.toml`, `default` if left out. BEHAVIOUR is one
+   of:
 
-   If the deployment carries `declarations.toml`, the deployment has
-   already written both sets for every repository the file names, and
-   all four flags are refused: change the file and deploy again.
+   - `off`: the gnome judges nothing. A gnome with no setting is off.
+   - `observe`: its findings are recorded and nothing of it reaches the
+     forge.
+   - `advise`: its part of the comment and its commit status are
+     written to the pull request. Its status never fails.
+   - `gate`: the same, and its commit status fails on a `fail` verdict.
 
-3. Say what is published.
+   The label is written while any gnome advises or gates. The gnomes at
+   `gate` decide it; where none gates, the gnomes at `advise` do.
+   `bugflow settings` prints what is set. A worker with no forge token
+   does not start while a gnome advises or gates on a repository.
 
-       bugflow declare OWNER/NAME --profile advise
+   A server upgraded from a release before ADR 008 runs that release's
+   `bugflow settle` before this one, whose database script stops on a
+   repository that declared policies and has no setting. Its binding
+   drops `declarations.toml` while the server still runs that release,
+   which keeps the declarations it holds when the file is absent; this
+   release refuses a deployment that carries the file. Going back to
+   that release finds its declarations empty, so nothing is judged
+   until they are declared again.
 
-   - `observe`: findings are recorded and nothing reaches the forge.
-     This is what a repository has until it is bound to another.
-   - `advise`: the comment, the label and the commit statuses are
-     written to the pull request. No status fails.
-   - `gate`: the same, and a governing reviewer's commit status fails
-     when its verdict is a failure.
-
-   A worker with no forge token does not start while a repository is
-   bound to `advise` or `gate`.
-
-   ADR 008 replaces the profile and the declarations with a setting
-   for each gnome on each repository. This release keeps the settings
-   and does not read them yet. Once the binding carries
-   `profiles.toml`, make them from what is declared, and check them:
-
-       bugflow settle --check
-       bugflow settle
-       bugflow settings
-
-   `bugflow set OWNER/NAME GNOME BEHAVIOUR [--profile PROFILE]` sets
-   one gnome on one repository to `off`, `observe`, `advise` or `gate`.
-
-4. Say what may be spent.
+3. Say what may be spent.
 
        bugflow allow OWNER/NAME --usd 2 --no-turn-limit
 
@@ -343,7 +331,7 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    `bugflow revoke OWNER/NAME --per event` removes an allowance. That
    is not the same as allowing zero, which refuses everything.
 
-5. Bind a ledger, if this server keeps archives.
+4. Bind a ledger, if this server keeps archives.
 
        bugflow declare OWNER/NAME --archive LEDGER
        bugflow declare OWNER/NAME --archive LEDGER --scope docs
@@ -355,7 +343,7 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    nothing. Binding it to another place moves it, and the command says
    where it was. Each binding is recorded in the journal.
 
-6. Read it back.
+5. Read it back.
 
        bugflow declared
        bugflow declared OWNER/NAME

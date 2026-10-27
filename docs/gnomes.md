@@ -116,11 +116,12 @@ the policies and the cases, a garden never reads.
 
 ## What a gnome does not hold
 
-- Which repositories it applies to. A binding's `declarations.toml`
-  says that.
+- Which repositories it applies to, and by which of its policies. A
+  binding's `profiles.toml` names sets of its policies, and the
+  server's operator sets the gnome on each repository to one.
 - When a review runs. A binding's `pace-layers.toml` says that.
 - Whether findings are published, and whether a failure blocks a
-  merge. The server's operator declares that for each repository.
+  merge. The server's operator sets that for each repository.
 - What a review may spend. The operator declares that too.
 - Which model answers. A policy names a class of model, `small`,
   `medium` or `large`, and each server says which model fills a class.

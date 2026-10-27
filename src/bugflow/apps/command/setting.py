@@ -1,13 +1,8 @@
 """Setting what each gnome does on each repository (ADR 008): ``bugflow
-set``, ``settings`` and ``settle``.
+set`` and ``settings``.
 
 ``set`` writes one setting through ``SetGnomeUseCase``, which records it
-in the journal. ``settings`` prints what is held. ``settle`` makes the
-settings once from what a server declared before ADR 008: the policies
-each repository was judged on, its enforcement profile and which
-reviewers governed its label. It refuses, and writes nothing, where a
-repository's declared policies for a gnome are no profile of the
-deployment in force, so that no setting is made by guess.
+in the journal. ``settings`` prints what is held.
 
 A refusal is written to the error stream and returns 2.
 """
@@ -15,46 +10,31 @@ A refusal is written to the error stream and returns 2.
 import getpass
 import sys
 import uuid
-from collections.abc import Collection, Mapping
-from dataclasses import dataclass
-from typing import TextIO, cast
+from collections.abc import Collection
+from typing import TextIO
 
 from bugflow.apps.command.declaring import Console, _split
 from bugflow.apps.shared.journals import stamped_journal
 from bugflow.apps.shared.policies import ReviewersInForce, reviewers_in_force
-from bugflow.apps.worker.reviewers import governing_by_default
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
 from bugflow.review.domain.models.gnome_setting import (
     BEHAVIOURS,
-    Behaviour,
     GnomeSetting,
 )
 from bugflow.review.domain.services.gnome_settings import (
     GnomeSettingsService,
 )
 from bugflow.review.dtos.set_gnome import SetGnomeRequest
-from bugflow.review.infrastructure.sqlalchemy_enforcement import (
-    SqlAlchemyEnforcement,
-)
 from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
     SqlAlchemyGnomeSettings,
-)
-from bugflow.review.infrastructure.sqlalchemy_governance import (
-    SqlAlchemyGovernance,
-)
-from bugflow.review.infrastructure.sqlalchemy_review_declaration import (
-    SqlAlchemyJudgedPolicies,
 )
 from bugflow.review.usecases.set_gnome import (
     SetGnomeUseCase,
     UnknownGnomeError,
 )
 from bugflow.shared.infrastructure.system_clock import SystemClock
-
-#: Who ``settle`` records as having made the settings it makes.
-SETTLED_BY = "bugflow settle"
 
 
 def _console(out: TextIO | None, err: TextIO | None) -> Console:
@@ -178,155 +158,4 @@ def run_settings(
         console.say(_line(one))
     if not held:
         console.say("no gnome is set on any repository named; each is off")
-    return 0
-
-
-@dataclass(frozen=True, kw_only=True)
-class Settled:
-    """A setting ``settle`` makes."""
-
-    forge: str
-    repo: str
-    gnome: str
-    behaviour: Behaviour
-    profile: str
-
-
-def settled(
-    reviewers: ReviewersInForce,
-    judged: Mapping[tuple[str, str], frozenset[str]],
-    profiles: Mapping[tuple[str, str], str],
-    governing: Mapping[tuple[str, str], frozenset[str]],
-) -> tuple[list[Settled], list[str]]:
-    """The settings a server's declarations make, and why any cannot be
-    made.
-
-    ``judged`` is each repository's declared policies, ``profiles`` its
-    enforcement profile's name and ``governing`` the reviewers that
-    decided its label, each by forge and repository.
-
-    A gnome a repository declared none of the policies of is ``off``
-    there and has no setting. Otherwise it takes the profile whose
-    policies are exactly those declared, ``default`` first, and the
-    enforcement profile's behaviour, except that ``gate`` is ``advise``
-    for a gnome that did not govern the label, whose status never
-    failed.
-    """
-    made: list[Settled] = []
-    problems: list[str] = []
-    repositories = sorted(set(judged) | set(profiles))
-    for forge, repo in repositories:
-        declared = judged.get((forge, repo), frozenset())
-        old = profiles.get((forge, repo), "observe")
-        for gnome, agent in sorted(reviewers.agents.items()):
-            mine = frozenset(p for p in declared if p in agent.policies)
-            if not mine:
-                continue
-            named = reviewers.profiles.get(gnome, {})
-            matching = sorted(
-                (
-                    name
-                    for name, held in named.items()
-                    if frozenset(held) == mine
-                ),
-                key=lambda name: (name != "default", name),
-            )
-            if not matching:
-                problems.append(
-                    f"{forge}:{repo} declares {', '.join(sorted(mine))} of "
-                    f"{gnome}, which is no profile of it; deploy a profile "
-                    "of those policies and settle again"
-                )
-                continue
-            behaviour = cast(Behaviour, old)
-            if old == "gate" and gnome not in governing.get(
-                (forge, repo), frozenset()
-            ):
-                behaviour = "advise"
-            made.append(
-                Settled(
-                    forge=forge,
-                    repo=repo,
-                    gnome=gnome,
-                    behaviour=behaviour,
-                    profile=matching[0],
-                )
-            )
-    return made, problems
-
-
-def run_settle(
-    database_url: str,
-    checks: Collection[str],
-    build: str | None = None,
-    check_only: bool = False,
-    out: TextIO | None = None,
-    err: TextIO | None = None,
-) -> int:
-    """Make the settings from the server's declarations, once.
-
-    A repository and gnome that already has a setting is left as it is,
-    so running it again makes nothing new. With ``check_only`` it prints
-    what it would make and writes nothing.
-    """
-    console = _console(out, err)
-    reviewers = reviewers_in_force(
-        SqlAlchemyPolicyDeployments(database_url), checks
-    )
-    if reviewers is None:
-        return console.refuse(
-            "no policy deployment is in force, so no profile is known"
-        )
-    judged = {
-        (one.forge, one.repo): frozenset(one.policies)
-        for one in SqlAlchemyJudgedPolicies(database_url).declarations()
-        if one.policies
-    }
-    profiles = {
-        key: profile.name
-        for key, profile in SqlAlchemyEnforcement(database_url)
-        .bindings()
-        .items()
-    }
-    governance = SqlAlchemyGovernance(
-        database_url, governing_by_default(reviewers.agents)
-    )
-    governing = {
-        key: governance.governing_agents(*key)
-        for key in set(judged) | set(profiles)
-    }
-    made, problems = settled(reviewers, judged, profiles, governing)
-    if problems:
-        for problem in problems:
-            console.say(f"refused: {problem}")
-        return console.refuse(
-            f"{len(problems)} declaration(s) match no profile; nothing "
-            "is settled"
-        )
-    settings = SqlAlchemyGnomeSettings(database_url)
-    held = {(one.forge, one.repo, one.gnome) for one in settings.settings()}
-    setter = _setter(database_url, settings, build)
-    known = _profiles(reviewers)
-    for one in made:
-        where = f"{one.forge}:{one.repo} {one.gnome}"
-        if (one.forge, one.repo, one.gnome) in held:
-            console.say(f"{where} is already set; left as it is")
-            continue
-        if check_only:
-            console.say(f"{where} would be {one.behaviour} {one.profile}")
-            continue
-        setter.execute(
-            SetGnomeRequest(
-                forge=one.forge,
-                repo=one.repo,
-                gnome=one.gnome,
-                behaviour=one.behaviour,
-                profile=one.profile,
-                set_by=SETTLED_BY,
-                profiles=known,
-            )
-        )
-        console.say(f"{where} is {one.behaviour} {one.profile}")
-    if not made:
-        console.say("nothing is declared, so nothing is settled")
     return 0

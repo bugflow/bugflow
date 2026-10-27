@@ -1,11 +1,15 @@
 """Deploying policies, composed: the use case that stores a deployment
-and puts it in force, joined to the declarations it carries.
+and puts it in force, with a check that reads the settings as well as
+the files.
 
-The use case is the method context's and the declaration records are
-the review context's, so the two are joined here, where both may be
-imported. The API's route and the command's ``install-policies`` run
-the same composition, so a deployment made on the host is checked and
-recorded as one a pipeline sends is.
+The use case is the method context's and the gnomes' settings are the
+review context's, so the two are joined here, where both may be
+imported. A deployment that drops a profile, or a gnome, that a setting
+names is refused (ADR 008), so a repository is never left set to a
+profile that is gone, even with its gnome off. The API's route and the
+command's ``install-policies`` run the same composition, so a
+deployment made on the host is checked and recorded as one a pipeline
+sends is.
 """
 
 import sys
@@ -26,31 +30,23 @@ from bugflow.method.domain.repositories.policy_deployment import (
 )
 from bugflow.method.dtos.deploy_policies import (
     DeployPoliciesRequest,
-    DeployPoliciesResponse,
     PolicyFile,
 )
 from bugflow.method.infrastructure.policy_deployment_parsing import (
-    DECLARATIONS,
-    ParsedPolicyDeploymentCheck,
     parse_deployment,
+    refuse_retired,
 )
 from bugflow.method.infrastructure.policy_directory import PolicyDirectory
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
 from bugflow.method.usecases.deploy_policies import DeployPoliciesUseCase
-from bugflow.review.domain.models.review_declaration import (
-    DispatchedProcesses,
-    JudgedPolicies,
-)
-from bugflow.review.domain.services.review_declaration import (
-    DispatchedProcessesService,
-    JudgedPoliciesService,
+from bugflow.review.domain.services.gnome_settings import (
+    GnomeSettingsService,
 )
 from bugflow.review.domain.values.checked_policy import CHECKS
-from bugflow.review.infrastructure.sqlalchemy_review_declaration import (
-    SqlAlchemyDispatchedProcesses,
-    SqlAlchemyJudgedPolicies,
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
 )
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.infrastructure.system_clock import SystemClock
@@ -73,135 +69,68 @@ def checks_from(environ: Mapping[str, str]) -> tuple[str, ...]:
     )
 
 
-def deployment_check(checks: Collection[str]) -> ParsedPolicyDeploymentCheck:
-    """Return the check a deployment passes before it is stored: the
-    parse, told which checks this server has and which subjects it
-    renders, so a manifest naming another check, or a declaration
-    naming a policy this server cannot answer, is refused."""
-    return ParsedPolicyDeploymentCheck(checks, JUDGED_SUBJECTS)
-
-
-def apply_declarations(
-    deployment: PolicyDeployment,
-    judged: JudgedPoliciesService,
-    dispatched: DispatchedProcessesService,
-    checks: Collection[str],
-) -> bool:
-    """Write a deployment's declarations file to the declaration records.
-
-    Returns False, and writes nothing, when the deployment has no such
-    file: the server's declarations are then whatever was declared
-    before.
-
-    With the file, it is the whole of what the server reviews. Each
-    repository in it has its judged policies and its dispatched
-    processes replaced, and a repository that has a declaration and is
-    not in the file has both emptied, so it is reviewed for nothing.
-    Writing the same file twice changes nothing.
-    """
-    declared = parse_deployment(deployment, checks, JUDGED_SUBJECTS).declared
-    if declared is None:
-        return False
-    named = {(one.forge, one.repo) for one in declared}
-    for one in declared:
-        judged.declare(
-            JudgedPolicies(
-                forge=one.forge, repo=one.repo, policies=one.policies
-            )
-        )
-        dispatched.declare(
-            DispatchedProcesses(
-                forge=one.forge, repo=one.repo, processes=one.processes
-            )
-        )
-    for held in judged.declarations():
-        if (held.forge, held.repo) not in named:
-            judged.declare(JudgedPolicies(forge=held.forge, repo=held.repo))
-    for sent in dispatched.declarations():
-        if (sent.forge, sent.repo) not in named:
-            dispatched.declare(
-                DispatchedProcesses(forge=sent.forge, repo=sent.repo)
-            )
-    return True
-
-
-def declared_by_deployment(deployments: PolicyDeploymentRepository) -> bool:
-    """Return whether the deployment in force carries a declarations
-    file.
-
-    When it does, what each repository is judged on and dispatches
-    comes from the policy repository, and the next deployment writes
-    it again. A command that changed it on the host would be undone
-    then, so ``bugflow declare`` refuses to.
-    """
-    in_force = deployments.in_force()
-    return in_force is not None and in_force.text_of(DECLARATIONS) is not None
-
-
-class DeployPoliciesAndDeclare:
-    """Runs ``DeployPoliciesUseCase``, then writes the deployment's
-    declarations.
-
-    The declarations are written whenever the deployment is in force
-    afterwards, including when it already was, so a call that failed
-    between the two is completed by sending it again. A check writes
-    nothing.
-    """
+class SettledDeploymentCheck:
+    """Implements ``PolicyDeploymentCheckService``: a retired file is
+    refused, then the parse, told which checks this server has and which
+    subjects it renders, and then each setting, which must name a gnome
+    and a profile the deployment holds."""
 
     def __init__(
         self,
-        deploy: DeployPoliciesUseCase,
-        deployments: PolicyDeploymentRepository,
-        judged: JudgedPoliciesService,
-        dispatched: DispatchedProcessesService,
         checks: Collection[str],
+        settings: GnomeSettingsService | None = None,
     ) -> None:
-        self._deploy = deploy
-        self._deployments = deployments
-        self._judged = judged
-        self._dispatched = dispatched
         self._checks = checks
+        self._settings = settings
 
-    def execute(
-        self, request: DeployPoliciesRequest
-    ) -> DeployPoliciesResponse:
-        answered = self._deploy.execute(request)
-        if answered.outcome != "checked":
-            in_force = self._deployments.in_force()
-            if in_force is not None:
-                apply_declarations(
-                    in_force, self._judged, self._dispatched, self._checks
-                )
-        return answered
+    def check(self, deployment: PolicyDeployment) -> None:
+        refuse_retired(deployment)
+        parsed = parse_deployment(deployment, self._checks, JUDGED_SUBJECTS)
+        if self._settings is None:
+            return
+        dropped = sorted(
+            f"{one.forge}:{one.repo} sets {one.gnome} to {one.profile}"
+            for one in self._settings.settings()
+            if one.profile not in parsed.profiles.get(one.gnome, {})
+        )
+        if dropped:
+            raise PolicyDeploymentError(
+                "the deployment drops a profile a setting names: "
+                + "; ".join(dropped)
+                + ". Set those gnomes to another profile, or off, first"
+            )
+
+
+def deployment_check(
+    checks: Collection[str], settings: GnomeSettingsService | None = None
+) -> SettledDeploymentCheck:
+    """Return the check a deployment passes before it is stored."""
+    return SettledDeploymentCheck(checks, settings)
 
 
 @dataclass(frozen=True)
 class Deploying:
-    """What deploys: the composed use case, and where deployments are
-    kept, which answers what is in force."""
+    """What deploys: the use case, and where deployments are kept, which
+    answers what is in force."""
 
-    deploy: DeployPoliciesAndDeclare
+    deploy: DeployPoliciesUseCase
     deployments: PolicyDeploymentRepository
 
 
 def deploying_with(
     deployments: PolicyDeploymentRepository,
     recording: RecordingService,
-    judged: JudgedPoliciesService,
-    dispatched: DispatchedProcessesService,
     checks: Collection[str],
+    settings: GnomeSettingsService | None = None,
 ) -> Deploying:
     """Compose deploying over the stores given. For a test, or a program
     that holds the stores already."""
     return Deploying(
-        deploy=DeployPoliciesAndDeclare(
-            DeployPoliciesUseCase(
-                deployments, deployment_check(checks), recording, SystemClock()
-            ),
+        deploy=DeployPoliciesUseCase(
             deployments,
-            judged,
-            dispatched,
-            checks,
+            deployment_check(checks, settings),
+            recording,
+            SystemClock(),
         ),
         deployments=deployments,
     )
@@ -215,9 +144,8 @@ def deploying_over(
     return deploying_with(
         SqlAlchemyPolicyDeployments(database_url),
         stamped_journal(database_url, build),
-        SqlAlchemyJudgedPolicies(database_url),
-        SqlAlchemyDispatchedProcesses(database_url),
         checks,
+        SqlAlchemyGnomeSettings(database_url),
     )
 
 
@@ -281,11 +209,4 @@ def run_install_policies(
     )
     for one in now.files:
         print(f"  {one.path}", file=out)
-    declared = parse_deployment(now, checks).declared
-    if declared is not None:
-        print(
-            f"{len(declared)} repositories are declared by "
-            f"{DECLARATIONS}; any other has its declaration emptied",
-            file=out,
-        )
     return 0

@@ -107,14 +107,35 @@ def test_an_installed_reviewer_has_a_version_of_its_own() -> None:
     assert corpus.version_for("safety") == corpus.version
 
 
-def test_which_verdicts_fail_a_commit_status() -> None:
-    advice = Enforcement(publishes=True, fails_at=None)
-    on_fail = Enforcement(publishes=True, fails_at="fail")
-    on_warn = Enforcement(publishes=True, fails_at="warn")
-    assert not fails(advice, "fail")
-    assert fails(on_fail, "fail") and not fails(on_fail, "warn")
-    assert fails(on_warn, "warn") and fails(on_warn, "fail")
-    assert not fails(on_warn, "pass") and not fails(on_warn, None)
+def test_only_a_gating_gnome_fails_its_status_on_a_fail_verdict() -> None:
+    both = frozenset({"prose", "safety"})
+    held = Enforcement(
+        judging=both, publishing=both, gating=frozenset({"prose"})
+    )
+    assert fails(held, "prose", "fail")
+    assert not fails(held, "prose", "warn") and not fails(held, "prose", None)
+    assert not fails(held, "safety", "fail")
+    assert held.publishes and not Enforcement().publishes
+
+
+def test_a_gnome_that_gates_publishes_and_one_that_publishes_judges() -> None:
+    prose = frozenset({"prose"})
+    with pytest.raises(ValueError, match="prose gates and does not publish"):
+        Enforcement(judging=prose, gating=prose)
+    with pytest.raises(ValueError, match="prose publishes and does not judge"):
+        Enforcement(publishing=prose)
+
+
+def test_the_gnomes_at_gate_decide_the_label_then_those_publishing() -> None:
+    both = frozenset({"prose", "safety"})
+    assert Enforcement(judging=both).deciding == both
+    assert Enforcement(judging=both, publishing=both).deciding == both
+    advised = Enforcement(judging=both, publishing=frozenset({"prose"}))
+    assert advised.deciding == {"prose"}
+    gated = Enforcement(
+        judging=both, publishing=both, gating=frozenset({"safety"})
+    )
+    assert gated.deciding == {"safety"}
 
 
 def warning(subject: str, severity: str = "warn") -> Finding:
@@ -189,3 +210,22 @@ def test_an_unavailable_judge_or_grader_carries_its_calls() -> None:
 @pytest.mark.model("Verdict", "A verdict is pass, warn or fail.")
 def test_a_verdict_is_pass_warn_or_fail() -> None:
     assert get_args(ReviewStatus) == ("pass", "warn", "fail")
+
+
+def test_a_gnome_that_does_not_govern_never_decides_the_label() -> None:
+    """A gnome only a stocktake runs gives no verdict on a pull request's
+    head, so its manifest says it does not govern, and at any behaviour
+    it is left out of the label rather than holding it at work in
+    progress."""
+    both = frozenset({"prose", "safety"})
+    advised = Enforcement(
+        judging=both, publishing=both, may_decide=frozenset({"prose"})
+    )
+    assert advised.deciding == {"prose"}
+    gated = Enforcement(
+        judging=both,
+        publishing=both,
+        gating=frozenset({"safety"}),
+        may_decide=frozenset({"prose"}),
+    )
+    assert gated.deciding == {"prose"}

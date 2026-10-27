@@ -7,6 +7,7 @@ managed agent, once a week.
 """
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 
 from bugflow.apps.shared.deploying import deploying_over
 from bugflow.method.dtos.deploy_policies import (
@@ -14,7 +15,14 @@ from bugflow.method.dtos.deploy_policies import (
     PolicyFile,
 )
 from bugflow.method.tests.policy_files import DOCTRINE, POLICY, REFERENCES
+from bugflow.review.domain.models.gnome_setting import (
+    Behaviour,
+    GnomeSetting,
+)
 from bugflow.review.domain.values.checked_policy import CHECKS
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
+)
 
 REPOSITORY = "example-org/pull-request-policies"
 
@@ -62,16 +70,9 @@ cadence = "weekly"
 processes = ["security-stocktake"]
 """
 
-DECLARATIONS = """\
-[repository."example-org/widgets"]
-policies = ["P-01", "P-09"]
-processes = ["evaluate-pull-request", "security-stocktake"]
-"""
-
 #: The deployment's files, by path.
 FILES = {
     "pace-layers.toml": TOPOLOGY,
-    "declarations.toml": DECLARATIONS,
     "prose/reviewer.md": PROSE,
     f"{REFERENCES}/policies/P-01-example.md": POLICY,
     f"{REFERENCES}/doctrine/01-voice.md": DOCTRINE,
@@ -85,7 +86,8 @@ def put_in_force(
     commit: str = "c" * 40,
 ) -> None:
     """Store the files as a deployment in the database, put it in
-    force, and write the declarations it carries."""
+    force, and set both reviewers to observe ``WIDGETS`` by their
+    default profiles."""
     deploying_over(database_url, None, CHECKS).deploy.execute(
         DeployPoliciesRequest(
             repository=REPOSITORY,
@@ -97,3 +99,20 @@ def put_in_force(
             sent_by="a test",
         )
     )
+    set_gnomes(database_url, "observe")
+
+
+def set_gnomes(database_url: str, behaviour: Behaviour) -> None:
+    """Set both reviewers on ``WIDGETS`` to the behaviour."""
+    settings = SqlAlchemyGnomeSettings(database_url)
+    for gnome in ("prose", "security"):
+        settings.save(
+            GnomeSetting(
+                forge=WIDGETS[0],
+                repo=WIDGETS[1],
+                gnome=gnome,
+                behaviour=behaviour,
+                set_by="a test",
+                set_at=datetime.now(UTC),
+            )
+        )

@@ -88,17 +88,19 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 ## How rules reach a server
 
 - **Binding.** A repository that says which gnomes, at which commits,
-  apply to which repositories under review, in `declarations.toml`,
-  and when the server's processes run, in `pace-layers.toml`; it holds
-  a copy of each gnome it pins. [What is deployed where](architecture.md),
+  a server holds, the profiles of each in `profiles.toml`, and when the
+  server's processes run, in `pace-layers.toml`; it holds a copy of
+  each gnome it pins. [What is deployed where](architecture.md),
   "Three kinds of repository".
-- **Declaration.** A line of `declarations.toml`: one policy turned on
-  for one repository. [The policy package](policy-package.md), "The
-  binding".
 - **Profile.** A named set of one gnome's policies, in a binding's
   `profiles.toml`. Every gnome has `default`, which holds every policy
   of it the server answers unless the binding names it. [The policy
   package](policy-package.md), "The binding".
+- **Setting.** What one gnome does on one repository: a behaviour,
+  `off`, `observe`, `advise` or `gate`, and the profile it judges by.
+  An operator sets it on the server, and a repository is watched while
+  any of its gnomes is above `off`. [Deploying a server](deploying.md),
+  "Before the first review".
 - **Glossary.** The words documents of ClankOS and bugflow, copied into
   a binding under `glossary/` and sent with its deployment; a policy
   whose subject is `document/glossary` reads them.
@@ -112,6 +114,6 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
   is the composition and settings of one server, which
   [Deploying a server](deploying.md) covers. [What is deployed
   where](architecture.md), "How rules reach a server".
-- **Operator.** Whoever runs a server: declares its repositories,
-  fills its model classes, and says whether findings are published.
+- **Operator.** Whoever runs a server: sets each gnome on each
+  repository, fills its model classes, and says what a run may spend.
   [What is deployed where](architecture.md).

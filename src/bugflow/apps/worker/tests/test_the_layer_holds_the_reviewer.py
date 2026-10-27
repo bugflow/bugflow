@@ -10,7 +10,6 @@ from pathlib import Path
 
 from bugflow.apps.worker.reviewers import (
     dispatchable,
-    governing_by_default,
     policy_summaries,
     processes_on,
     reviewers_anywhere,
@@ -25,12 +24,11 @@ from bugflow.method.infrastructure.reviewer_packages import (
     DomainSpecificReviewAgent,
 )
 from bugflow.method.tests.policy_files import POLICY
-from bugflow.review.domain.models.review_declaration import (
-    DispatchedProcesses,
+from bugflow.review.domain.models.gnome_setting import GnomeSetting
+from bugflow.review.infrastructure.in_memory_gnome_settings import (
+    InMemoryGnomeSettings,
 )
-from bugflow.review.infrastructure.in_memory_review_declaration import (
-    InMemoryDispatchedProcesses,
-)
+from bugflow.review.infrastructure.settled_review import SettledProcesses
 from bugflow.shared.domain.values.budget import Budget
 
 REVIEWS = process("security-review", "pull request", reviewer="security")
@@ -195,33 +193,49 @@ def test_a_verdict_covers_the_declared_policies_this_server_answers() -> None:
     }
 
 
-def test_a_reviewer_governs_by_default_if_its_manifest_says_so() -> None:
-    governs = replace(agent("prose", "judge"), governs=True)
-    assert governing_by_default({"prose": governs} | AGENTS) == ("prose",)
+#: Each process of the layer, by name, with the reviewer it runs.
+PROCESSES = {
+    "security-review": "security",
+    "licence-review": "licence",
+    "collect-at-close": None,
+}
 
 
-def declared(*processes: str) -> InMemoryDispatchedProcesses:
-    held = InMemoryDispatchedProcesses()
-    held.declare(
-        DispatchedProcesses(forge="github", repo="o/r", processes=processes)
+def judging(*gnomes: str) -> SettledProcesses:
+    """``o/r`` with each gnome named observing it."""
+    return SettledProcesses(
+        InMemoryGnomeSettings(
+            *(
+                GnomeSetting(
+                    forge="github", repo="o/r", gnome=one, behaviour="observe"
+                )
+                for one in gnomes
+            )
+        ),
+        PROCESSES,
     )
-    return held
 
 
-def test_a_repository_is_dispatched_the_reviewers_it_declared() -> None:
+def test_a_repository_is_dispatched_the_reviewers_that_judge_it() -> None:
     named = {"security": "security-review", "licence": "licence-review"}
     held = ["licence", "security"]
     assert reviewers_for(
-        held, declared("security-review"), named, "github", "o/r"
+        held, judging("security"), named, "github", "o/r"
     ) == ["security"]
-    assert reviewers_for(held, declared(), named, "github", "o/r") == []
+    assert reviewers_for(held, judging(), named, "github", "o/r") == []
     assert reviewers_for(held, None, named, "github", "o/r") == held
 
 
-def test_a_reviewer_no_process_names_cannot_be_declared() -> None:
+def test_a_process_with_no_reviewer_runs_where_any_gnome_judges() -> None:
+    assert judging("security").dispatched("github", "o/r") == {
+        "security-review",
+        "collect-at-close",
+    }
+    assert judging().dispatched("github", "o/r") == frozenset()
+
+
+def test_a_reviewer_no_process_names_is_not_dispatched() -> None:
     assert (
-        reviewers_for(
-            ["security"], declared("security-review"), {}, "github", "o/r"
-        )
+        reviewers_for(["security"], judging("security"), {}, "github", "o/r")
         == []
     )

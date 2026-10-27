@@ -1,5 +1,5 @@
 """Deploying policies through the two routes a pipeline calls, and
-writing the declarations the deployment carries. The use case itself
+refusing one that drops a profile a setting names. The use case itself
 is the method context's, tested there."""
 
 import pytest
@@ -9,6 +9,7 @@ from bugflow.apps.api.role_policy_deployment_access import (
 )
 from bugflow.apps.api.tests.doubles import DEPLOYER, READER, Server, bearer
 from bugflow.method.tests.policy_files import MANIFEST, READ
+from bugflow.review.domain.models.gnome_setting import GnomeSetting
 from bugflow.shared.domain.values.caller import Caller
 
 REPOSITORY = "example-org/pull-request-policies"
@@ -145,26 +146,27 @@ def test_the_role_that_deploys_is_the_one_given() -> None:
     assert not access.may_deploy(other)
 
 
-DECLARING = READ | {
-    "declarations.toml": '[repository."example-org/widgets"]\n'
-    'policies = ["P-01"]\n'
+DROPPING = READ | {
+    "profiles.toml": '[profile.prose.strict]\npolicies = ["P-01"]\n'
 }
 
 
-def test_deploying_through_the_api_writes_the_declarations() -> None:
-    server = Server()
-    answered = server.client.post(
-        ROUTE, json=body(files=DECLARING), headers=bearer(DEPLOYER)
-    )
-    assert answered.status_code == 200
-    assert server.judged.judged("github", "example-org/widgets") == {"P-01"}
-
-
-def test_a_check_through_the_api_writes_no_declaration() -> None:
+def test_the_api_refuses_a_deployment_that_drops_a_profile_in_use() -> None:
     server = Server()
     server.client.post(
-        ROUTE,
-        json=body(files=DECLARING, check_only=True),
-        headers=bearer(DEPLOYER),
+        ROUTE, json=body(files=DROPPING), headers=bearer(DEPLOYER)
     )
-    assert server.judged.declarations() == []
+    server.settings.save(
+        GnomeSetting(
+            forge="github",
+            repo="example-org/widgets",
+            gnome="prose",
+            behaviour="observe",
+            profile="strict",
+        )
+    )
+    answered = server.client.post(
+        ROUTE, json=body(commit="c2"), headers=bearer(DEPLOYER)
+    )
+    assert answered.status_code == 422
+    assert "drops a profile a setting names" in answered.text

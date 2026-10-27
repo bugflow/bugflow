@@ -2,8 +2,8 @@
 
 A deployment is a set of text files held in the database. This module
 parses them into what a worker reads: reviewers, each reviewer's
-policies and doctrine, the pace layers, each reviewer's profiles, what
-each repository declares, and the glossary files.
+policies and doctrine, the pace layers, each reviewer's profiles, and
+the glossary files.
 
 Every problem in a deployment is collected and reported in one
 ``PolicyDeploymentError``, so a sender sees all of them in one attempt.
@@ -32,8 +32,8 @@ from bugflow.method.infrastructure.reviewer_packages import (
 
 #: The file beside the reviewers that declares the pace layers.
 TOPOLOGY = "pace-layers.toml"
-#: The file beside the reviewers that says what each repository is
-#: reviewed for. Optional.
+#: The file that said what each repository was reviewed for, which ADR
+#: 008 retires: each gnome's setting on a repository says it.
 DECLARATIONS = "declarations.toml"
 #: The file beside the reviewers that names each reviewer's profiles.
 #: Optional.
@@ -47,22 +47,6 @@ _PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 GLOSSARY = "glossary"
 #: The names a glossary file may have.
 GLOSSARY_SUFFIXES = (".md", ".txt", ".org")
-
-
-@dataclass(frozen=True, kw_only=True)
-class RepositoryDeclaration:
-    """What one repository is reviewed for, as a deployment declares it.
-
-    Plain data: which policies are judged and which processes are
-    dispatched, by name. Writing it where the declarations are kept is
-    the application's.
-    """
-
-    forge: str
-    #: As ``owner/name``.
-    repo: str
-    policies: tuple[str, ...]
-    processes: tuple[str, ...]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -85,11 +69,6 @@ class ParsedDeployment:
     #: By agent id: the text that agent's corpus version hashes: the
     #: manifest, then the policy source, then each doctrine file.
     prose: Mapping[str, str]
-    #: What each repository is reviewed for, in repository order. None
-    #: if the deployment has no declarations file, which leaves the
-    #: server's declarations as they are. An empty tuple is a file that
-    #: declares no repository.
-    declared: tuple[RepositoryDeclaration, ...] | None = None
     #: The text of each file under glossary/, by path, in path order.
     glossary: Mapping[str, str] = field(default_factory=dict)
     #: Each reviewer's profiles, by agent id then profile name: the
@@ -151,10 +130,13 @@ def parse_deployment(
     one id, two manifests in one directory, two policies with one id in
     one agent, policy or doctrine files in a directory that has no
     manifest, policy or doctrine files of one agent in two skills and
-    none in its own directory, and a declaration naming a policy or
-    process the deployment does not hold, a checked policy no manifest
-    gives a check, or a policy whose subject this server does not
-    render.
+    none in its own directory, and a profile naming a policy its
+    reviewer does not hold, a checked policy no manifest gives a check,
+    or a policy whose subject this server does not render.
+
+    A declarations file, which ADR 008 retires, is passed over: a
+    deployment in force from before it may carry one, and is read
+    without it. ``refuse_retired`` refuses one in a new deployment.
     """
     problems: list[str] = []
     by_directory: dict[str, DomainSpecificReviewAgent] = {}
@@ -179,8 +161,10 @@ def parse_deployment(
             except ValueError as exc:
                 problems.append(str(exc))
             continue
-        if one.path in (DECLARATIONS, PROFILES):
-            # Parsed after the policies and the layers, which they name.
+        if one.path == DECLARATIONS:
+            continue
+        if one.path == PROFILES:
+            # Parsed after the policies, which it names.
             continue
         kind = _kind(one.path)
         if kind is None:
@@ -251,33 +235,6 @@ def parse_deployment(
         unanswerable,
         problems,
     )
-    declarations = deployment.text_of(DECLARATIONS)
-    declared = (
-        None
-        if declarations is None
-        else _declared(
-            declarations,
-            # A policy a check answers need have no file. Its id is
-            # known from the manifest that names it.
-            known_policies={
-                policy_id
-                for of_agent in policies.values()
-                for policy_id in of_agent
-            }
-            | {
-                checked.policy_id
-                for agent in agents.values()
-                for checked in agent.checks
-            },
-            known_processes={
-                process.name
-                for layer in layers.values()
-                for process in layer.processes
-            },
-            problems=problems,
-            unanswerable=unanswerable,
-        )
-    )
     if problems:
         raise PolicyDeploymentError("; ".join(problems))
     # deployment.files is in path order, so each agent's policy texts
@@ -301,7 +258,6 @@ def parse_deployment(
             for agent_id, parts in doctrine_parts.items()
         },
         layers=layers,
-        declared=declared,
         glossary=glossary,
         profiles=profiles,
     )
@@ -353,7 +309,7 @@ def _unanswerable(
     a checked policy that no manifest gives a check, and a judged
     policy whose subject is not among ``subjects``, when they are
     known. A gnome may hold such a policy for another consumer; a
-    declaration naming one is refused.
+    profile naming one is refused, and a default profile leaves it out.
     """
     checked = {
         one.policy_id for agent in agents.values() for one in agent.checks
@@ -467,92 +423,14 @@ def _profiles(
     return found
 
 
-def _declared(
-    text: str,
-    known_policies: set[str],
-    known_processes: set[str],
-    problems: list[str],
-    unanswerable: Mapping[str, str] | None = None,
-) -> tuple[RepositoryDeclaration, ...]:
-    """Parse the declarations file, adding each problem found to
-    ``problems``. ``unanswerable`` gives, for a policy the deployment
-    holds and this server cannot answer, the reason a declaration
-    naming it is refused.
-
-    The file has one table for each repository::
-
-        [repository."owner/name"]
-        policies = ["P-01"]
-        processes = ["evaluate-pull-request"]
-
-    The key is ``owner/name`` for a repository on GitHub, or
-    ``forge:owner/name``. Each list may be left out, which declares
-    none. A policy must be one this deployment holds, by a file or by a
-    manifest's ``checks`` line, and a process must be one the
-    deployment's topology declares.
-    """
-    try:
-        document = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as exc:
-        problems.append(f"{DECLARATIONS}: {exc}")
-        return ()
-    other = sorted(set(document) - {"repository"})
-    if other:
-        problems.append(
-            f"{DECLARATIONS}: {', '.join(other)} is not a table this "
-            "file has; it has repository"
+def refuse_retired(deployment: PolicyDeployment) -> None:
+    """Refuse a new deployment that carries a file ADR 008 retires."""
+    if deployment.text_of(DECLARATIONS) is not None:
+        raise PolicyDeploymentError(
+            f"{DECLARATIONS} is retired by ADR 008: a binding names its "
+            f"profiles in {PROFILES}, and an operator sets each gnome on "
+            "each repository"
         )
-    repositories = document.get("repository", {})
-    if not isinstance(repositories, dict):
-        problems.append(f"{DECLARATIONS}: repository must be a table")
-        return ()
-    found: list[RepositoryDeclaration] = []
-    for name, table in sorted(repositories.items()):
-        where = f"{DECLARATIONS}: repository {name!r}"
-        forge, _, repo = name.partition(":")
-        if not repo:
-            forge, repo = "github", name
-        if repo.count("/") != 1 or not all(repo.split("/")):
-            problems.append(f"{where} is not owner/name or forge:owner/name")
-            continue
-        if not isinstance(table, dict):
-            problems.append(f"{where} must be a table")
-            continue
-        unknown = sorted(set(table) - {"policies", "processes"})
-        if unknown:
-            problems.append(
-                f"{where}: {', '.join(unknown)} is not policies or processes"
-            )
-        named: dict[str, tuple[str, ...]] = {}
-        for key, known, kind in (
-            ("policies", known_policies, "policy"),
-            ("processes", known_processes, "process"),
-        ):
-            value = table.get(key, [])
-            if not isinstance(value, list) or not all(
-                isinstance(item, str) for item in value
-            ):
-                problems.append(f"{where}: {key} must be a list of names")
-                value = []
-            missing = sorted(set(value) - known)
-            if missing:
-                problems.append(
-                    f"{where}: {', '.join(missing)} is not a {kind} this "
-                    "deployment holds"
-                )
-            for one in value:
-                if unanswerable and one in unanswerable:
-                    problems.append(f"{where}: {unanswerable[one]}")
-            named[key] = tuple(dict.fromkeys(value))
-        found.append(
-            RepositoryDeclaration(
-                forge=forge,
-                repo=repo,
-                policies=named["policies"],
-                processes=named["processes"],
-            )
-        )
-    return tuple(found)
 
 
 class ParsedPolicyDeploymentCheck:
@@ -570,4 +448,5 @@ class ParsedPolicyDeploymentCheck:
         self._subjects = subjects
 
     def check(self, deployment: PolicyDeployment) -> None:
+        refuse_retired(deployment)
         parse_deployment(deployment, self._checks, self._subjects)

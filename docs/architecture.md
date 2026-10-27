@@ -16,12 +16,12 @@ owner.
 | Repository | Holds | Changed by |
 |---|---|---|
 | A gnome | One doctrine, with its policies, cases, checks and skill | Whoever maintains the standard |
-| A binding | Which gnomes, at which commits, and which repositories each policy applies to | Whoever decides what an organisation is reviewed for |
+| A binding | Which gnomes, at which commits, and the profiles of each: named sets of its policies | Whoever decides what an organisation is reviewed for |
 | A deployment | The composition and the settings of one server | Whoever operates the server |
 
 A gnome names no server and no repository under review. A binding
 holds a copy of each gnome it pins, fetched at one commit, and two
-files of its own: `pace-layers.toml` and `declarations.toml`. One
+files of its own: `pace-layers.toml` and `profiles.toml`. One
 repository may be a gnome and a binding at once, which is the smallest
 arrangement: its reviewers and the two files sit side by side.
 
@@ -119,8 +119,8 @@ flowchart LR
 6. When the pull request closes, the workflow collects its
    conversation once and ends.
 
-The policies asked at "Assess" are the ones `declarations.toml`
-declares for the repository. A policy it declares that the worker
+The policies asked at "Assess" are those of the profile of each gnome
+set to observe the repository or more (ADR 008). A policy the worker
 cannot answer is left out, with no message on the pull request.
 
 ### Task queues
@@ -146,21 +146,22 @@ belongs to a model, so each class has a queue and a limit of its own.
 | A token that reads pull requests and writes comments, labels and statuses | The worker's settings | The operator |
 | A model for each class a policy names | The proxy's `config.yaml` and its keys | The operator |
 | A policy deployment in force | The binding repository, through its pipeline | The binding's owner |
-| Which policies each repository is judged on | `declarations.toml` in the binding | The binding's owner |
+| The profiles of each gnome | `profiles.toml` in the binding | The binding's owner |
+| Which gnomes judge and publish on each repository, and by which profile | The database, by `bugflow set` | The operator |
 | Where each repository's period begins on each layer | The database, by `bugflow declare --boundary` | The operator |
-| What is published to each repository | The database, by `bugflow declare --profile` | The operator |
 | What a review may spend | The database, by `bugflow allow` | The operator |
 
 Two of these stop a worker rather than a review. A worker does not
 start while a watched repository lacks a boundary on a layer the
 deployment holds, and it does not start without a forge token while a
-repository is bound to a profile that publishes. Each says what is
+gnome publishes on a repository. Each says what is
 missing and stops, and Compose starts it again.
 
-A server matches a repository by its name, `owner/name`. After a
-repository is renamed at the forge, the watched repositories, the
-binding's declarations, and the boundary, profile and allowance in the
-database must each be given the new name.
+A server matches a repository by its name, `owner/name`. A gnome's
+setting is kept by the repository's row, which keeps its settings
+through a rename. After a repository is renamed at the forge, the
+watched repositories, and the boundary and allowance in the database,
+must each be given the new name.
 
 ## The things, and who enforces each
 
@@ -188,7 +189,7 @@ flowchart TD
     end
     subgraph binding["A binding: one repository"]
         copies["a copy of each gnome,<br/>at a pinned commit"]
-        declarations["declarations.toml:<br/>policy × repository"]
+        profiles["profiles.toml:<br/>named sets of a gnome's policies"]
         pace["pace-layers.toml:<br/>process × cadence"]
     end
     subgraph server["A server"]
@@ -217,7 +218,7 @@ what holds it instead.
 <!-- Written from docs/model.toml: python -m bugflow.shared.tests.model_section -->
 
 The things: gnome, manifest, doctrine, clause, policy, subject, case,
-skill, binding, declaration, profile, pace layer, deployment, server,
+skill, binding, profile, setting, pace layer, deployment, server,
 reviewer, judge, model class, check, finding, grade, ceiling, verdict,
 calibration, glossary.
 
@@ -273,7 +274,9 @@ calibration, glossary.
 - A binding is one repository. Not tested here: nothing holds it.
 - A binding holds a copy of each gnome at a pinned commit. Not tested
   here: held by the binding's pipeline.
-- A binding's declarations.toml pairs policies with repositories.
+- A binding's declarations.toml is refused.
+- A deployment in force that carries declarations.toml is read without
+  it.
 - A binding's profiles.toml names sets of a reviewer's policies.
 - A reviewer the binding names no default profile for has one of every
   policy of it the server answers.
@@ -299,8 +302,7 @@ calibration, glossary.
 
 - A server has a reviewer for each gnome, named by the gnome's id.
 - A reviewer's id and policies are read from the manifest at deployment.
-- A deployment that declares a policy this server cannot answer is
-  refused.
+- A profile of a policy this server cannot answer is refused.
 - A policy that the worker cannot answer is held and not judged.
 
 **Judge, check and finding**
@@ -361,8 +363,7 @@ calibration, glossary.
   documents and then the glossary files.
 - A document of document/glossary is a .org or .md file, or a .txt file
   under docs/.
-- A declaration of a policy whose subject is document/glossary is
-  accepted.
+- A profile of a policy whose subject is document/glossary is accepted.
 
 <!-- End of the section written from docs/model.toml -->
 

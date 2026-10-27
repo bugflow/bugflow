@@ -34,7 +34,7 @@ holds a copy of each gnome at one commit.
 | The finding | `<reviewer>/policies/<ID>-<name>.md` | The policy whose question the judge answered. Its header lists the clauses it may cite |
 | The grade | The same policy | Its instructions say what earns `warn` and what earns `fail`, and its `ceiling` caps the worst |
 | The words quoted | The pull request | The part the policy's `evidence` line names: the title, the description, the commits or the patches |
-| That the policy ran at all | `declarations.toml` | The line that turns this policy on for this repository |
+| That the policy ran at all | `profiles.toml`, and the server's settings | The profile that holds the policy, and the operator's setting of its gnome to that profile on this repository |
 | The example the judge was measured on | `<reviewer>/cases/<ID>/*.md` | A clean case, with nothing wrong, or a seeded case, with one fault and the clause a correct judge reports |
 
 ## One finding, end to end
@@ -58,8 +58,8 @@ VOICE-6`, `grade: fail`. Traced back:
    `evidence` line is `description`, so the judge read the description
    and nothing else. Its instructions say what a marketing register
    is and what grade it earns.
-3. `declarations.toml` in the binding names `ED-01` for the
-   repository, which is why the judge was asked.
+3. The narrative gnome is set to observe the repository or more, by a
+   profile that holds `ED-01`, which is why the judge was asked.
 4. A calibration runs `ED-01` over every case in `cases/ED-01/` and
    counts the cases the judge answered as their headers say. The
    counts are in the policy's notes below `=== calibration`.
@@ -78,4 +78,5 @@ VOICE-6`, `grade: fail`. Traced back:
   measured again.
 
 What a finding does to a merge, whether a `fail` blocks it, is the
-operator's declaration for the repository, not the gnome's.
+operator's setting of the gnome on the repository, not the gnome's: a
+gnome at `gate` fails its status on a `fail`.

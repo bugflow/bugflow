@@ -54,11 +54,12 @@ from bugflow.review.domain.errors import (
 )
 from bugflow.review.domain.models.conversation import Closing, Reaction
 from bugflow.review.domain.models.delegation import Handle, Run, RunParty, Task
-from bugflow.review.domain.models.review_declaration import JudgedPolicies
+from bugflow.review.domain.models.gnome_setting import GnomeSetting
 from bugflow.review.domain.models.submission import SubmissionRef
-from bugflow.review.infrastructure.in_memory_review_declaration import (
-    InMemoryJudgedPolicies,
+from bugflow.review.infrastructure.in_memory_gnome_settings import (
+    InMemoryGnomeSettings,
 )
+from bugflow.review.infrastructure.settled_review import SettledPolicies
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.work.domain.errors import (
     AgentTemporarilyUnavailableError as WorkAgentTemporarilyUnavailableError,
@@ -442,9 +443,13 @@ def test_a_review_scope_says_what_is_held_and_what_a_repository_asked() -> (
 ):
     """A policy switched off for a repository is told from one that ran
     and found nothing."""
-    declared = InMemoryJudgedPolicies()
-    declared.declare(
-        JudgedPolicies(forge="github", repo="o/r", policies=("P-02", "P-07"))
+    declared = SettledPolicies(
+        InMemoryGnomeSettings(
+            GnomeSetting(
+                forge="github", repo="o/r", gnome="prose", behaviour="observe"
+            )
+        ),
+        {"prose": {"default": ("P-02", "P-07")}},
     )
     scope = DeclaredReviewScope(("P-01", "P-02"), declared)
     assert scope.scope_for("github", "o/r") == ReviewScope(

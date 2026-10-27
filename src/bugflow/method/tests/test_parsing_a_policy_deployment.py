@@ -109,7 +109,7 @@ def test_a_deployment_with_no_files_parses_to_nothing() -> None:
     assert parsed.agents == {}
     assert parsed.policies == {}
     assert parsed.layers == {}
-    assert parsed.declared is None
+    assert parsed.profiles == {}
 
 
 @pytest.mark.model(

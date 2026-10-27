@@ -103,10 +103,7 @@ from bugflow.review.domain.repositories.judge_archive import (
 from bugflow.review.domain.repositories.write_up_archive import (
     WriteUpArchiveRepository,
 )
-from bugflow.review.domain.services.enforcement import (
-    EnforcementProfileService,
-)
-from bugflow.review.domain.services.governance import GovernanceService
+from bugflow.review.domain.services.enforcement import EnforcementService
 from bugflow.review.domain.services.grader import GraderService
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.review.domain.services.judge import JudgeService
@@ -120,7 +117,6 @@ from bugflow.review.domain.services.spend_bindings import (
 from bugflow.review.domain.services.spend_record import (
     SpendRecordService,
 )
-from bugflow.review.domain.services.withholding import WithholdingService
 from bugflow.review.dtos.assess_policy import (
     AssessPolicyRequest,
     AssessPolicyResponse,
@@ -168,12 +164,10 @@ from bugflow.review.dtos.wait_review import (
     WaitReviewRequest,
     WaitReviewResponse,
 )
-from bugflow.review.infrastructure.declared_enforcement import (
-    DeclaredEnforcement,
+from bugflow.review.infrastructure.in_memory_gnome_settings import (
+    InMemoryGnomeSettings,
 )
-from bugflow.review.infrastructure.in_memory_enforcement import (
-    InMemoryEnforcement,
-)
+from bugflow.review.infrastructure.settled_review import SettledEnforcement
 from bugflow.review.infrastructure.ungraded_write_ups import UngradedWriteUps
 from bugflow.review.usecases.check_pull_request import CheckPullRequestUseCase
 from bugflow.review.usecases.collect_at_close import CollectAtCloseUseCase
@@ -331,15 +325,13 @@ class ReviewActivities:
         # Where a checkout reviewer's write-up is stored. None if
         # nothing is set up to store it.
         write_ups: WriteUpArchiveRepository | None = None,
-        enforcement: EnforcementProfileService | None = None,
-        # What share of each repository's warnings is withheld. None,
-        # and none is.
-        withholding: WithholdingService | None = None,
+        # Which gnomes publish and gate on each repository, and the
+        # share of its warnings withheld. None, and nothing publishes.
+        enforcement: EnforcementService | None = None,
         # What the forge says of a closed conversation. None if nothing
         # set up can say, and then collecting at close fails for good.
         conversation: ForgeConversationService | None = None,
         agents: Mapping[str, tuple[str, ...]] | None = None,
-        governance: GovernanceService | None = None,
         summaries: Mapping[str, str] | None = None,
         # Where each reviewer's gnome publishes its pages, by reviewer
         # id, which a comment links each clause it cites to.
@@ -488,11 +480,9 @@ class ReviewActivities:
             ForgePublication(forge),
             journal,
             clock,
-            enforcement=DeclaredEnforcement(
-                enforcement or InMemoryEnforcement(), withholding
-            ),
+            enforcement=enforcement
+            or SettledEnforcement(InMemoryGnomeSettings()),
             agents=agents,
-            governance=governance,
             summaries=summaries,
             submissions=submissions,
             sites=sites,
