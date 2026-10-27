@@ -44,16 +44,20 @@ class SetGnomeUseCase:
 
     def execute(self, request: SetGnomeRequest) -> SetGnomeResponse:
         """Raises ``UnknownGnomeError`` for a gnome or profile the
-        deployment in force does not hold, and ``ValueError`` for a
-        setting that is not one."""
+        deployment in force does not hold, unless the gnome is switched
+        off, and ``ValueError`` for a setting that is not one."""
         held = request.profiles.get(request.gnome)
-        if held is None:
+        if request.behaviour == "off":
+            # A gnome may always be switched off, even one the
+            # deployment in force no longer holds.
+            pass
+        elif held is None:
             known = ", ".join(sorted(request.profiles)) or "none"
             raise UnknownGnomeError(
                 f"{request.gnome!r} is not a gnome the deployment in force "
                 f"holds; it holds {known}"
             )
-        if request.profile not in held:
+        elif request.profile not in held:
             raise UnknownGnomeError(
                 f"{request.profile!r} is not a profile of {request.gnome}; "
                 f"it has {', '.join(held)}"

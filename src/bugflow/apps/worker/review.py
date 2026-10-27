@@ -41,6 +41,12 @@ from bugflow.apps.shared.boundaries import (
     without_a_boundary,
 )
 from bugflow.apps.shared.deploying import checks_from
+from bugflow.apps.shared.discovering import (
+    discover,
+    discovering_from,
+    interval_from,
+    said,
+)
 from bugflow.apps.shared.forges import (
     forge_tokens,
     forgejo_settings,
@@ -699,6 +705,36 @@ def parts_from_environment(
         scheduling.append((client, task_queue))
         await schedule_for(client, task_queue, watching)
 
+    discovering = discovering_from(environ, build_sha(environ))
+    every = interval_from(environ)
+    profiles = {
+        gnome: tuple(named) for gnome, named in reviewers.profiles.items()
+    }
+
+    async def discover_daily(stop: asyncio.Event) -> None:
+        # The repositories of each owner this server can reach, listed a
+        # minute after the worker starts and then once each interval, so
+        # a repository made at the forge is on the settings page within
+        # a day (ADR 008).
+        if discovering is None or not every:
+            return
+        wait = 60.0
+        while not stop.is_set():
+            with suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), wait)
+            if stop.is_set():
+                return
+            wait = every
+            try:
+                found = await asyncio.to_thread(
+                    discover, discovering, profiles
+                )
+            except Exception as exc:
+                _say(f"discovery failed: {exc}")
+                continue
+            for line in said(found):
+                _say(line)
+
     async def follow_the_settings(stop: asyncio.Event) -> None:
         # A gnome set on a repository after the worker started has its
         # stocktakes scheduled within a minute, without a restart. A
@@ -758,7 +794,7 @@ def parts_from_environment(
             a_boundary_for_every_period,
             a_model_for_every_declared_policy,
         ),
-        watchers=(watch, follow_the_settings),
+        watchers=(watch, follow_the_settings, discover_daily),
         lines=(
             f"reviews under {came_from.repository} at {came_from.commit}, "
             f"content {came_from.content_hash[:12]}",

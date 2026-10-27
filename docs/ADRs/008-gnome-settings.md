@@ -109,11 +109,23 @@ in the journal, saying who made it.
 
 ### Discovery
 
-The worker runs a schedule that lists the repositories of each owner
-it holds a forge token for. A repository found for the first time is
-recorded with every gnome `off`. A renamed repository resolves to its
+The worker lists the repositories of each owner it holds a forge token
+for, or of the owners its settings name, a minute after it starts and
+then once a day, and `bugflow discover` does the same on demand. A
+repository found for the first time is
+recorded with every gnome `off`. A repository is matched by its forge's
+key, so one renamed, or moved to another owner, resolves to its
 existing row under ADR 005, and the rename is recorded. An archived
-repository is recorded as archived, and its gnomes are set to `off`.
+repository is recorded as archived, and its gnomes are set to `off`,
+including one archived when it is first listed. Each change is a
+`repository.found` fact in the forge journal. A rename onto a name the
+server already holds a row for, made by the journal before discovery
+saw the rename, is recorded once and leaves both rows, each with its
+own settings: the forge's key moves to the row by the new name, and
+joining them is the renamed-repository record's. A user's repositories
+are listed as GitHub shows them to anyone, so a user's private
+repositories are not discovered; an organisation's are listed with its
+token, and an organisation that refuses the token is a failure.
 
 ### Words
 

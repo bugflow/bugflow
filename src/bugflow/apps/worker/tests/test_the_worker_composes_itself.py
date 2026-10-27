@@ -467,8 +467,9 @@ def test_with_a_deployment_in_force_the_review_workflows_are_registered(
         name for held in parts.assessing.values() for name in names(held)
     } == {evaluate_pull_request.ASSESS_ACTIVITY}
     assert len(parts.schedules) == 1
-    # One watches for a new deployment, one for the gnomes' settings.
-    assert len(parts.watchers) == 2
+    # One watches for a new deployment, one for the gnomes' settings,
+    # and one discovers repositories.
+    assert len(parts.watchers) == 3
     assert parts.lines[0].startswith(
         f"reviews under example-org/pull-request-policies at {'c' * 40}, "
         "content "

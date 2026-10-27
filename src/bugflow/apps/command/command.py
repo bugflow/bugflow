@@ -13,6 +13,7 @@ Its subcommands include::
         --commit SHA --api URL [--check]
     bugflow install-policies DIRECTORY --repository OWNER/NAME
         --commit SHA [--check]
+    bugflow discover
     bugflow migrate [--check]
     bugflow repository-origins [--apply MAPPINGS.json]
     bugflow poll [--once]
@@ -54,6 +55,15 @@ person behind it. Four settings in its environment say how:
 Exit status: 0 if the server accepted the call. 1 if the files are not a
 deployment or the server refused them. 2 if the call could not be made
 or was not allowed.
+
+``discover`` lists the repositories of each owner ``DISCOVERY_OWNERS``
+names, or that ``FORGE_TOKENS_BY_OWNER`` holds a token for, and keeps
+each that is new, renamed, archived or unarchived, in the database
+``DATABASE_URL`` names (ADR 008). Every gnome on a repository found
+archived is switched off. The worker does the same once a day.
+
+Exit status: 0 if every owner was listed. 1 if any could not be. 2 if a
+setting is missing.
 
 ``set`` and ``settings`` write and read what each gnome does on each
 repository (ADR 008), in the database ``DATABASE_URL`` names. ``set``
@@ -186,6 +196,11 @@ from bugflow.apps.shared.deploying import (
     checks_from,
     deploying_over,
     run_install_policies,
+)
+from bugflow.apps.shared.discovering import (
+    discover,
+    discovering_from,
+    said,
 )
 from bugflow.apps.shared.journals import build_sha, stamped_journal
 from bugflow.apps.shared.telemetry import configure_telemetry
@@ -332,6 +347,11 @@ def _parser() -> argparse.ArgumentParser:
         "apply explicit per-record origin mappings",
     )
     origins.add_argument("--apply", type=Path, metavar="MAPPINGS.json")
+    commands.add_parser(
+        "discover",
+        help="list the repositories of the owners this server can reach "
+        "and keep each that is new, renamed or archived",
+    )
     poll = commands.add_parser(
         "poll",
         help="list the pull requests of the repositories a gnome judges "
@@ -620,6 +640,8 @@ def run(
         )
     if args.command == "worker":
         return _worker(environ)
+    if args.command == "discover":
+        return _discover(environ)
     if args.command in DECLARING:
         return _declaring(args, environ)
     if not args.directory.is_dir():
@@ -665,6 +687,25 @@ def run(
         return 2
     print(_said(answered))
     return 0
+
+
+def _discover(environ: Mapping[str, str]) -> int:
+    try:
+        discovering = discovering_from(environ, build_sha(environ))
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if discovering is None:
+        print(
+            "error: discovery needs DATABASE_URL, a GitHub token, and an "
+            "owner: DISCOVERY_OWNERS, or FORGE_TOKENS_BY_OWNER",
+            file=sys.stderr,
+        )
+        return 2
+    found = discover(discovering)
+    for line in said(found):
+        print(line)
+    return 1 if found.failures else 0
 
 
 def _install_policies(
