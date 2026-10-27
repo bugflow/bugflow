@@ -1,5 +1,10 @@
 """The facts this context writes to the journal."""
 
+from datetime import datetime
+from uuid import UUID
+
+from bugflow.shared.domain.models.journal_entry import fact_id
+
 #: A finding was raised.
 FINDING_RAISED = "finding.raised"
 
@@ -71,3 +76,31 @@ STOCKTAKE_FOUND = "stocktake.found"
 
 #: A grader read a stocktake's write-up and gave a verdict.
 STOCKTAKE_GRADED = "stocktake.graded"
+
+#: An operator set what a gnome does on a repository (ADR 008). The
+#: payload has the behaviour, the profile, who set them, and what they
+#: replaced.
+GNOME_SET = "gnome.set"
+
+
+def gnome_set_id(
+    forge: str,
+    repo: str,
+    gnome: str,
+    setting: tuple[str, str],
+    was: tuple[str, str] | None,
+    when: datetime,
+) -> UUID:
+    """The id of a "gnome set" fact, made from the repository, the gnome,
+    the behaviour and profile it was set to and from, and the time.
+    Setting it again later is a new fact, and so is a second change in
+    the same instant."""
+    return fact_id(
+        "gnome-set",
+        forge,
+        repo,
+        gnome,
+        *setting,
+        *(was or ("", "")),
+        when.isoformat(),
+    )

@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed, 2026-10-27.
+Proposed, 2026-10-27. Amended, 2026-10-27: a command makes the
+settings from the declarations, and the change is released in two
+steps.
 
 ## Context
 
@@ -107,24 +109,33 @@ enforcement profile was is the behaviour: `EnforcementProfile`,
 
 ### The change from declarations
 
-`declarations.toml` is retired. The script that creates the settings
-reads each repository's declarations, enforcement profile and
-governance rows:
+`declarations.toml` is retired, in two releases.
+
+The first release parses `profiles.toml` and keeps the settings, and
+nothing reads them yet. A server that has not taken it refuses a
+deployment that carries `profiles.toml`, so each binding adds its
+profiles after its server takes the release.
+
+Then `bugflow settle` makes the settings from each repository's
+declarations, enforcement profile and governance rows:
 
 - each gnome with a policy declared takes the profile whose policies
-  are exactly those declared;
-- its behaviour is the enforcement profile's, raised to `gate` where
-  the gnome governed the label.
+  are exactly those declared, `default` first;
+- its behaviour is the enforcement profile's, except that `gate` is
+  `advise` for a gnome that did not govern the label, since its
+  status never failed.
 
-A repository whose declared policies for a gnome match no profile in
-the deployment in force stops the script, so that no setting is made
-by guess. The operator deploys a profile that matches, and runs the
-script again. The script drops `review_governance` and the enforcement
-bindings once it has made the settings.
+It is a command and not a script, because which profile a
+repository's declared policies are is known only by parsing the
+deployment in force, and a script does not import the package (ADR
+004). A repository whose declared policies for a gnome match no
+profile stops it, and nothing is written, so that no setting is made
+by guess. The operator deploys a profile that matches and settles
+again. A setting already made is left as it is.
 
-A deployment that carries `declarations.toml` is refused from the
-release that reads profiles. Each binding replaces the file with
-`profiles.toml` in the same step as the server's release.
+The second release reads the settings. It refuses a deployment that
+carries `declarations.toml`, drops the declaration, enforcement and
+governance tables, and each binding removes the file in the same step.
 
 ## Rules
 

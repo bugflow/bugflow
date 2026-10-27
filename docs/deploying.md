@@ -284,6 +284,18 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    A worker with no forge token does not start while a repository is
    bound to `advise` or `gate`.
 
+   ADR 008 replaces the profile and the declarations with a setting
+   for each gnome on each repository. This release keeps the settings
+   and does not read them yet. Once the binding carries
+   `profiles.toml`, make them from what is declared, and check them:
+
+       bugflow settle --check
+       bugflow settle
+       bugflow settings
+
+   `bugflow set OWNER/NAME GNOME BEHAVIOUR [--profile PROFILE]` sets
+   one gnome on one repository to `off`, `observe`, `advise` or `gate`.
+
 4. Say what may be spent.
 
        bugflow allow OWNER/NAME --usd 2 --no-turn-limit

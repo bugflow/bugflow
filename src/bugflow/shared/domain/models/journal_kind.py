@@ -46,9 +46,11 @@ KIND_OF: dict[str, str] = {
     "stocktake.reviewed": "stocktake",
     "stocktake.found": "stocktake",
     "stocktake.graded": "stocktake",
-    # What was done to the policies a server judges by.
+    # What was done to the policies a server judges by, and where.
     "policies.deployed": "policy",
     "policy.calibrated": "policy",
+    # What an operator set a gnome to do on a repository.
+    "gnome.set": "policy",
 }
 
 

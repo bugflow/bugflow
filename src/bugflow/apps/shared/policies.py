@@ -15,7 +15,10 @@ from dataclasses import dataclass, field
 from bugflow.method.domain.models.doctrine import Doctrine
 from bugflow.method.domain.models.pace_layer import PaceLayer
 from bugflow.method.domain.models.policy_deployment import PolicyDeployment
-from bugflow.method.domain.models.policy_text import PolicyText
+from bugflow.method.domain.models.policy_text import (
+    JUDGED_SUBJECTS,
+    PolicyText,
+)
 from bugflow.method.domain.repositories.doctrine import DoctrineRepository
 from bugflow.method.domain.repositories.policy_deployment import (
     PolicyDeploymentRepository,
@@ -52,6 +55,11 @@ class ReviewersInForce:
     deployed_from: DeployedFrom
     #: The text of each file under glossary/, by path, in path order.
     glossary: Mapping[str, str] = field(default_factory=dict)
+    #: Each reviewer's profiles, by reviewer id then profile name: the
+    #: policies a repository set to that profile is judged on (ADR 008).
+    profiles: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
+        default_factory=dict
+    )
 
     def doctrine_of(self, agent_id: str) -> DoctrineRepository:
         """Return the doctrine that reviewer cites, or an empty one
@@ -73,7 +81,10 @@ def deployed_reviewers(
     and ``ReviewAgentError`` if ``names`` names a reviewer the
     deployment does not hold.
     """
-    parsed = parse_deployment(deployment, checks)
+    # The subjects this server renders, so that a reviewer's default
+    # profile leaves out what it cannot judge, as the deployment's own
+    # check did when it was put in force.
+    parsed = parse_deployment(deployment, checks, JUDGED_SUBJECTS)
     agents = installed(names, parsed.agents)
     return ReviewersInForce(
         agents=agents,
@@ -89,6 +100,7 @@ def deployed_reviewers(
         },
         layers=parsed.layers,
         glossary=parsed.glossary,
+        profiles={agent_id: parsed.profiles[agent_id] for agent_id in agents},
         deployed_from=DeployedFrom(
             repository=deployment.repository,
             commit=deployment.commit,
