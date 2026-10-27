@@ -23,6 +23,7 @@ KIND_OF: dict[str, str] = {
     # What happened to a pull request on its forge.
     "delivery.received": "forge",
     "webhook.reconciled": "forge",
+    "repository.found": "forge",
     "pr.observed": "forge",
     "pr.closed": "forge",
     "pr.merged": "forge",

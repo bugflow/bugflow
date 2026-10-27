@@ -38,8 +38,17 @@ repository = sa.Table(
     # The canonical origin, host/owner/name, where the journal's rows
     # agree on one. Null where they do not, or none has one.
     sa.Column("origin", sa.Text),
+    # The forge's own id for the repository, which a rename keeps. Null
+    # until discovery lists it (ADR 008).
+    sa.Column("forge_key", sa.Text),
+    sa.Column(
+        "archived", sa.Boolean, nullable=False, server_default=sa.false()
+    ),
     sa.UniqueConstraint(
         "forge_id", "name", name="repository_forge_id_name_key"
+    ),
+    sa.UniqueConstraint(
+        "forge_id", "forge_key", name="repository_forge_id_forge_key_key"
     ),
 )
 

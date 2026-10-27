@@ -140,6 +140,8 @@ before the first deployment, even if two roles share one.
 | Variable | Read by | Is |
 |---|---|---|
 | `bugflow_periods_timezone` | `worker` | The time zone a calendar period starts and ends in, as an IANA name. Default `UTC` |
+| `bugflow_discovery_owners` | `worker` | The owners on github.com whose repositories the worker lists once a day, comma-separated, keeping each that is new, renamed or archived. Default the owners `vault_bugflow_forge_tokens_by_owner` holds a token for |
+| `bugflow_discovery_interval_seconds` | `worker` | Seconds between those listings. `0` lists none. Default a day |
 | `bugflow_review_agents` | `worker` | The reviewers this worker runs, by id, comma-separated. Not written if empty, and then every reviewer the deployment in force holds is run |
 | `bugflow_policy_checks` | `worker`, `ingress`, `api`, `migrate` | The checks this server performs, comma-separated. Not written if not defined, and then they are the ones the package has. Defined and empty, a manifest naming a check is refused |
 | `bugflow_review_runner` | `worker` | The runner reviews are dispatched to. The package has one, `managed`. Not written if empty, and then the next five are not read and nothing is dispatched |
