@@ -1,9 +1,9 @@
-"""Declaring what a repository is reviewed under, what a run may
-spend, and which ledger's archive this server keeps: ``bugflow
-declare``, ``allow``, ``revoke``, ``cadence`` and ``declared``.
+"""Declaring where a repository's periods begin, what a run may spend,
+and which ledger's archive this server keeps: ``bugflow declare``,
+``allow``, ``revoke``, ``cadence`` and ``declared``. What each gnome
+does on a repository is ``bugflow set`` (ADR 008).
 
-A repository nobody bound to a profile has nothing published to it, a
-reviewer nothing allows is not dispatched, a watched repository with no
+A reviewer nothing allows is not dispatched, a watched repository with no
 boundary on a layer stops the worker, and the archive host refuses a
 ledger no operator bound. These commands write the records that decide
 each, so that nobody writes them into the database by hand.
@@ -19,7 +19,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TextIO
 
-from bugflow.apps.shared.deploying import declared_by_deployment
 from bugflow.apps.shared.journals import stamped_journal
 from bugflow.archive.domain.models.binding import ArchiveBinding
 from bugflow.archive.dtos.bind_ledger import BindLedgerRequest
@@ -34,16 +33,8 @@ from bugflow.method.domain.models.boundary import (
     settling_window,
 )
 from bugflow.method.domain.models.pace_layer import CADENCES, EVENT
-from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
-    SqlAlchemyPolicyDeployments,
-)
 from bugflow.review.domain.models.cadence_boundary import CadenceBoundary
-from bugflow.review.domain.models.enforcement import PROFILES
 from bugflow.review.domain.models.layer_boundary import LayerBoundary
-from bugflow.review.domain.models.review_declaration import (
-    DispatchedProcesses,
-    JudgedPolicies,
-)
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
     SpendScope,
@@ -52,15 +43,11 @@ from bugflow.review.domain.models.withholding import Withholding
 from bugflow.review.infrastructure.sqlalchemy_cadence_boundaries import (
     SqlAlchemyCadenceBoundaries,
 )
-from bugflow.review.infrastructure.sqlalchemy_enforcement import (
-    SqlAlchemyEnforcement,
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
 )
 from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
-)
-from bugflow.review.infrastructure.sqlalchemy_review_declaration import (
-    SqlAlchemyDispatchedProcesses,
-    SqlAlchemyJudgedPolicies,
 )
 from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
     SqlAlchemySpendBindings,
@@ -145,9 +132,6 @@ def _unreadable(boundary: str, zone: str, now: datetime) -> str | None:
 def run_declare(
     database_url: str,
     repository: str,
-    policies: list[str] | None = None,
-    processes: list[str] | None = None,
-    profile: str | None = None,
     layer: str = "",
     boundary: str | None = None,
     withhold: float | None = None,
@@ -159,14 +143,11 @@ def run_declare(
     err: TextIO | None = None,
     archive_origin: str | None = None,
 ) -> int:
-    """Declare what a repository is judged on and dispatches, its
-    profile, a boundary, its withheld share and a ledger whose archive
-    this server keeps, and print what is held.
+    """Declare a boundary, a repository's withheld share and a ledger
+    whose archive this server keeps, and print what is held.
 
-    Only what the call names is written. A set that is named is written
-    whole, because a declaration is a set: a name left out of it is no
-    longer declared. None is not named; an empty list is named and
-    declares nothing. ``boundary`` empty withdraws the layer's.
+    Only what the call names is written. None is not named.
+    ``boundary`` empty withdraws the layer's.
 
     ``archive`` is a ledger id, bound to the repository at ``scope``, a
     path within it, or at its root when ``scope`` is None or ``.``. The
@@ -189,18 +170,11 @@ def run_declare(
             "--scope needs --archive: it says which scope of the "
             "repository the ledger's archive is kept for"
         )
-    if (
-        policies is None
-        and processes is None
-        and profile is None
-        and boundary is None
-        and withhold is None
-        and archive is None
-    ):
+    if boundary is None and withhold is None and archive is None:
         return console.refuse(
-            "name --policy, --process, --profile, --boundary, --withhold, "
-            "--archive, --no-policies or --no-processes: a call that names "
-            "none of them declares nothing"
+            "name --boundary, --withhold or --archive: a call that names "
+            "none of them declares nothing. What a gnome judges and "
+            "publishes on a repository is bugflow set"
         )
     if archive is not None:
         try:
@@ -223,16 +197,6 @@ def run_declare(
         and binding.origin.split("/", 1)[1] != repo
     ):
         return console.refuse("ledger origin does not match its repository")
-    if (
-        policies is not None or processes is not None
-    ) and declared_by_deployment(SqlAlchemyPolicyDeployments(database_url)):
-        return console.refuse(
-            "the policy deployment in force carries declarations.toml, so "
-            "what a repository is judged on and what it dispatches are "
-            "changed in the policy repository and deployed from there; "
-            "--policy, --process, --no-policies and --no-processes are "
-            "refused"
-        )
     if boundary is not None and not layer:
         return console.refuse(
             "--boundary needs --layer: a boundary is where one layer's "
@@ -243,20 +207,12 @@ def run_declare(
         unreadable = _unreadable(boundary, zone, SystemClock().now())
         if unreadable:
             return console.refuse(unreadable)
-    if profile is not None and profile not in PROFILES:
-        return console.refuse(
-            f"{profile!r} is no profile; "
-            f"name one of {', '.join(sorted(PROFILES))}"
-        )
     if withhold is not None:
         try:
             share = Withholding(forge=forge, repo=repo, share=withhold)
         except ValueError as exc:
             return console.refuse(str(exc))
 
-    judged = SqlAlchemyJudgedPolicies(database_url)
-    dispatched = SqlAlchemyDispatchedProcesses(database_url)
-    enforcement = SqlAlchemyEnforcement(database_url)
     boundaries = SqlAlchemyLayerBoundaries(database_url)
     withholding = SqlAlchemyWithholding(database_url)
     kept = SqlAlchemyBindings(database_url)
@@ -302,22 +258,7 @@ def run_declare(
         boundaries.withdraw(forge, repo, layer)
     if withhold is not None:
         withholding.declare(share)
-    if profile is not None:
-        enforcement.bind(forge, repo, PROFILES[profile])
-    if policies is not None:
-        judged.declare(
-            JudgedPolicies(forge=forge, repo=repo, policies=tuple(policies))
-        )
-    if processes is not None:
-        dispatched.declare(
-            DispatchedProcesses(
-                forge=forge, repo=repo, processes=tuple(processes)
-            )
-        )
-
     where = f"{forge}:{repo}"
-    console.say(_judged(where, judged.judged(forge, repo)))
-    console.say(_dispatches(where, dispatched.dispatched(forge, repo)))
     if layer:
         at = boundaries.boundary(forge, repo, layer)
         console.say(
@@ -326,7 +267,6 @@ def run_declare(
             else f"{where} has no boundary on {layer}, and a worker "
             "watching it on that layer does not start"
         )
-    console.say(_profile(where, enforcement.profile_for(forge, repo).name))
     console.say(_withholds(where, withholding.share_for(forge, repo)))
     for ledger in kept.bindings():
         if (ledger.forge, ledger.repo) == (forge, repo):
@@ -351,22 +291,8 @@ def _keeps(binding: ArchiveBinding) -> str:
     )
 
 
-def _judged(where: str, policies: frozenset[str] | tuple[str, ...]) -> str:
-    return f"{where} is judged on {', '.join(sorted(policies)) or 'nothing'}"
-
-
-def _dispatches(
-    where: str, processes: frozenset[str] | tuple[str, ...]
-) -> str:
-    return f"{where} dispatches {', '.join(sorted(processes)) or 'nothing'}"
-
-
 def _begins(where: str, layer: str, boundary: str) -> str:
     return f"{where} begins its {layer} period at {boundary}"
-
-
-def _profile(where: str, name: str) -> str:
-    return f"{where} is on the {name} profile"
 
 
 def _withholds(where: str, share: float) -> str:
@@ -609,21 +535,10 @@ def run_declared(
         return only is None or (forge, repo) == only
 
     lines = [
-        _judged(f"{one.forge}:{one.repo}", one.policies)
-        for one in SqlAlchemyJudgedPolicies(database_url).declarations()
+        f"{one.forge}:{one.repo} {one.gnome} is {one.behaviour}, judging "
+        f"by {one.profile}"
+        for one in SqlAlchemyGnomeSettings(database_url).settings()
         if wanted(one.forge, one.repo)
-    ]
-    lines += [
-        _dispatches(f"{sent.forge}:{sent.repo}", sent.processes)
-        for sent in SqlAlchemyDispatchedProcesses(database_url).declarations()
-        if wanted(sent.forge, sent.repo)
-    ]
-    lines += [
-        _profile(f"{forge}:{repo}", profile.name)
-        for (forge, repo), profile in SqlAlchemyEnforcement(database_url)
-        .bindings()
-        .items()
-        if wanted(forge, repo)
     ]
     for binding in SqlAlchemySpendBindings(database_url).bindings():
         scope = binding.scope

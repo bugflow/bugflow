@@ -29,8 +29,8 @@ from bugflow.apps.worker import review
 from bugflow.apps.worker.pull_request import DEBOUNCE
 from bugflow.apps.worker.tests.deployed import (
     REPOSITORY,
-    WIDGETS,
     put_in_force,
+    set_gnomes,
 )
 from bugflow.apps.worker.worker import run
 from bugflow.forge.domain.facts import PR_OBSERVED
@@ -50,7 +50,6 @@ from bugflow.review.domain.facts import (
     POLICY_CHECKED,
 )
 from bugflow.review.domain.models.doctrine import DoctrineText
-from bugflow.review.domain.models.enforcement import ADVISE
 from bugflow.review.domain.models.finding import Finding
 from bugflow.review.domain.models.journal_facts import (
     PolicyCheck,
@@ -59,9 +58,6 @@ from bugflow.review.domain.models.journal_facts import (
 from bugflow.review.domain.models.judge_assessment import JudgeAssessment
 from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.review.domain.models.submission import Submission
-from bugflow.review.infrastructure.sqlalchemy_enforcement import (
-    SqlAlchemyEnforcement,
-)
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.sqlalchemy_journal import journal
@@ -175,7 +171,7 @@ def test_a_pull_request_is_reviewed_and_a_finding_published(
     database_url: str,
 ) -> None:
     put_in_force(database_url)
-    SqlAlchemyEnforcement(database_url).bind(*WIDGETS, ADVISE)
+    set_gnomes(database_url, "advise")
     forge, judge = OnePullRequest(), FindsOneThing()
     workflows = worker_workflows()
 

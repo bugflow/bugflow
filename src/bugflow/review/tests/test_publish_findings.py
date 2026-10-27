@@ -24,7 +24,6 @@ from bugflow.review.domain.models.submission import (
 )
 from bugflow.review.domain.services.publication import CommitState
 from bugflow.review.dtos.publish_findings import PublishFindingsRequest
-from bugflow.review.tests.doubles import Governing
 from bugflow.review.tests.journal import QueryableJournal
 from bugflow.review.usecases.publish_findings import (
     MANAGED_LABELS,
@@ -120,9 +119,21 @@ def request(
     )
 
 
-OBSERVE = Enforcement(publishes=False, fails_at=None)
-ADVISE = Enforcement(publishes=True, fails_at=None)
-GATE = Enforcement(publishes=True, fails_at="fail")
+#: Every reviewer these tests name.
+REVIEWERS = frozenset({"prose", "safety"})
+
+OBSERVE = Enforcement(judging=frozenset(GOVERNING))
+ADVISE = Enforcement(judging=REVIEWERS, publishing=REVIEWERS)
+
+
+def gate(governing: tuple[str, ...] = GOVERNING) -> Enforcement:
+    """Every reviewer publishes, and those named gate."""
+    return Enforcement(
+        judging=REVIEWERS, publishing=REVIEWERS, gating=frozenset(governing)
+    )
+
+
+GATE = gate()
 
 
 class BoundTo:
@@ -142,14 +153,17 @@ def publisher(
     enforcement: Enforcement | None = None,
     submissions: "Submissions | None" = None,
 ) -> PublishFindingsUseCase:
-    bound = enforcement or (GATE if enabled else OBSERVE)
+    bound = enforcement or (
+        gate(governing)
+        if enabled
+        else Enforcement(judging=frozenset(governing))
+    )
     return PublishFindingsUseCase(
         forge or RecordingForge(),
         journal if journal is not None else QueryableJournal(),
         FixedClock(),
         enforcement=BoundTo(bound),
         agents=AGENTS if agents is None else agents,
-        governance=Governing(*governing),
         submissions=submissions,
     )
 
@@ -782,7 +796,6 @@ def test_a_finding_links_the_clause_to_the_reviewers_site() -> None:
         FixedClock(),
         enforcement=BoundTo(OBSERVE),
         agents=AGENTS,
-        governance=Governing(*GOVERNING),
         sites={"prose": "https://example.github.io/prose/"},
     )
     body = publish.execute(cited(NARRATION)).comment
@@ -799,7 +812,6 @@ def test_a_named_rule_is_named_and_an_unnamed_one_summarised() -> None:
         FixedClock(),
         enforcement=BoundTo(OBSERVE),
         agents=AGENTS,
-        governance=Governing(*GOVERNING),
         summaries={
             "P-01": "The title and description read as an engineer wrote them"
         },
@@ -1181,6 +1193,44 @@ def test_one_comment_carries_every_reviewer() -> None:
     assert len({p["comment_id"] for p in posted}) == 1
 
 
+def test_a_gnome_that_observes_beside_one_that_advises_posts_nothing() -> None:
+    """ADR 008: prose advises and safety observes on one repository. The
+    comment and the statuses are prose's alone, and safety's part is
+    recorded as worked out and not posted."""
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    publish = publisher(
+        forge,
+        journal=journal,
+        agents={**AGENTS, "safety": ()},
+        enforcement=Enforcement(
+            judging=REVIEWERS, publishing=frozenset({"prose"})
+        ),
+    )
+    verdicts = (
+        ReviewVerdict(agent_id="safety", head_sha=HEAD, status="warn"),
+    )
+
+    publish.execute(
+        request(finding("warn", "long line")).model_copy(
+            update={"verdicts": verdicts}
+        )
+    )
+
+    ((_, body),) = forge.comments
+    assert "Prose review" in body and "Safety review" not in body
+    assert {context for _, context, _, _ in forge.statuses} == {"prose"}
+    assert len(forge.label_calls) == 1
+    comments = {
+        e.payload["agent_id"]: e.payload
+        for e in journal.entries
+        if e.payload.get("action") == "review_comment"
+    }
+    assert comments["prose"]["performed"]
+    assert not comments["safety"]["performed"]
+    assert comments["safety"]["status"] == "skipped: publishing disabled"
+
+
 def test_a_description_rewritten_on_one_commit_is_read_as_new_text() -> None:
     journal = QueryableJournal()
     publish = publisher(journal=journal, enabled=True)
@@ -1354,7 +1404,12 @@ def test_without_a_text_to_read_nothing_is_rewritten() -> None:
     )
 
 
-WITHHOLDING_ALL = Enforcement(publishes=True, fails_at="fail", withholds=1.0)
+WITHHOLDING_ALL = Enforcement(
+    judging=REVIEWERS,
+    publishing=REVIEWERS,
+    gating=frozenset(GOVERNING),
+    withholds=1.0,
+)
 
 
 def test_a_withheld_warning_reaches_nobody_and_is_journalled() -> None:

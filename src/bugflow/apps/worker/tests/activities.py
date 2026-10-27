@@ -10,12 +10,14 @@ from bugflow.forge.domain.models.pull_request import PullRequestSnapshot
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.method.domain.models.doctrine import Doctrine
 from bugflow.review.domain.models.doctrine import DoctrineText
-from bugflow.review.domain.models.enforcement import GATE
+from bugflow.review.domain.models.enforcement import Enforcement
+from bugflow.review.domain.models.gnome_setting import GnomeSetting
 from bugflow.review.domain.models.judge_assessment import JudgeAssessment
 from bugflow.review.domain.models.submission import Submission
-from bugflow.review.infrastructure.in_memory_enforcement import (
-    InMemoryEnforcement,
+from bugflow.review.infrastructure.in_memory_gnome_settings import (
+    InMemoryGnomeSettings,
 )
+from bugflow.review.infrastructure.settled_review import SettledEnforcement
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
@@ -44,12 +46,24 @@ class FakeDoctrine:
         return DOCTRINE
 
 
-def gating() -> InMemoryEnforcement:
-    """The repository of ``REF``, bound to the profile that publishes
-    and fails a status."""
-    enforcement = InMemoryEnforcement()
-    enforcement.bind(REF.forge, REPO, GATE)
-    return enforcement
+def gating(*gnomes: str) -> SettledEnforcement:
+    """The repository of ``REF``, with each gnome named at ``gate``. With
+    none named, the reviewer a finding falls to when no reviewer is
+    installed, ``doctrine``."""
+    return SettledEnforcement(
+        InMemoryGnomeSettings(
+            *(
+                GnomeSetting(
+                    forge=REF.forge, repo=REPO, gnome=gnome, behaviour="gate"
+                )
+                for gnome in gnomes or ("doctrine",)
+            )
+        )
+    )
+
+
+#: Nothing is set, so nothing publishes.
+OBSERVED = Enforcement()
 
 
 def at_attempt(attempt: int) -> ActivityEnvironment:

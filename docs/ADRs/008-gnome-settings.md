@@ -4,7 +4,9 @@
 
 Proposed, 2026-10-27. Amended, 2026-10-27: a command makes the
 settings from the declarations, and the change is released in two
-steps.
+steps; the label is decided by the gnomes that publish where none
+gates, and by every gnome that judges where none publishes; a process
+that names a reviewer runs where that gnome judges.
 
 ## Context
 
@@ -45,9 +47,16 @@ A behaviour is one of four, each including the one before:
 | `off` | Judges nothing |
 | `observe` | Judges, and journals its findings. Nothing reaches the forge |
 | `advise` | Also posts its comment and its commit status. The status never fails |
-| `gate` | Also fails its status on a `fail` verdict, and decides the label |
+| `gate` | Also fails its status on a `fail` verdict |
 
 A repository and gnome with no setting are `off`.
+
+The label is written while any gnome on the repository publishes. The
+gnomes at `gate` decide it where any gates. Where none does, the gnomes
+at `advise` decide it, so an advised repository's label is advice and a
+gnome at `observe` never moves a label the forge shows. Where none
+publishes, every gnome that judges decides it, so an observed
+repository's journal records the label it would have.
 
 ### The profile
 
@@ -87,8 +96,10 @@ in the journal, saying who made it.
   `default_boundary`. A watched repository with no boundary on a layer
   takes it. The worker stops only for a watched repository with no
   boundary on a layer that has no default.
-- **Processes.** The processes of every layer run for every watched
-  repository. A repository no longer names its processes.
+- **Processes.** A process that names a reviewer runs on a repository
+  where that reviewer's gnome judges. A process that names none runs
+  for every watched repository. A repository no longer names its
+  processes.
 - **Withholding.** The share of warnings withheld remains a setting of
   the repository.
 
@@ -159,9 +170,11 @@ The policies a repository is judged on are still reviewed before they
 take effect, because they are chosen from profiles that only the
 binding defines.
 
-The manifest's `governs` flag no longer decides anything, since the
-label is decided by the gnomes at `gate`. It stays in the manifest,
-unread, until the policy package drops it.
+The manifest's `governs` flag no longer chooses the gnomes that
+decide a label, since the settings do. It says which gnomes may: one
+that gives no verdict on a pull request's head, as one only a
+stocktake runs, says `no`, and is left out of the label at any
+behaviour, which would otherwise hold it at work in progress.
 
 A behaviour for each organisation, given to the repositories that
 discovery finds, is left for later. Discovery records repositories

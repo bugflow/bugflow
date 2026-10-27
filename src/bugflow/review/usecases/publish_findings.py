@@ -11,9 +11,12 @@ What is written to the forge:
 - One label, from a fixed set of three, that says what the review as a
   whole says.
 
-Whether anything is written is decided for each repository by its
-enforcement. If publishing is off, the response still has the text that
-would have been posted.
+Whether anything is written is decided for each gnome on each
+repository by its setting (ADR 008). A gnome at ``observe`` is judged
+and recorded, and its part of the comment and its status are not
+written. A gnome at ``advise`` or ``gate`` has both written, and the
+label is written when any gnome publishes. If nothing publishes, the
+response still has the text that would have been posted.
 
 When a reviewer speaks. A reviewer's first comment on a pull request is
 always posted, even if it found nothing. After that it speaks only when
@@ -76,7 +79,6 @@ from bugflow.review.domain.repositories.submission_source import (
     SubmissionSourceRepository,
 )
 from bugflow.review.domain.services.enforcement import EnforcementService
-from bugflow.review.domain.services.governance import GovernanceService
 from bugflow.review.domain.services.journal import JournalService
 from bugflow.review.domain.services.publication import (
     CommitState,
@@ -315,19 +317,19 @@ def _enforced(
     state: CommitState,
     description: str,
     verdict: str | None,
-    governs: bool,
+    agent_id: str,
     enforcement: Enforcement,
 ) -> tuple[CommitState, str]:
     """Apply the repository's enforcement to a commit status.
 
-    A status fails only for a reviewer that governs the repository,
-    and only if the enforcement fails at this verdict. Otherwise a
-    status that would have failed is set to success and marked
-    "advisory".
+    A status fails only for a reviewer at ``gate`` on the repository,
+    and only on a ``fail`` verdict. Otherwise a status that would have
+    failed is set to success and marked "advisory".
     """
-    if governs and fails(enforcement, verdict):
+    if fails(enforcement, agent_id, verdict):
         return "failure", description
-    if state == "failure" or (governs and verdict == "warn"):
+    gates = agent_id in enforcement.gating
+    if state == "failure" or (gates and verdict == "warn"):
         return "success", f"{description}; advisory"
     return state, description
 
@@ -340,16 +342,14 @@ class PublishFindingsUseCase:
         clock: ClockService,
         enforcement: EnforcementService,
         agents: Mapping[str, tuple[str, ...]] | None = None,
-        governance: GovernanceService | None = None,
         summaries: Mapping[str, str] | None = None,
         submissions: SubmissionSourceRepository | None = None,
         sites: Mapping[str, str] | None = None,
     ) -> None:
-        """``forge`` writes to the pull request. ``enforcement`` says what
-        may be published for a repository. ``agents`` gives the policies
-        of each installed reviewer, by agent id. ``governance`` says
-        which reviewers decide a repository's label; with none, no
-        reviewer does. ``summaries`` gives each policy's one-sentence
+        """``forge`` writes to the pull request. ``enforcement`` says which
+        reviewers publish on a repository, and which of them gate and so
+        decide its label. ``agents`` gives the policies of each installed
+        reviewer, by agent id. ``summaries`` gives each policy's one-sentence
         summary, which a comment uses to name a rule. ``submissions``
         reads back the text of the pull request, so that a finding raised
         earlier can be checked against it; with none, no finding is
@@ -363,17 +363,8 @@ class PublishFindingsUseCase:
         self._submissions = submissions
         self._enforcement = enforcement
         self._agents = dict(agents or {})
-        self._governance = governance
         self._summaries = dict(summaries or {})
         self._sites = dict(sites or {})
-
-    def _governing_for(self, ref: PullRequestRef) -> frozenset[str]:
-        """The reviewers that decide this repository's label."""
-        if self._governance is None:
-            return frozenset()
-        return self._governance.governing_agents(
-            ref.forge, f"{ref.owner}/{ref.repo}"
-        )
 
     def _owner(self, finding: Finding) -> str:
         """The reviewer whose comment shows a finding: the one whose policy
@@ -577,10 +568,10 @@ class PublishFindingsUseCase:
         dismissed = tuple(
             f for f in request.findings if f.policy_id in dismissed_policies
         )
-        governing = self._governing_for(request.ref)
         enforcement = self._enforcement.enforcement_for(
             request.ref.forge, f"{request.ref.owner}/{request.ref.repo}"
         )
+        governing = enforcement.deciding
         # Whether a warning is kept out depends only on the pull request
         # and the finding, so the same warnings are kept out at every
         # evaluation.
@@ -663,9 +654,22 @@ class PublishFindingsUseCase:
             status = "published"
         else:
             status = DISABLED if not enforcement.publishes else NOT_REQUESTED
-        speaking = [one for one in said if one.body]
+
+        def publishes(agent_id: str) -> bool:
+            return request.publish and agent_id in enforcement.publishing
+
+        def status_of(agent_id: str) -> str:
+            if publishes(agent_id):
+                return "published"
+            if agent_id not in enforcement.publishing:
+                return DISABLED
+            return NOT_REQUESTED
+
+        speaking = [
+            one for one in said if one.body and publishes(one.agent_id)
+        ]
         comment_ids: dict[str, int] = {}
-        if enabled and speaking:
+        if speaking:
             # The comment starts with the marker the forge matches on.
             # Each reviewer's part keeps its own marker inside it.
             marker = marker_for(request.correlation, "review")
@@ -680,7 +684,12 @@ class PublishFindingsUseCase:
                 request.ref, add=frozenset({label}), remove=removed
             )
         statuses = {
-            one.agent_id: self._set_status(request, one, enabled, status)
+            one.agent_id: self._set_status(
+                request,
+                one,
+                publishes(one.agent_id),
+                status_of(one.agent_id),
+            )
             for one in said
         }
 
@@ -711,8 +720,11 @@ class PublishFindingsUseCase:
                     {
                         "action": "review_comment",
                         "agent_id": one.agent_id,
-                        "performed": enabled and bool(one.body),
-                        "status": status if one.body else NOTHING_NEW,
+                        "performed": publishes(one.agent_id)
+                        and bool(one.body),
+                        "status": status_of(one.agent_id)
+                        if one.body
+                        else NOTHING_NEW,
                         "comment_id": comment_ids.get(one.agent_id),
                         "verdict": one.verdict,
                         "head_sha": request.head_sha,
@@ -905,7 +917,7 @@ class PublishFindingsUseCase:
                 state,
                 description,
                 verdict.status if verdict else None,
-                agent_id in governing,
+                agent_id,
                 enforcement,
             )
             said.append(
@@ -972,7 +984,7 @@ class PublishFindingsUseCase:
                 state,
                 description,
                 verdict.status,
-                agent_id in governing,
+                agent_id,
                 enforcement,
             )
             said.append(

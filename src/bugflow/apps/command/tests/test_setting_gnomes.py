@@ -1,4 +1,4 @@
-"""Tests of ``bugflow set``, ``settings`` and ``settle`` (ADR 008).
+"""Tests of ``bugflow set`` and ``settings`` (ADR 008).
 
 Against a real database, because the commands exist to write rows into
 one. Skipped unless DATABASE_URL names a Postgres server.
@@ -146,71 +146,4 @@ def test_a_gnome_or_profile_not_in_force_is_refused(
 
     assert status == 2
     assert problem in capsys.readouterr().err
-    assert held(database_url) == []
-
-
-def test_settling_makes_a_setting_from_each_declaration(
-    tmp_path: Path, database_url: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """One repository declares the reviewer's every policy, which is its
-    default, and one declares P-01 alone, which is strict. The first is
-    on the advise profile; the second was bound to none, so is
-    observed."""
-    install(
-        tmp_path,
-        database_url,
-        {
-            "profiles.toml": PROFILES,
-            "declarations.toml": (
-                '[repository."example/widgets"]\n'
-                'policies = ["P-01", "P-02"]\n'
-                '[repository."example/gears"]\n'
-                'policies = ["P-01"]\n'
-            ),
-        },
-    )
-    environ = {"DATABASE_URL": database_url}
-    assert (
-        run(["declare", "example/widgets", "--profile", "advise"], environ)
-        == 0
-    )
-    capsys.readouterr()
-
-    assert run(["settle", "--check"], environ) == 0
-    assert "github:example/gears prose would be observe strict" in (
-        capsys.readouterr().out
-    )
-    assert held(database_url) == []
-
-    assert run(["settle"], environ) == 0
-    assert held(database_url) == [
-        ("example/gears", "prose", "observe", "strict"),
-        ("example/widgets", "prose", "advise", "default"),
-    ]
-    capsys.readouterr()
-
-    assert run(["settle"], environ) == 0
-    assert "is already set; left as it is" in capsys.readouterr().out
-
-
-def test_settling_refuses_a_declaration_no_profile_matches(
-    tmp_path: Path, database_url: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    install(
-        tmp_path,
-        database_url,
-        {
-            "declarations.toml": (
-                '[repository."example/widgets"]\npolicies = ["P-02"]\n'
-            )
-        },
-    )
-    capsys.readouterr()
-
-    status = run(["settle"], {"DATABASE_URL": database_url})
-
-    said = capsys.readouterr()
-    assert status == 2
-    assert "github:example/widgets declares P-02 of prose" in said.out
-    assert "nothing is settled" in said.err
     assert held(database_url) == []

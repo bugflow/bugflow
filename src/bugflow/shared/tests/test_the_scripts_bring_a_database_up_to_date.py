@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0022"
+LAST = "0023"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -1247,3 +1247,39 @@ def test_a_deployments_own_table_keyed_to_the_policy_journal_holds_its_fact(
         assert row["payload"] is None
     finally:
         engine.dispose()
+
+
+def test_the_declarations_go_only_once_each_declaring_repository_is_set(
+    empty: str,
+) -> None:
+    """Script 0023 stops on a repository that declared a policy and has
+    no setting, and lets through one bound to a profile with no policy,
+    which was judged on nothing."""
+    upgrade(empty)
+    downgrade(empty, "0022")
+    engine = sa.create_engine(engine_url(empty))
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO repository_enforcement (forge, repo, profile)"
+                    " VALUES ('github', 'o/bound', 'advise')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO repository_judged_policy"
+                    " (forge, repo, policy_id) VALUES ('github', 'o/r', 'P-1')"
+                )
+            )
+        with pytest.raises(RuntimeError, match="github:o/r declared"):
+            upgrade(empty)
+        assert last_run(empty) == ["0022"]
+
+        with engine.begin() as connection:
+            connection.execute(sa.text("DELETE FROM repository_judged_policy"))
+        upgrade(empty)
+    finally:
+        engine.dispose()
+    assert last_run(empty) == [LAST]
+    assert "repository_enforcement" not in tables(empty)

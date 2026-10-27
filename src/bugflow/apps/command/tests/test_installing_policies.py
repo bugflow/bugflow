@@ -25,24 +25,17 @@ from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
 from bugflow.method.tests.policy_files import REFERENCES, laid_out
-from bugflow.review.infrastructure.in_memory_review_declaration import (
-    InMemoryDispatchedProcesses,
-    InMemoryJudgedPolicies,
-)
 from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 
 REPOSITORY = "example-org/pull-request-policies"
-DECLARATIONS = '[repository."example-org/widgets"]\npolicies = ["P-01"]\n'
 
 
 class Host:
     def __init__(self) -> None:
         self.deployments = InMemoryPolicyDeployments()
         self.journal = InMemoryJournal()
-        self.judged = InMemoryJudgedPolicies()
-        self.dispatched = InMemoryDispatchedProcesses()
         self.deploying: Deploying = deploying_with(
-            self.deployments, self.journal, self.judged, self.dispatched, ()
+            self.deployments, self.journal, ()
         )
         self.out = io.StringIO()
 
@@ -119,15 +112,14 @@ def test_a_commit_held_with_other_content_exits_1(
     assert "already held with other content" in capsys.readouterr().err
 
 
-def test_the_declarations_are_written_and_said(tmp_path: Path) -> None:
+def test_a_declarations_file_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     host = Host()
     laid_out(tmp_path)
-    (tmp_path / "declarations.toml").write_text(DECLARATIONS)
-    assert host.install(tmp_path) == 0
-    assert host.judged.judged("github", "example-org/widgets") == {"P-01"}
-    assert "1 repositories are declared by declarations.toml" in (
-        host.out.getvalue()
-    )
+    (tmp_path / "declarations.toml").write_text("")
+    assert host.install(tmp_path) == 1
+    assert "retired by ADR 008" in capsys.readouterr().err
 
 
 def test_what_is_not_a_directory_is_refused(
