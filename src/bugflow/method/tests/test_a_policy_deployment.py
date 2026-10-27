@@ -153,3 +153,13 @@ def test_an_earlier_deployment_is_still_held_after_it_is_replaced() -> None:
     assert earlier is not None
     assert earlier.text_of("prose/reviewer.md") == "agent_id: prose\n"
     assert held.held(REPOSITORY, "c3") is None
+
+
+def test_the_files_beside_the_reviewers_are_read(tmp_path: Path) -> None:
+    directory = laid_out(tmp_path)
+    for name in ("declarations.toml", "profiles.toml"):
+        (directory / name).write_text("")
+    read = PolicyDirectory(directory).read(REPOSITORY, "c1")
+    assert {"declarations.toml", "profiles.toml"} <= {
+        one.path for one in read.files
+    }
