@@ -18,6 +18,7 @@ and the gnomes it pins.
 
     pace-layers.toml                  binding: the processes and when they run
     declarations.toml                 binding: what each repository is reviewed for
+    profiles.toml                     binding: named sets of each reviewer's policies
     glossary/**                       binding: the words documents it copies in,
                                       each a .md, .txt or .org file
     <reviewer>/manifest.md            gnome: the reviewer's id, subjects, policies, checks
@@ -239,6 +240,23 @@ A policy must be one the deployment holds, by a file or a manifest's
 `checks` line, with a subject the server renders and, for a checked
 policy, a check the server has. A repository the file leaves out is
 reviewed for nothing once the file is deployed.
+
+`profiles.toml` names sets of each reviewer's policies, one table for
+each profile under the reviewer's id:
+
+    [profile.pr-gnome.default]
+    policies = ["CM-01", "ED-01"]
+
+    [profile.pr-gnome.strict]
+    policies = ["CM-01", "CM-02", "ED-01", "ED-02"]
+
+A profile may name only policies its own reviewer holds, with a subject
+the server renders and, for a checked policy, a check the server has. A
+profile's name is lower case letters, digits and hyphens. Every reviewer
+has `default`: where the file does not name it, it holds every policy
+of the reviewer the server answers, so a binding with no `profiles.toml`
+has one profile for each reviewer. ADR 008 says how a repository is set
+to a reviewer's profile.
 
 ## Deployment
 

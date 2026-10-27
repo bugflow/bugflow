@@ -217,8 +217,8 @@ what holds it instead.
 <!-- Written from docs/model.toml: python -m bugflow.shared.tests.model_section -->
 
 The things: gnome, manifest, doctrine, clause, policy, subject, case,
-skill, binding, declaration, pace layer, deployment, server, reviewer,
-judge, model class, check, finding, grade, ceiling, verdict,
+skill, binding, declaration, profile, pace layer, deployment, server,
+reviewer, judge, model class, check, finding, grade, ceiling, verdict,
 calibration, glossary.
 
 **Gnome**
@@ -274,6 +274,9 @@ calibration, glossary.
 - A binding holds a copy of each gnome at a pinned commit. Not tested
   here: held by the binding's pipeline.
 - A binding's declarations.toml pairs policies with repositories.
+- A binding's profiles.toml names sets of a reviewer's policies.
+- A reviewer the binding names no default profile for has one of every
+  policy of it the server answers.
 - A binding's pace-layers.toml pairs processes with cadences.
 - The commit a binding pins a gnome at is the ref a garden declares it
   at. Not tested here: held by the maintainer of the binding and the
