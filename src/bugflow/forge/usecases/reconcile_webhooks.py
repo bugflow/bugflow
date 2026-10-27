@@ -11,10 +11,10 @@ Two rules:
   webhooks, for example a build service's. A webhook counts as this
   server's only if its URL is exactly the URL given in the request. Nothing
   is matched by name or by part of a URL.
-- The list of repositories is the whole truth. A repository on the list
-  gets a webhook. A repository that was on the list in an earlier run and
-  is not now has its webhook removed. The journal is how earlier runs are
-  remembered.
+- A repository on the list gets a webhook. Unless the request says
+  otherwise, the list is the whole truth: a repository that was on the
+  list in an earlier run and is not now has its webhook removed. The
+  journal is how earlier runs are remembered.
 """
 
 from collections.abc import Sequence
@@ -74,10 +74,11 @@ class ReconcileWebhooksUseCase:
             )
         declared = tuple(dict.fromkeys(request.repositories))
         outcomes = [self._declare(r, request) for r in declared]
-        outcomes.extend(
-            self._withdraw_unless_renamed(r, declared, request)
-            for r in self._dropped(declared, request)
-        )
+        if request.withdraw_dropped:
+            outcomes.extend(
+                self._withdraw_unless_renamed(r, declared, request)
+                for r in self._dropped(declared, request)
+            )
         self._record(outcomes, request)
         return ReconcileWebhooksResponse(outcomes=tuple(outcomes))
 

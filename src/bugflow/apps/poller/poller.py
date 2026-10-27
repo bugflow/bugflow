@@ -5,7 +5,13 @@ lists the watched repositories' pull requests with the forge token and
 posts each change to the ingress as a signed delivery, shaped as its
 forge would send it. Run as ``bugflow poll``.
 
-Configured from the environment: ``POLL_REPOSITORIES``,
+It polls each repository a gnome judges, read from the settings in the
+database ``DATABASE_URL`` names before every poll (ADR 008), so a gnome
+set on a repository is polled without a restart. A repository is read
+in full the first time it is polled, and one on a forge the poller has
+no credentials for is said and not polled.
+
+Configured from the environment: ``DATABASE_URL``,
 ``POLL_INTERVAL_SECONDS``, ``INGRESS_URL``, ``WEBHOOK_SECRET``,
 ``FORGE_TOKEN`` for repositories on github.com, and ``FORGEJO_URL`` and
 ``FORGEJO_TOKEN`` for repositories on a Forgejo.
@@ -18,6 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from bugflow.apps.shared.forges import forge_tokens, forgejo_settings
+from bugflow.apps.shared.watching import watched_names
 from bugflow.forge.domain.services.polling import PullRequestFeedService
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.dtos.poll_pull_requests import (
@@ -28,6 +35,9 @@ from bugflow.forge.infrastructure.forgejo import ForgejoForge
 from bugflow.forge.infrastructure.github import GitHubForge, GitHubTokens
 from bugflow.forge.infrastructure.webhook_sink import SignedWebhookSink
 from bugflow.forge.usecases.poll_pull_requests import PollPullRequestsUseCase
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
+)
 from bugflow.shared.infrastructure.system_clock import SystemClock
 
 DEFAULT_INTERVAL_SECONDS = 60.0
@@ -36,7 +46,8 @@ DEFAULT_INGRESS_URL = "http://localhost:8000"
 
 @dataclass(frozen=True)
 class PollerSettings:
-    repositories: tuple[str, ...]
+    #: Where the gnomes' settings are kept.
+    database_url: str
     interval: timedelta
     ingress_url: str
     secret: str
@@ -45,28 +56,27 @@ class PollerSettings:
     # The Forgejo's URL and token, when a repository there is watched.
     forgejo: tuple[str, str] | None = None
 
+    @property
+    def forges(self) -> frozenset[str]:
+        """The forges this poller has credentials for."""
+        return frozenset(
+            name
+            for name, held in (
+                ("github", self.token),
+                ("forgejo", self.forgejo),
+            )
+            if held
+        )
+
     @classmethod
     def from_environment(cls, environ: Mapping[str, str]) -> "PollerSettings":
         """The settings, or ValueError naming what is missing or wrong."""
-        repositories = tuple(
-            name.strip()
-            for name in environ.get("POLL_REPOSITORIES", "").split(",")
-            if name.strip()
-        )
-        if not repositories:
+        database_url = environ.get("DATABASE_URL", "")
+        if not database_url:
             raise ValueError(
-                "POLL_REPOSITORIES is not set; the poller does not start "
-                "without it"
+                "DATABASE_URL is not set; the poller reads which "
+                "repositories to poll from the gnomes' settings there"
             )
-        forges: set[str] = set()
-        for name in repositories:
-            try:
-                forges.add(WatchedRepository.parse(name).forge)
-            except ValueError:
-                raise ValueError(
-                    f"POLL_REPOSITORIES names {name!r}, not owner/repo or "
-                    "forgejo:owner/repo"
-                ) from None
         secret = environ.get("WEBHOOK_SECRET", "")
         if not secret:
             raise ValueError(
@@ -74,16 +84,12 @@ class PollerSettings:
                 "without it"
             )
         token = forge_tokens(environ)
-        if token is None and "github" in forges:
-            raise ValueError(
-                "FORGE_TOKEN is not set, nor FORGE_TOKENS_BY_OWNER; the "
-                "poller does not start without one"
-            )
         forgejo = forgejo_settings(environ)
-        if forgejo is None and "forgejo" in forges:
+        if token is None and forgejo is None:
             raise ValueError(
-                "FORGEJO_URL and FORGEJO_TOKEN are not both set; the poller "
-                "does not watch a repository on Forgejo without them"
+                "FORGE_TOKEN is not set, nor FORGE_TOKENS_BY_OWNER, nor "
+                "FORGEJO_URL and FORGEJO_TOKEN; the poller does not start "
+                "without a forge to poll"
             )
         raw_interval = environ.get("POLL_INTERVAL_SECONDS") or str(
             DEFAULT_INTERVAL_SECONDS
@@ -98,7 +104,7 @@ class PollerSettings:
                 "number"
             )
         return cls(
-            repositories=repositories,
+            database_url=database_url,
             interval=timedelta(seconds=seconds),
             ingress_url=environ.get("INGRESS_URL") or DEFAULT_INGRESS_URL,
             secret=secret,
@@ -142,24 +148,94 @@ def run_poller(
     settings: PollerSettings,
     once: bool = False,
     out: Callable[[str], None] = print,
+    watching: Callable[[], tuple[str, ...]] | None = None,
 ) -> int:
     """Poll until stopped, or once. Exits 1 when a single poll had
-    failures."""
+    failures.
+
+    ``watching`` says which repositories to poll, asked before each
+    poll; by default, each a gnome judges in the settings."""
+    if watching is None:
+        held = SqlAlchemyGnomeSettings(settings.database_url)
+
+        def watching() -> tuple[str, ...]:
+            return watched_names(held)
+
     stop = threading.Event()
     if not once:
         for signal_number in (signal.SIGINT, signal.SIGTERM):
             signal.signal(signal_number, lambda *_: stop.set())
-    since: datetime | None = None
+    polls = Polls(poller, settings.forges, watching, out)
     while True:
-        response = poller.execute(
-            PollPullRequestsRequest(
-                repositories=settings.repositories, since=since
-            )
-        )
-        for line in render(response):
-            out(line)
-        since = response.next_since
+        failed = polls.poll()
         if once:
-            return 1 if response.failures else 0
+            return 1 if failed else 0
         if stop.wait(settings.interval.total_seconds()):
             return 0
+
+
+class Polls:
+    """One poll after another, each of the repositories watched then.
+
+    A repository on a forge the poller has no credentials for is not
+    polled, and is said once. A repository is read in full the first
+    time it is polled, so one watched after the poller began has its
+    open pull requests delivered; after that, it is read from the last
+    poll."""
+
+    def __init__(
+        self,
+        poller: PollPullRequestsUseCase,
+        forges: frozenset[str],
+        watching: Callable[[], tuple[str, ...]],
+        out: Callable[[str], None],
+    ) -> None:
+        self._poller = poller
+        self._forges = forges
+        self._watching = watching
+        self._out = out
+        self._since: datetime | None = None
+        self._read: set[str] = set()
+        self._unpolled: tuple[str, ...] = ()
+
+    def poll(self) -> bool:
+        """Poll once. True where any repository failed."""
+        names = self._watching()
+        skipped = tuple(o for o in names if _forge_of(o) not in self._forges)
+        if skipped and skipped != self._unpolled:
+            self._out(
+                "not polled, no credentials for their forge: "
+                + ", ".join(skipped)
+            )
+        self._unpolled = skipped
+        polled = tuple(one for one in names if one not in skipped)
+        old = tuple(o for o in polled if o in self._read and self._since)
+        new = tuple(one for one in polled if one not in old)
+        responses = []
+        if old:
+            responses.append(
+                self._poller.execute(
+                    PollPullRequestsRequest(
+                        repositories=old, since=self._since
+                    )
+                )
+            )
+        if new or not old:
+            fresh = self._poller.execute(
+                PollPullRequestsRequest(repositories=new, since=None)
+            )
+            responses.append(fresh)
+            if not fresh.failures:
+                self._read.update(new)
+        for response in responses:
+            for line in render(response):
+                self._out(line)
+        self._since = responses[0].next_since
+        return any(response.failures for response in responses)
+
+
+def _forge_of(name: str) -> str:
+    try:
+        return WatchedRepository.parse(name).forge
+    except ValueError:
+        return ""

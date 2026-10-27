@@ -70,9 +70,18 @@ cadence = "weekly"
 processes = ["security-stocktake"]
 """
 
+#: The same layers, each with a default boundary, so a watched repository
+#: that declares none still has one.
+DEFAULTED = TOPOLOGY.replace(
+    'cadence = "weekly"\n',
+    'cadence = "weekly"\ndefault_boundary = "SUN 23:30"\n',
+).replace(
+    'cadence = "event"\n', 'cadence = "event"\ndefault_boundary = "60s"\n'
+)
+
 #: The deployment's files, by path.
 FILES = {
-    "pace-layers.toml": TOPOLOGY,
+    "pace-layers.toml": DEFAULTED,
     "prose/reviewer.md": PROSE,
     f"{REFERENCES}/policies/P-01-example.md": POLICY,
     f"{REFERENCES}/doctrine/01-voice.md": DOCTRINE,

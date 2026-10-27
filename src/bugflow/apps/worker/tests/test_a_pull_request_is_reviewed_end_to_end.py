@@ -28,6 +28,7 @@ from bugflow.apps.shared.journals import review_journal
 from bugflow.apps.worker import review
 from bugflow.apps.worker.pull_request import DEBOUNCE
 from bugflow.apps.worker.tests.deployed import (
+    FILES,
     REPOSITORY,
     put_in_force,
     set_gnomes,
@@ -167,10 +168,27 @@ async def until(happened: object, what: str) -> None:
     raise AssertionError(f"the worker never {what}")
 
 
+#: The pull request layer alone. A layer on a clock would have the
+#: worker schedule a stocktake for the watched repository, which the
+#: time-skipping test server does not answer.
+ON_AN_EVENT = {
+    "pace-layers.toml": """\
+[process.evaluate-pull-request]
+subject = "pull request"
+judges = true
+
+[layer.pull-request]
+cadence = "event"
+processes = ["evaluate-pull-request"]
+default_boundary = "60s"
+"""
+}
+
+
 def test_a_pull_request_is_reviewed_and_a_finding_published(
     database_url: str,
 ) -> None:
-    put_in_force(database_url)
+    put_in_force(database_url, FILES | ON_AN_EVENT)
     set_gnomes(database_url, "advise")
     forge, judge = OnePullRequest(), FindsOneThing()
     workflows = worker_workflows()

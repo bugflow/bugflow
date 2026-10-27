@@ -226,6 +226,13 @@ repository and the layer that gives it its cadence:
     [layer.pull-request]
     cadence = "event"
     processes = ["evaluate-pull-request"]
+    default_boundary = "60s"
+
+A layer's `default_boundary` is the boundary a watched repository takes
+on it when the repository declares none: a settling window, such as
+`60s`, for a layer an event fires, and a phase, such as `"SUN 23:30"`,
+for one a clock fires. Without it, a watched repository with no
+boundary on the layer stops the worker.
 
 `profiles.toml` names sets of each reviewer's policies, one table for
 each profile under the reviewer's id:

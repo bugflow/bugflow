@@ -6,7 +6,8 @@ Proposed, 2026-10-27. Amended, 2026-10-27: a command makes the
 settings from the declarations, and the change is released in two
 steps; the label is decided by the gnomes that publish where none
 gates, and by every gnome that judges where none publishes; a process
-that names a reviewer runs where that gnome judges.
+that names a reviewer runs where that gnome judges; a webhook is
+registered when `bugflow webhooks` runs.
 
 ## Context
 
@@ -89,9 +90,12 @@ in the journal, saying who made it.
 
 - **Watching.** A repository is watched while any of its gnomes is
   above `off`. The poller, the worker's schedules and the webhooks
-  read the settings, not `WATCHED_REPOSITORIES`. The webhook is made
-  when the first gnome leaves `off` and removed when the last returns
-  to it.
+  read the settings, not `WATCHED_REPOSITORIES`. The poller and the
+  worker read them again while they run, so a repository is polled and
+  scheduled within a minute of a gnome being set on it. `bugflow
+  webhooks` registers the webhook of each watched repository when it
+  is run, and a repository no gnome judges keeps a webhook it has,
+  whose deliveries are judged on nothing.
 - **Boundaries.** A layer in `pace-layers.toml` may give a
   `default_boundary`. A watched repository with no boundary on a layer
   takes it. The worker stops only for a watched repository with no

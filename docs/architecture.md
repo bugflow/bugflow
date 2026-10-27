@@ -141,7 +141,7 @@ belongs to a model, so each class has a queue and a limit of its own.
 | What | Where it is declared | By whom |
 |---|---|---|
 | The services, their settings and their secrets | The deployment repository and the host | The operator |
-| Which repositories the server watches | The setting `bugflow_watched_repositories` | The operator |
+| Which repositories the server watches | The database: each a gnome judges, by `bugflow set` | The operator |
 | A webhook on each watched repository | The forge, by `bugflow webhooks` | The operator |
 | A token that reads pull requests and writes comments, labels and statuses | The worker's settings | The operator |
 | A model for each class a policy names | The proxy's `config.yaml` and its keys | The operator |

@@ -160,7 +160,8 @@ services:
 
   poller:
     # Stands in for a forge's webhooks where the forge cannot reach the
-    # ingress. Started only when asked for, with --profile polling.
+    # ingress. Started only when asked for, with --profile polling. It
+    # reads which repositories to poll from the gnomes' settings.
     build: ../..
     command: ["bugflow", "poll"]
     restart: unless-stopped
@@ -168,6 +169,8 @@ services:
     depends_on:
       ingress:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file: ../../env/poller.env
 
   webhooks:

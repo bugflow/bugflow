@@ -2,8 +2,10 @@
 ones left at an old address, ``bugflow prune-webhooks``.
 
 ``webhooks`` runs on every deploy. Its job is to make a deploy the moment this
-server's declaration takes effect, and to do nothing at all when the
-forge already agrees with it.
+server's settings take effect, and to do nothing at all when the forge
+already agrees with them. The repositories it registers a webhook on are
+those on github.com that a gnome judges, read from the settings in the
+database ``DATABASE_URL`` names (ADR 008).
 
 Everything it needs arrives in the environment. In particular the public
 URL: this package does not know where it is deployed, and whoever runs
@@ -16,11 +18,12 @@ this command deletes it.
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TextIO
 
 from bugflow.apps.shared.forges import forge_tokens
+from bugflow.apps.shared.watching import watched
 from bugflow.forge.domain.repositories.webhook_admin import (
     WebhookAdminRepository,
 )
@@ -39,6 +42,9 @@ from bugflow.forge.dtos.reconcile_webhooks import (
 from bugflow.forge.infrastructure.github import GitHubTokens
 from bugflow.forge.usecases.prune_webhooks import PruneWebhooksUseCase
 from bugflow.forge.usecases.reconcile_webhooks import ReconcileWebhooksUseCase
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
+)
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.domain.values.correlation import Correlation
@@ -47,7 +53,10 @@ from bugflow.shared.domain.values.correlation import Correlation
 #: here so a deployment's check can see that the container the command
 #: runs in supplies them: a variable the container's file happens not to
 #: carry fails the deploy rather than the build.
-REQUIRED = ("WATCHED_REPOSITORIES", "INGRESS_URL", "WEBHOOK_SECRET")
+REQUIRED = ("DATABASE_URL", "INGRESS_URL", "WEBHOOK_SECRET")
+
+#: What says which repositories are watched, asked once.
+Watching = Callable[[], tuple[WatchedRepository, ...]]
 
 #: The route under the ingress's public address that GitHub posts to.
 ROUTE = "/webhooks/github"
@@ -65,9 +74,14 @@ class HookSettings:
     origin_endpoint: str = "https://github.com"
 
     @classmethod
-    def from_environment(cls, environ: Mapping[str, str]) -> "HookSettings":
-        """The settings, or ValueError naming what is missing or wrong."""
-        repositories = _watched(environ)
+    def from_environment(
+        cls,
+        environ: Mapping[str, str],
+        watching: Watching | None = None,
+    ) -> "HookSettings":
+        """The settings, or ValueError naming what is missing or wrong.
+        ``watching`` gives the watched repositories; by default, each a
+        gnome judges in the settings."""
         url = _hook_url(environ)
         secret = environ.get("WEBHOOK_SECRET", "")
         if not secret:
@@ -75,6 +89,7 @@ class HookSettings:
                 "WEBHOOK_SECRET is not set; a hook registered without one "
                 "would post deliveries the ingress answers 401 to"
             )
+        repositories = _watched(environ, watching)
         return cls(
             repositories=repositories,
             url=url,
@@ -92,47 +107,48 @@ class PruneSettings:
 
     @classmethod
     def from_environment(
-        cls, environ: Mapping[str, str], old_ingress: str
+        cls,
+        environ: Mapping[str, str],
+        old_ingress: str,
+        watching: Watching | None = None,
     ) -> "PruneSettings":
         """The settings for deleting the webhooks that point at
         ``old_ingress``, the public address this server answered on
         before. ValueError names what is missing or wrong."""
-        repositories = _watched(environ)
         old = old_ingress.strip().rstrip("/")
         if not old:
             raise ValueError(
                 "no old address given; it is the public address whose "
                 "webhooks are to be deleted"
             )
+        keep = _hook_url(environ)
+        repositories = _watched(environ, watching)
         return cls(
             repositories=repositories,
             url=f"{old}{ROUTE}",
-            keep=_hook_url(environ),
+            keep=keep,
             token=_token(environ, repositories),
         )
 
 
-def _watched(environ: Mapping[str, str]) -> tuple[WatchedRepository, ...]:
-    names = tuple(
-        name.strip()
-        for name in environ.get("WATCHED_REPOSITORIES", "").split(",")
-        if name.strip()
-    )
-    repositories = []
-    for name in names:
-        try:
-            repository = WatchedRepository.parse(name)
-        except ValueError:
+def _watched(
+    environ: Mapping[str, str], watching: Watching | None
+) -> tuple[WatchedRepository, ...]:
+    """The watched repositories on github.com. A repository on a Forgejo
+    has no webhook this command can register, and the poller reads it."""
+    if watching is None:
+        database_url = environ.get("DATABASE_URL", "")
+        if not database_url:
             raise ValueError(
-                f"WATCHED_REPOSITORIES names {name!r}, not owner/repo"
-            ) from None
-        if repository.forge != "github":
-            raise ValueError(
-                f"WATCHED_REPOSITORIES names {name!r}; only github.com "
-                "repositories can have their webhooks registered"
+                "DATABASE_URL is not set; the watched repositories are "
+                "read from the gnomes' settings there"
             )
-        repositories.append(repository)
-    return tuple(repositories)
+        held = SqlAlchemyGnomeSettings(database_url)
+
+        def watching() -> tuple[WatchedRepository, ...]:
+            return watched(held)
+
+    return tuple(one for one in watching() if one.forge == "github")
 
 
 def _hook_url(environ: Mapping[str, str]) -> str:
@@ -183,6 +199,9 @@ def run_webhooks(
                 workflow_id="webhooks/sync", run_id=uuid.uuid4().hex
             ),
             origin_endpoint=settings.origin_endpoint,
+            # A repository whose gnomes are all off keeps its webhook,
+            # and one not yet settled is not stripped of it.
+            withdraw_dropped=False,
         )
     )
     _report(response, settings.url, out)
@@ -194,7 +213,7 @@ def _report(
 ) -> None:
     if not response.outcomes:
         print(
-            "no repositories declared; WATCHED_REPOSITORIES is empty",
+            "no repository is watched: no gnome judges one on github.com",
             file=out,
         )
         return
@@ -250,7 +269,7 @@ def _report_prune(
 ) -> None:
     if not response.outcomes:
         print(
-            "no repositories declared; WATCHED_REPOSITORIES is empty",
+            "no repository is watched: no gnome judges one on github.com",
             file=out,
         )
         return
