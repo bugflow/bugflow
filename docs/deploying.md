@@ -163,10 +163,26 @@ before the first deployment, even if two roles share one.
 | `project_oidc_clients` | `api` | The clients registered at the provider, by name. The API accepts tokens issued to the one named `policies-pipeline`, by its `client_id`. Not written until that client exists |
 | `project_build_sha` | `worker`, `ingress`, `api`, `migrate` | The full git sha of the commit the image was built from, recorded with every journal entry. Not written if not defined |
 
+| `bugflow_settings_role` | `api` | The role that may read and change what each gnome does on each repository. Not written if not defined, and then neither the settings routes nor their page is served |
+| `bugflow_settings_client_id` | `api` | The public client the settings page signs a person in as, with authorisation code and PKCE, its redirect address the API's `/settings`. It must be one of `bugflow_api_clients` |
+| `bugflow_settings_scope` | `api` | The scopes the page asks for. Default `openid profile`. They must give a token for the audience that carries the person's roles: at Zitadel, add `urn:zitadel:iam:org:project:id:{project}:aud` and `urn:zitadel:iam:org:projects:roles` |
+
 The API does not start until its settings hold an issuer, an audience,
 a client, a roles claim and a deployer role. Compose starts it again
 until they do, so a first render made before the provider has
 registered the client needs only a second render and `up`.
+
+### The settings page
+
+With a settings role and a client for the page, the API serves
+`/settings`: a row for each repository the server knows of, from its
+journal and from discovery, and a choice for each gnome of `off`,
+`observe`, `advise` or `gate`, with its profile where it has more than
+one. A repository no gnome has been set on is listed first. The page
+signs the person in at the identity provider in the browser, and each
+change is recorded with the person's id at the provider. A change that
+would leave a watched repository with no boundary on a layer, declared
+or by the layer's default, is refused.
 
 ### Telemetry
 

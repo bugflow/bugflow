@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gnome settings</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1f23; --muted: #5d6470; --line: #d9dde3;
+    --row: #f6f7f9; --accent: #2f5bd3; --ok: #1f7a43; --bad: #b3261e;
+    --new: #fff4d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b; --fg: #e6e8eb; --muted: #9aa3ae; --line: #2c3038;
+      --row: #1c1f24; --accent: #7fa2ff; --ok: #6fd39b; --bad: #ff8a80;
+      --new: #3a3220;
+    }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  p.lede { color: var(--muted); margin: 0 0 16px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+         margin-bottom: 12px; }
+  input[type=search] { padding: 6px 8px; border: 1px solid var(--line);
+         border-radius: 6px; background: var(--bg); color: var(--fg);
+         min-width: 220px; }
+  button { padding: 6px 12px; border: 1px solid var(--accent);
+           background: var(--accent); color: var(--bg); border-radius: 6px;
+           cursor: pointer; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 8px;
+           border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 600; white-space: nowrap; }
+  tr:nth-child(even) td { background: var(--row); }
+  tr.unset td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  td.name { font-family: ui-monospace, monospace; white-space: nowrap; }
+  .tag { font-size: 12px; color: var(--muted); margin-left: 6px; }
+  select { padding: 3px 4px; border: 1px solid var(--line);
+           border-radius: 4px; background: var(--bg); color: var(--fg); }
+  .cell { display: flex; gap: 4px; align-items: center; }
+  .state { font-size: 12px; min-width: 3em; }
+  .state.ok { color: var(--ok); } .state.bad { color: var(--bad); }
+  #message { color: var(--bad); margin: 8px 0; }
+  .legend { color: var(--muted); font-size: 13px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Gnome settings</h1>
+  <p class="lede">What each gnome does on each repository. Off judges
+    nothing; observe judges and posts nothing; advise posts a comment and
+    a status that never fails; gate also fails its status on a fail.</p>
+  <div class="bar">
+    <input type="search" id="filter" placeholder="Filter repositories">
+    <label><input type="checkbox" id="archived"> Show archived</label>
+    <button id="signin" hidden>Sign in</button>
+  </div>
+  <div id="message" role="alert"></div>
+  <div class="wrap"><table id="grid" hidden></table></div>
+  <p class="legend">Repositories no gnome has been set on yet are marked
+    at the left and listed first. Each change is recorded with who made
+    it.</p>
+</main>
+<script>
+"use strict";
+const BEHAVIOURS = ["off", "observe", "advise", "gate"];
+const TOKEN = "bugflow.settings.token";
+const VERIFIER = "bugflow.settings.verifier";
+const STATE = "bugflow.settings.state";
+let held = null;
+
+function store(key, value) {
+  try { value === null ? sessionStorage.removeItem(key)
+                       : sessionStorage.setItem(key, value); }
+  catch (e) { /* a page without storage signs in each time */ }
+}
+function fetched(key) {
+  try { return sessionStorage.getItem(key); } catch (e) { return null; }
+}
+function say(text) { document.getElementById("message").textContent = text; }
+
+function random(bytes) {
+  const raw = crypto.getRandomValues(new Uint8Array(bytes));
+  return base64url(raw);
+}
+function base64url(raw) {
+  return btoa(String.fromCharCode(...new Uint8Array(raw)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function challenge(verifier) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(verifier));
+  return base64url(digest);
+}
+
+async function provider() {
+  const answered = await fetch("settings/config");
+  if (!answered.ok) {
+    throw new Error("this server's settings page has no sign-in client: " +
+                    "its operator sets SETTINGS_CLIENT_ID");
+  }
+  const config = await answered.json();
+  const discovery = await (await fetch(
+    config.issuer.replace(/\/$/, "") + "/.well-known/openid-configuration"
+  )).json();
+  return { config, discovery };
+}
+
+function redirectUri() {
+  return location.origin + location.pathname;
+}
+
+async function signIn() {
+  const { config, discovery } = await provider();
+  const verifier = random(48), state = random(16);
+  store(VERIFIER, verifier);
+  store(STATE, state);
+  const query = new URLSearchParams({
+    response_type: "code",
+    client_id: config.client_id,
+    redirect_uri: redirectUri(),
+    scope: config.scope,
+    state,
+    code_challenge: await challenge(verifier),
+    code_challenge_method: "S256",
+  });
+  location.assign(discovery.authorization_endpoint + "?" + query);
+}
+
+async function finishSignIn(params) {
+  const state = fetched(STATE), verifier = fetched(VERIFIER);
+  if (!state || !verifier || params.get("state") !== state) {
+    history.replaceState(null, "", redirectUri());
+    throw new Error("the sign-in came back with a state this page did not send");
+  }
+  const { config, discovery } = await provider();
+  const answered = await fetch(discovery.token_endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code: params.get("code"),
+      redirect_uri: redirectUri(),
+      client_id: config.client_id,
+      code_verifier: verifier,
+    }),
+  });
+  if (!answered.ok) throw new Error("the identity provider refused the sign-in");
+  store(TOKEN, (await answered.json()).access_token);
+  store(VERIFIER, null);
+  store(STATE, null);
+  history.replaceState(null, "", redirectUri());
+}
+
+async function api(method, path, body) {
+  const answered = await fetch(path, {
+    method,
+    headers: Object.assign(
+      { Authorization: "Bearer " + fetched(TOKEN) },
+      body ? { "Content-Type": "application/json" } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (answered.status === 401) {
+    store(TOKEN, null);
+    document.getElementById("signin").hidden = false;
+    throw new Error("sign in again: the token was not accepted");
+  }
+  if (!answered.ok) {
+    const detail = await answered.json().catch(() => ({}));
+    throw new Error(detail.detail || ("the server answered " + answered.status));
+  }
+  return answered.json();
+}
+
+function option(value, chosen) {
+  const one = document.createElement("option");
+  one.value = value; one.textContent = value;
+  one.selected = value === chosen;
+  return one;
+}
+
+function cell(repository, gnome) {
+  const td = document.createElement("td");
+  const box = document.createElement("div");
+  box.className = "cell";
+  let now = repository.gnomes[gnome] ||
+    { behaviour: "off", profile: held.profiles[gnome][0] };
+  const behaviour = document.createElement("select");
+  behaviour.setAttribute("aria-label", repository.name + " " + gnome);
+  BEHAVIOURS.forEach(b => behaviour.append(option(b, now.behaviour)));
+  box.append(behaviour);
+  let profile = null;
+  if (held.profiles[gnome].length > 1) {
+    profile = document.createElement("select");
+    profile.setAttribute("aria-label", repository.name + " " + gnome + " profile");
+    held.profiles[gnome].forEach(p => profile.append(option(p, now.profile)));
+    box.append(profile);
+  }
+  const state = document.createElement("span");
+  state.className = "state";
+  if (now.set_by) state.title = "set by " + now.set_by + " at " + now.set_at;
+  box.append(state);
+  const save = async () => {
+    state.textContent = "…"; state.className = "state";
+    const [owner, repo] = repository.name.split("/");
+    try {
+      const updated = await api("PUT",
+        `api/settings/${encodeURIComponent(repository.forge)}/` +
+        `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/` +
+        `${encodeURIComponent(gnome)}`,
+        { behaviour: behaviour.value, profile: profile ? profile.value : null });
+      Object.assign(repository, updated);
+      now = repository.gnomes[gnome] || now;
+      state.textContent = "saved"; state.className = "state ok";
+      say("");
+    } catch (error) {
+      state.textContent = "not saved"; state.className = "state bad";
+      say(error.message);
+      behaviour.value = now.behaviour;
+      if (profile) profile.value = now.profile;
+    }
+  };
+  behaviour.addEventListener("change", save);
+  if (profile) profile.addEventListener("change", save);
+  td.append(box);
+  return td;
+}
+
+function render() {
+  const grid = document.getElementById("grid");
+  const filter = document.getElementById("filter").value.trim().toLowerCase();
+  const showArchived = document.getElementById("archived").checked;
+  const gnomes = Object.keys(held.profiles);
+  grid.replaceChildren();
+  const head = grid.createTHead().insertRow();
+  ["Repository", ...gnomes].forEach(label => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  });
+  const body = grid.createTBody();
+  const rows = held.repositories
+    .filter(r => showArchived || !r.archived)
+    .filter(r => !filter || r.name.toLowerCase().includes(filter))
+    .sort((a, b) => (Object.keys(a.gnomes).length > 0) -
+                    (Object.keys(b.gnomes).length > 0) ||
+                    a.name.localeCompare(b.name));
+  rows.forEach(repository => {
+    const row = body.insertRow();
+    if (!Object.keys(repository.gnomes).length) row.className = "unset";
+    const name = row.insertCell();
+    name.className = "name";
+    name.textContent = (repository.forge === "github" ? "" :
+                        repository.forge + ":") + repository.name;
+    if (repository.archived) {
+      const tag = document.createElement("span");
+      tag.className = "tag"; tag.textContent = "archived";
+      name.append(tag);
+    }
+    gnomes.forEach(gnome => row.append(cell(repository, gnome)));
+  });
+  grid.hidden = false;
+}
+
+async function start() {
+  document.getElementById("signin").addEventListener("click", () =>
+    signIn().catch(error => say(error.message)));
+  document.getElementById("filter").addEventListener("input", () => held && render());
+  document.getElementById("archived").addEventListener("change", () => held && render());
+  const params = new URLSearchParams(location.search);
+  try {
+    if (params.get("code")) await finishSignIn(params);
+    if (!fetched(TOKEN)) {
+      document.getElementById("signin").hidden = false;
+      return;
+    }
+    held = await api("GET", "api/settings");
+    if (!Object.keys(held.profiles).length) {
+      say("No policy deployment is in force, so there is no gnome to set.");
+      return;
+    }
+    render();
+  } catch (error) {
+    say(error.message);
+  }
+}
+start();
+</script>
+</body>
+</html>

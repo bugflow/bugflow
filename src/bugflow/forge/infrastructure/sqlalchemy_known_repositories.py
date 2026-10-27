@@ -89,6 +89,32 @@ class SqlAlchemyKnownRepositories:
                 for row in connection.execute(query)
             ]
 
+    def everything(self) -> list[KnownRepository]:
+        """Every repository this server holds a row for, by forge and
+        name."""
+        query = (
+            sa.select(
+                forge.c.name.label("forge"),
+                repository.c.name,
+                repository.c.forge_key,
+                repository.c.archived,
+            )
+            .select_from(
+                repository.join(forge, forge.c.id == repository.c.forge_id)
+            )
+            .order_by(forge.c.name, repository.c.name)
+        )
+        with self._engine.connect() as connection:
+            return [
+                KnownRepository(
+                    forge=row.forge,
+                    name=row.name,
+                    forge_key=row.forge_key,
+                    archived=row.archived,
+                )
+                for row in connection.execute(query)
+            ]
+
     def keep(self, listed: ListedRepository) -> None:
         now = datetime.now(UTC)
         with self._engine.begin() as connection:
@@ -177,6 +203,9 @@ class InMemoryKnownRepositories:
                 or one.forge_key in forge_keys
             )
         ]
+
+    def everything(self) -> list[KnownRepository]:
+        return sorted(self.held, key=lambda one: (one.forge, one.name))
 
     def keep(self, listed: ListedRepository) -> None:
         keyed = next(

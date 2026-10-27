@@ -8,7 +8,12 @@ from bugflow.apps.api.api import PolicyDeploying, create_api
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
 )
+from bugflow.apps.api.settings import PageSignIn, SettingsAdministration
 from bugflow.apps.shared.deploying import Deploying, deployment_check
+from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.forge.infrastructure.sqlalchemy_known_repositories import (
+    InMemoryKnownRepositories,
+)
 from bugflow.method.infrastructure.in_memory_policy_deployments import (
     InMemoryPolicyDeployments,
 )
@@ -16,12 +21,18 @@ from bugflow.method.usecases.deploy_policies import DeployPoliciesUseCase
 from bugflow.review.infrastructure.in_memory_gnome_settings import (
     InMemoryGnomeSettings,
 )
+from bugflow.review.infrastructure.in_memory_layer_boundaries import (
+    InMemoryLayerBoundaries,
+)
+from bugflow.review.usecases.set_gnome import SetGnomeUseCase
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.values.caller import Caller
 from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 
 #: The role the server is told may deploy.
 DEPLOYER = "a-deployer"
+#: The role the server is told may read and change the settings.
+ADMINISTRATOR = "an-administrator"
 #: A role the server is not told about.
 READER = "a-reader"
 #: The checks the server is told it has.
@@ -67,12 +78,30 @@ class Server:
             ),
             deployments=self.deployments,
         )
+        self.repositories = InMemoryKnownRepositories()
+        self.boundaries = InMemoryLayerBoundaries()
         self.client = TestClient(
             create_api(
                 Tokens(),
                 PolicyDeploying(
                     access=RolePolicyDeploymentAccess(DEPLOYER),
                     deploying=self.deploying,
+                ),
+                administration=SettingsAdministration(
+                    role=ADMINISTRATOR,
+                    settings=self.settings,
+                    set_gnome=lambda: SetGnomeUseCase(
+                        self.settings, self.journal, Clock(), "run-1"
+                    ),
+                    repositories=self.repositories.everything,
+                    reviewers=lambda: reviewers_in_force(
+                        self.deployments, CHECKS
+                    ),
+                    boundaries=self.boundaries,
+                    sign_in=PageSignIn(
+                        issuer="https://issuer.example",
+                        client_id="settings-page",
+                    ),
                 ),
             )
         )
