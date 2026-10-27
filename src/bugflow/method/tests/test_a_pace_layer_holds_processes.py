@@ -79,3 +79,36 @@ def test_a_layer_is_the_same_whatever_order_it_names_its_processes() -> None:
     )
 
     assert one == other
+
+
+def test_a_layer_may_give_a_default_boundary_its_cadence_takes() -> None:
+    weekly = layer(
+        "weekly", "weekly", ["architecture-stocktake"], DECLARED, "SUN 23:30"
+    )
+    on_a_delivery = layer(
+        "pull-request", "event", ["evaluate-pull-request"], DECLARED, "60s"
+    )
+    assert weekly.default_boundary == "SUN 23:30"
+    assert on_a_delivery.default_boundary == "60s"
+    assert (
+        layer(
+            "weekly", "weekly", ["architecture-stocktake"], DECLARED
+        ).default_boundary
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("cadence_name", "process_name", "boundary"),
+    [
+        ("event", "evaluate-pull-request", "SUN 23:30"),
+        ("weekly", "architecture-stocktake", "60s"),
+        # A quarter begins at an instant, not on a day of any week.
+        ("quarterly", "architecture-stocktake", "SUN 23:30"),
+    ],
+)
+def test_a_default_boundary_the_cadence_cannot_take_is_refused(
+    cadence_name: str, process_name: str, boundary: str
+) -> None:
+    with pytest.raises(ValueError, match="cannot take"):
+        layer("a-layer", cadence_name, [process_name], DECLARED, boundary)

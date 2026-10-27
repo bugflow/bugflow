@@ -14,8 +14,14 @@ the worker starts rather than at the first run.
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal, get_args
 
+from bugflow.method.domain.models.boundary import (
+    BoundaryError,
+    phase,
+    settling_window,
+)
 from bugflow.shared.domain.values.budget import Budget
 
 #: What a process reads. A pull request's is keyed on a head commit, so
@@ -110,6 +116,11 @@ class PaceLayer:
     #: In name order, so that two declarations of the same processes
     #: are the same layer.
     processes: tuple[Process, ...]
+    #: The boundary a watched repository takes on this layer when it
+    #: declares none (ADR 008): a settling window for a layer an event
+    #: fires, a phase for one a clock fires. None, and a watched
+    #: repository with no boundary stops the worker.
+    default_boundary: str | None = None
 
 
 def cadence(name: str) -> Cadence:
@@ -150,12 +161,14 @@ def layer(
     cadence_name: str,
     process_names: Iterable[str],
     declared: Mapping[str, Process],
+    default_boundary: str | None = None,
 ) -> PaceLayer:
     """A layer of that name, holding the declared processes it names.
 
     A process it names that nobody declared, and a layer holding none,
     are both a ValueError: a schedule that fires and runs nothing costs
-    what a run costs and reports nothing.
+    what a run costs and reports nothing. So is a default boundary its
+    cadence cannot take.
     """
     held = sorted(set(process_names))
     if not held:
@@ -166,8 +179,21 @@ def layer(
             f"the layer {name!r} holds {', '.join(unknown)}, "
             f"which no process declares; declared: {', '.join(declared)}"
         )
+    found = cadence(cadence_name)
+    if default_boundary is not None:
+        try:
+            if found.on_a_clock:
+                phase(default_boundary, found.span, datetime.now(UTC), "UTC")
+            else:
+                settling_window(default_boundary)
+        except BoundaryError as exc:
+            raise ValueError(
+                f"the layer {name!r} has a default boundary its cadence "
+                f"cannot take: {exc}"
+            ) from exc
     return PaceLayer(
         name=name,
-        cadence=cadence(cadence_name),
+        cadence=found,
         processes=tuple(declared[one] for one in held),
+        default_boundary=default_boundary,
     )

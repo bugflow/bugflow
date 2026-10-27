@@ -7,7 +7,7 @@ names a Postgres server.
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from temporalio import activity
@@ -33,10 +33,13 @@ from bugflow.apps.worker.review import (
     policy_classes,
     refuse_without_a_forge,
     reviewing_from_environment,
-    watched_repositories,
+    watched_in,
 )
 from bugflow.apps.worker.reviewers import verdict_scope
 from bugflow.apps.worker.tests.deployed import (
+    DEFAULTED,
+    FILES,
+    TOPOLOGY,
     WIDGETS,
     put_in_force,
     set_gnomes,
@@ -164,16 +167,27 @@ def test_content_is_kept_only_if_all_four_settings_are_given() -> None:
         assert isinstance(store, NullObjectStore), missing
 
 
-def test_watched_repositories_are_named_as_the_journal_names_them() -> None:
-    assert watched_repositories(
-        {
-            "WATCHED_REPOSITORIES": "example-org/widgets, "
-            "forgejo:example-org/gadgets,"
-        }
-    ) == ("github:example-org/widgets", "forgejo:example-org/gadgets")
-    assert watched_repositories({}) == ()
-    with pytest.raises(ValueError, match="not owner/repo"):
-        watched_repositories({"WATCHED_REPOSITORIES": "widgets"})
+def test_the_repositories_a_gnome_judges_are_watched() -> None:
+    settings = InMemoryGnomeSettings(
+        *(
+            GnomeSetting(
+                forge=forge,
+                repo=repo,
+                gnome=gnome,
+                behaviour=cast(Behaviour, set_to),
+            )
+            for forge, repo, gnome, set_to in (
+                ("github", "example-org/widgets", "prose", "observe"),
+                ("github", "example-org/widgets", "security", "gate"),
+                ("forgejo", "example-org/gadgets", "prose", "advise"),
+                ("github", "example-org/quiet", "prose", "off"),
+            )
+        )
+    )
+    assert watched_in(settings) == (
+        "forgejo:example-org/gadgets",
+        "github:example-org/widgets",
+    )
 
 
 def test_each_class_has_its_own_rate_or_the_shared_one() -> None:
@@ -426,7 +440,6 @@ def test_with_no_deployment_in_force_the_part_only_watches_for_one(
     parts = parts_from_environment(
         {
             "DATABASE_URL": database_url,
-            "WATCHED_REPOSITORIES": "example-org/widgets",
             "PERIODS_TIMEZONE": "Nowhere/At-All",
             "REVIEW_RUNNER": "another",
         }
@@ -444,7 +457,7 @@ def test_with_no_deployment_in_force_the_part_only_watches_for_one(
 def test_with_a_deployment_in_force_the_review_workflows_are_registered(
     database_url: str,
 ) -> None:
-    put_in_force(database_url)
+    put_in_force(database_url, FILES | {"pace-layers.toml": DEFAULTED})
 
     parts = parts_from_environment({"DATABASE_URL": database_url})
 
@@ -453,7 +466,9 @@ def test_with_a_deployment_in_force_the_review_workflows_are_registered(
     assert {
         name for held in parts.assessing.values() for name in names(held)
     } == {evaluate_pull_request.ASSESS_ACTIVITY}
-    assert len(parts.schedules) == len(parts.watchers) == 1
+    assert len(parts.schedules) == 1
+    # One watches for a new deployment, one for the gnomes' settings.
+    assert len(parts.watchers) == 2
     assert parts.lines[0].startswith(
         f"reviews under example-org/pull-request-policies at {'c' * 40}, "
         "content "
@@ -484,7 +499,7 @@ def test_every_activity_a_workflow_calls_is_registered_under_its_name(
 def test_a_deployment_that_publishes_with_no_forge_is_refused(
     database_url: str,
 ) -> None:
-    put_in_force(database_url)
+    put_in_force(database_url, FILES | {"pace-layers.toml": DEFAULTED})
     set_gnomes(database_url, "advise")
 
     refused = parts_from_environment({"DATABASE_URL": database_url})
@@ -502,11 +517,8 @@ def test_a_deployment_that_publishes_with_no_forge_is_refused(
 def test_a_watched_repository_with_no_boundary_is_refused(
     database_url: str,
 ) -> None:
-    put_in_force(database_url)
-    environ = {
-        "DATABASE_URL": database_url,
-        "WATCHED_REPOSITORIES": "example-org/widgets",
-    }
+    put_in_force(database_url, FILES | {"pace-layers.toml": TOPOLOGY})
+    environ = {"DATABASE_URL": database_url}
 
     refused = parts_from_environment(environ)
     with pytest.raises(ValueError, match="no boundary declared") as raised:
@@ -525,6 +537,16 @@ def test_a_watched_repository_with_no_boundary_is_refused(
             )
         )
     for refuse in parts_from_environment(environ).before_serving:
+        refuse()
+
+
+def test_a_layers_default_boundary_is_taken_where_none_is_declared(
+    database_url: str,
+) -> None:
+    put_in_force(database_url, FILES | {"pace-layers.toml": DEFAULTED})
+    for refuse in parts_from_environment(
+        {"DATABASE_URL": database_url}
+    ).before_serving:
         refuse()
 
 

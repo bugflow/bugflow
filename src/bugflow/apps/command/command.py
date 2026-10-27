@@ -112,16 +112,17 @@ Its settings are described in ``bugflow.apps.poller.poller``.
 Exit status: 0 when stopped, or after a single poll with no failures.
 1 if a single poll had failures. 2 if a setting is missing or wrong.
 
-``webhooks`` registers this server's webhook on each repository
-``WATCHED_REPOSITORIES`` names, pointing at ``INGRESS_URL`` and signing
+``webhooks`` registers this server's webhook on each repository on
+github.com that a gnome judges, by the settings in the database
+``DATABASE_URL`` names, pointing at ``INGRESS_URL`` and signing
 with ``WEBHOOK_SECRET``, and changes nothing where the forge already
 agrees. It records what it did in the database ``DATABASE_URL`` names.
 
-Exit status: 0 if every repository agrees with the declaration. 1 if any
+Exit status: 0 if every repository agrees with the settings. 1 if any
 could not be reconciled. 2 if a setting is missing or wrong.
 
-``prune-webhooks`` deletes, from each repository
-``WATCHED_REPOSITORIES`` names, the webhook pointing at
+``prune-webhooks`` deletes, from each repository a gnome judges, the
+webhook pointing at
 OLD_INGRESS_URL, the public address this server answered on before it
 moved. Only a webhook whose URL is exactly that address's
 ``/webhooks/github`` is deleted. It refuses an OLD_INGRESS_URL that is
@@ -333,9 +334,9 @@ def _parser() -> argparse.ArgumentParser:
     origins.add_argument("--apply", type=Path, metavar="MAPPINGS.json")
     poll = commands.add_parser(
         "poll",
-        help="list the pull requests of the repositories POLL_REPOSITORIES "
-        "names and post each change to the ingress at INGRESS_URL, in "
-        "place of a webhook the forge cannot deliver",
+        help="list the pull requests of the repositories a gnome judges "
+        "and post each change to the ingress at INGRESS_URL, in place of "
+        "a webhook the forge cannot deliver",
     )
     poll.add_argument(
         "--once",
@@ -344,14 +345,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands.add_parser(
         "webhooks",
-        help="register this server's webhook on each repository "
-        "WATCHED_REPOSITORIES names, pointing at INGRESS_URL",
+        help="register this server's webhook on each repository on "
+        "github.com a gnome judges, pointing at INGRESS_URL",
     )
     prune = commands.add_parser(
         "prune-webhooks",
         help="delete the webhook pointing at the address this server "
-        "answered on before it moved, from each repository "
-        "WATCHED_REPOSITORIES names",
+        "answered on before it moved, from each repository a gnome "
+        "judges",
     )
     prune.add_argument(
         "old_ingress_url",

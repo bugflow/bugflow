@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from standardwebhooks import Webhook, WebhookVerificationError
 from temporalio.client import Client
 
-from bugflow.apps.shared.boundaries import settling_for
+from bugflow.apps.shared.boundaries import Defaulted, settling_for
 from bugflow.apps.shared.deploying import checks_from
 from bugflow.apps.shared.journals import (
     build_sha,
@@ -428,7 +428,10 @@ def app_from_environment(
             worker_workflows(),
             settling_for(
                 reviewers.layers if reviewers else {},
-                SqlAlchemyLayerBoundaries(database_url),
+                Defaulted(
+                    SqlAlchemyLayerBoundaries(database_url),
+                    reviewers.layers if reviewers else {},
+                ),
             ),
         )
         app.state.receive = ReceiveDeliveryUseCase(

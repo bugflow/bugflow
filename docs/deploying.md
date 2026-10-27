@@ -100,9 +100,11 @@ hold only letters, digits, `-`, `.`, `_` and `~`.
 
 ### The forge
 
+The repositories this server watches are not a variable: each a gnome
+judges is watched, by `bugflow set` (ADR 008).
+
 | Variable | Read by | Is |
 |---|---|---|
-| `bugflow_watched_repositories` | `worker`, `webhooks`, `poller` | The repositories this server watches, comma-separated: `owner/repo`, or `forgejo:owner/repo` for one on a Forgejo. Default none |
 | `bugflow_ingress_url` | `webhooks` | The public address a forge posts deliveries to. `bugflow webhooks` does not run without it |
 | `vault_bugflow_webhook_secret` | `ingress`, `webhooks`, `poller` | What a forge signs its deliveries with |
 | `vault_bugflow_webhook_secret_previous` | `ingress` | The previous secret, supplied only while the secret is rotated. Not written if empty |
@@ -243,10 +245,10 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
        bugflow declare OWNER/NAME --layer pull-request --boundary 60s
 
    Once a deployment is in force, the worker does not start until
-   every repository in `bugflow_watched_repositories` has a boundary on
-   every layer the deployment's `pace-layers.toml` holds. It says which
-   are missing and stops, and Compose starts it again. Run the command
-   once for each repository and each layer.
+   every repository a gnome judges has a boundary on every layer the
+   deployment's `pace-layers.toml` holds, declared here or given by the
+   layer's `default_boundary`. It says which are missing and stops, and
+   Compose starts it again.
 
    For a layer an event fires, the boundary is the window a burst of
    deliveries settles in, in seconds: with `60s`, five pushes inside a
@@ -358,8 +360,8 @@ For repositories on github.com, run on the host:
     docker compose -f deployments/{environment}/docker-compose.yml \
         --profile webhooks run --rm webhooks
 
-It registers a webhook on each repository `bugflow_watched_repositories`
-names, pointing at `/webhooks/github` under `bugflow_ingress_url` and
+It registers a webhook on each repository on github.com that a gnome
+judges, pointing at `/webhooks/github` under `bugflow_ingress_url` and
 signed with the webhook secret. It changes nothing where the forge
 already agrees, so it can be run on every deploy.
 

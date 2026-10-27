@@ -33,6 +33,10 @@ class ReconcileWebhooksRequest(BaseModel):
     correlation: Correlation
     events: frozenset[str] = EVENTS
     origin_endpoint: str | None = None
+    #: Whether a repository an earlier run hooked and the list leaves out
+    #: has its webhook removed. Where the list is the repositories some
+    #: gnome judges, one set off keeps its webhook (ADR 008).
+    withdraw_dropped: bool = True
 
 
 class ReconcileWebhooksResponse(BaseModel):

@@ -21,9 +21,6 @@ Settings, all optional:
   The runner's own settings are read by
   ``review_agent.managed_agent_from_environment``.
 - ``PERIODS_TIMEZONE``, as ``reviewers.periods_timezone`` reads it.
-- ``WATCHED_REPOSITORIES``: the repositories a layer on a clock takes
-  stock of, comma-separated, each ``owner/repo`` or
-  ``forgejo:owner/repo``.
 - ``TOKENOMIC_S3_ENDPOINT``, ``TOKENOMIC_S3_BUCKET``,
   ``TOKENOMIC_S3_ACCESS_KEY``, ``TOKENOMIC_S3_SECRET_KEY`` and
   ``TOKENOMIC_S3_REGION``: where the content of each call to a model is
@@ -34,10 +31,15 @@ Settings, all optional:
 import asyncio
 import sys
 from collections.abc import Callable, Collection, Iterable, Mapping
+from contextlib import suppress
 
 from temporalio.client import Client
 
-from bugflow.apps.shared.boundaries import refuse_without_a_boundary
+from bugflow.apps.shared.boundaries import (
+    Defaulted,
+    refuse_without_a_boundary,
+    without_a_boundary,
+)
 from bugflow.apps.shared.deploying import checks_from
 from bugflow.apps.shared.forges import (
     forge_tokens,
@@ -46,6 +48,7 @@ from bugflow.apps.shared.forges import (
 )
 from bugflow.apps.shared.journals import build_sha, review_journal
 from bugflow.apps.shared.policies import ReviewersInForce, reviewers_in_force
+from bugflow.apps.shared.watching import watched
 from bugflow.apps.worker.activities import (
     BackfillActivities,
     Checked,
@@ -87,7 +90,6 @@ from bugflow.apps.worker.reviewers import (
 )
 from bugflow.apps.worker.schedules import TemporalScheduler, reconcile
 from bugflow.apps.worker.stocktake import StocktakeWorkflow
-from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.infrastructure.forgejo import ForgejoForge
 from bugflow.forge.infrastructure.github import GitHubForge
 from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
@@ -208,21 +210,18 @@ def reviewer_names(environ: Mapping[str, str]) -> tuple[str, ...]:
     return _listed(environ, "REVIEW_AGENTS")
 
 
-def watched_repositories(environ: Mapping[str, str]) -> tuple[str, ...]:
-    """Read the repositories ``WATCHED_REPOSITORIES`` names, each as the
-    journal names it: ``forge:owner/repo``.
-
-    A layer on a clock names no repository, so these are what a
-    stocktake is scheduled for.
-
-    Raises ``ValueError`` for a name that is not ``owner/repo`` or
-    ``forgejo:owner/repo``.
-    """
-    watched = (
-        WatchedRepository.parse(name)
-        for name in _listed(environ, "WATCHED_REPOSITORIES")
+def watched_in(settings: GnomeSettingsService) -> tuple[str, ...]:
+    """Each repository a gnome judges, as the journal names it:
+    ``forge:owner/repo``. A layer on a clock names no repository, so
+    these are what a stocktake is scheduled for."""
+    return tuple(
+        f"{one.forge}:{one.owner}/{one.repo}" for one in watched(settings)
     )
-    return tuple(f"{one.forge}:{one.owner}/{one.repo}" for one in watched)
+
+
+#: How often the worker reads the settings again, to schedule the
+#: stocktakes of a repository a gnome began or stopped judging.
+WATCH_INTERVAL_SECONDS = 60.0
 
 
 def checked_policies(
@@ -331,7 +330,9 @@ def boundaries_from_environment(
     database_url = environ["DATABASE_URL"]
     return Boundaries(
         layers=reviewers.layers,
-        repositories=SqlAlchemyLayerBoundaries(database_url),
+        repositories=Defaulted(
+            SqlAlchemyLayerBoundaries(database_url), reviewers.layers
+        ),
         deployment=SqlAlchemyCadenceBoundaries(database_url),
         zone=periods_timezone(environ),
     )
@@ -629,10 +630,10 @@ def parts_from_environment(
     With a deployment in force, three things are checked before the
     worker serves, and each stops it with a ``ValueError``:
 
-    - a repository is bound to a profile that publishes and no forge's
-      settings are given (not checked if ``forge`` is passed);
-    - a repository ``WATCHED_REPOSITORIES`` names has declared no
-      boundary for one of the deployment's layers;
+    - a gnome publishes on a repository and no forge's settings are
+      given (not checked if ``forge`` is passed);
+    - a repository a gnome judges has no boundary for one of the
+      deployment's layers, declared or the layer's default;
     - a class of model names a model the proxy does not publish, or a
       policy a reviewer declared has no model.
 
@@ -670,18 +671,19 @@ def parts_from_environment(
         environ, reviewers, spend_relation
     )
     layers = reviewers.layers
-    watched = watched_repositories(environ)
+    settings = SqlAlchemyGnomeSettings(database_url)
+    watching = watched_in(settings)
     zone = periods_timezone(environ)
-    boundaries = SqlAlchemyLayerBoundaries(database_url)
+    boundaries = Defaulted(SqlAlchemyLayerBoundaries(database_url), layers)
+    scheduling: list[tuple[Client, str]] = []
 
-    async def schedule_stocktakes(client: Client, task_queue: str) -> None:
-        # One schedule for each layer on a clock, for each watched
-        # repository. Made here because the worker that has just read
-        # the topology is what knows what it asks for.
+    async def schedule_for(
+        client: Client, task_queue: str, repositories: tuple[str, ...]
+    ) -> None:
         made = await reconcile(
             TemporalScheduler(client, STOCKTAKE_WORKFLOW),
             layers,
-            watched,
+            repositories,
             task_queue,
             boundaries,
             SystemClock().now(),
@@ -690,6 +692,43 @@ def parts_from_environment(
         if made:
             _say(f"stocktakes scheduled: {', '.join(made)}")
 
+    async def schedule_stocktakes(client: Client, task_queue: str) -> None:
+        # One schedule for each layer on a clock, for each watched
+        # repository. Made here because the worker that has just read
+        # the topology is what knows what it asks for.
+        scheduling.append((client, task_queue))
+        await schedule_for(client, task_queue, watching)
+
+    async def follow_the_settings(stop: asyncio.Event) -> None:
+        # A gnome set on a repository after the worker started has its
+        # stocktakes scheduled within a minute, without a restart. A
+        # repository with no boundary on a layer and no default is
+        # scheduled again each pass until it has one; a failed pass is
+        # said and tried again on the next.
+        seen = watching
+        waiting: list[str] = []
+        while not stop.is_set():
+            with suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), WATCH_INTERVAL_SECONDS)
+            if stop.is_set() or not scheduling:
+                continue
+            try:
+                now = await asyncio.to_thread(watched_in, settings)
+                if now == seen and not waiting:
+                    continue
+                await schedule_for(*scheduling[0], now)
+                missing = await asyncio.to_thread(
+                    without_a_boundary, layers, now, boundaries
+                )
+                if missing and missing != waiting:
+                    _say(
+                        "not scheduled until a boundary is declared: "
+                        + ", ".join(missing)
+                    )
+                seen, waiting = now, missing
+            except Exception as exc:
+                _say(f"following the settings failed, tried again: {exc}")
+
     def a_forge_to_publish_to() -> None:
         if forge is None:
             refuse_without_a_forge(
@@ -697,7 +736,7 @@ def parts_from_environment(
             )
 
     def a_boundary_for_every_period() -> None:
-        refuse_without_a_boundary(layers, watched, boundaries)
+        refuse_without_a_boundary(layers, watching, boundaries)
 
     def a_model_for_every_declared_policy() -> None:
         check_judging_models(
@@ -719,7 +758,7 @@ def parts_from_environment(
             a_boundary_for_every_period,
             a_model_for_every_declared_policy,
         ),
-        watchers=(watch,),
+        watchers=(watch, follow_the_settings),
         lines=(
             f"reviews under {came_from.repository} at {came_from.commit}, "
             f"content {came_from.content_hash[:12]}",
