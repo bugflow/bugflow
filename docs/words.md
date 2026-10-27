@@ -95,6 +95,10 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 - **Declaration.** A line of `declarations.toml`: one policy turned on
   for one repository. [The policy package](policy-package.md), "The
   binding".
+- **Profile.** A named set of one gnome's policies, in a binding's
+  `profiles.toml`. Every gnome has `default`, which holds every policy
+  of it the server answers unless the binding names it. [The policy
+  package](policy-package.md), "The binding".
 - **Glossary.** The words documents of ClankOS and bugflow, copied into
   a binding under `glossary/` and sent with its deployment; a policy
   whose subject is `document/glossary` reads them.

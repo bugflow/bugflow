@@ -2,13 +2,14 @@
 
 A deployment is a set of text files held in the database. This module
 parses them into what a worker reads: reviewers, each reviewer's
-policies and doctrine, the pace layers, what each repository
-declares, and the glossary files.
+policies and doctrine, the pace layers, each reviewer's profiles, what
+each repository declares, and the glossary files.
 
 Every problem in a deployment is collected and reported in one
 ``PolicyDeploymentError``, so a sender sees all of them in one attempt.
 """
 
+import re
 import tomllib
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
@@ -34,6 +35,14 @@ TOPOLOGY = "pace-layers.toml"
 #: The file beside the reviewers that says what each repository is
 #: reviewed for. Optional.
 DECLARATIONS = "declarations.toml"
+#: The file beside the reviewers that names each reviewer's profiles.
+#: Optional.
+PROFILES = "profiles.toml"
+#: The profile every reviewer has, which the profiles file may define
+#: and otherwise holds every policy of the reviewer this server answers.
+DEFAULT_PROFILE = "default"
+#: What a profile's name may be.
+_PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 #: The directory of words documents the binding copies in. Optional.
 GLOSSARY = "glossary"
 #: The names a glossary file may have.
@@ -83,6 +92,12 @@ class ParsedDeployment:
     declared: tuple[RepositoryDeclaration, ...] | None = None
     #: The text of each file under glossary/, by path, in path order.
     glossary: Mapping[str, str] = field(default_factory=dict)
+    #: Each reviewer's profiles, by agent id then profile name: the
+    #: policies a repository set to that profile is judged on. Every
+    #: reviewer has ``default``.
+    profiles: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
+        default_factory=dict
+    )
 
 
 def _in_glossary(path: str) -> bool:
@@ -164,8 +179,8 @@ def parse_deployment(
             except ValueError as exc:
                 problems.append(str(exc))
             continue
-        if one.path == DECLARATIONS:
-            # Parsed after the policies and the layers, which it names.
+        if one.path in (DECLARATIONS, PROFILES):
+            # Parsed after the policies and the layers, which they name.
             continue
         kind = _kind(one.path)
         if kind is None:
@@ -221,6 +236,21 @@ def parse_deployment(
         else:
             policies[owner.agent_id][policy.policy_id] = policy
 
+    unanswerable = _unanswerable(agents, policies, subjects)
+    profiles = _profiles(
+        deployment.text_of(PROFILES),
+        {
+            agent_id: tuple(
+                policy_id
+                for policy_id in agent.policies
+                if policy_id in policies[agent_id]
+                or policy_id in {one.policy_id for one in agent.checks}
+            )
+            for agent_id, agent in agents.items()
+        },
+        unanswerable,
+        problems,
+    )
     declarations = deployment.text_of(DECLARATIONS)
     declared = (
         None
@@ -245,7 +275,7 @@ def parse_deployment(
                 for process in layer.processes
             },
             problems=problems,
-            unanswerable=_unanswerable(agents, policies, subjects),
+            unanswerable=unanswerable,
         )
     )
     if problems:
@@ -273,6 +303,7 @@ def parse_deployment(
         layers=layers,
         declared=declared,
         glossary=glossary,
+        profiles=profiles,
     )
 
 
@@ -343,6 +374,97 @@ def _unanswerable(
                     "server does not render"
                 )
     return reasons
+
+
+def _profiles(
+    text: str | None,
+    held: Mapping[str, tuple[str, ...]],
+    unanswerable: Mapping[str, str],
+    problems: list[str],
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    """Parse the profiles file, adding each problem found to
+    ``problems``, and give every reviewer its ``default``.
+
+    The file has one table for each profile, under the reviewer's id::
+
+        [profile.prose.default]
+        policies = ["P-01", "P-02"]
+
+    ``held`` gives each reviewer's policies, by agent id: those its
+    manifest lists that the deployment holds, by a file or a check. A
+    profile may name only policies its own reviewer holds, and none this
+    server cannot answer. A reviewer whose ``default`` the file does not
+    define has one holding every policy of it that this server answers,
+    so a binding with no profiles file has one profile for each
+    reviewer.
+    """
+    found: dict[str, dict[str, tuple[str, ...]]] = {
+        agent_id: {} for agent_id in held
+    }
+    document: dict[str, object] = {}
+    if text is not None:
+        try:
+            document = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as exc:
+            problems.append(f"{PROFILES}: {exc}")
+    other = sorted(set(document) - {"profile"})
+    if other:
+        problems.append(
+            f"{PROFILES}: {', '.join(other)} is not a table this file "
+            "has; it has profile"
+        )
+    by_agent = document.get("profile", {})
+    if not isinstance(by_agent, dict):
+        problems.append(f"{PROFILES}: profile must be a table")
+        by_agent = {}
+    for agent_id, named in sorted(by_agent.items()):
+        if agent_id not in held:
+            problems.append(
+                f"{PROFILES}: {agent_id} is not a reviewer this "
+                "deployment holds"
+            )
+            continue
+        if not isinstance(named, dict):
+            problems.append(f"{PROFILES}: profile.{agent_id} must be a table")
+            continue
+        for name, table in sorted(named.items()):
+            where = f"{PROFILES}: profile.{agent_id}.{name}"
+            if not _PROFILE_NAME.match(name):
+                problems.append(
+                    f"{where}: a profile's name is lower case letters, "
+                    "digits and hyphens"
+                )
+                continue
+            if not isinstance(table, dict):
+                problems.append(f"{where} must be a table")
+                continue
+            unknown = sorted(set(table) - {"policies"})
+            if unknown:
+                problems.append(
+                    f"{where}: {', '.join(unknown)} is not policies"
+                )
+            value = table.get("policies", [])
+            if not isinstance(value, list) or not all(
+                isinstance(item, str) for item in value
+            ):
+                problems.append(f"{where}: policies must be a list of names")
+                continue
+            missing = sorted(set(value) - set(held[agent_id]))
+            if missing:
+                problems.append(
+                    f"{where}: {', '.join(missing)} is not a policy of "
+                    f"{agent_id}"
+                )
+            for one in value:
+                if one in unanswerable:
+                    problems.append(f"{where}: {unanswerable[one]}")
+            found[agent_id][name] = tuple(dict.fromkeys(value))
+    for agent_id, policy_ids in held.items():
+        found[agent_id].setdefault(
+            DEFAULT_PROFILE,
+            tuple(p for p in policy_ids if p not in unanswerable),
+        )
+    return found
 
 
 def _declared(

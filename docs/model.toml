@@ -8,7 +8,7 @@
 # The things the model names, each of which has a line in docs/words.md.
 things = [
     "gnome", "manifest", "doctrine", "clause", "policy", "subject",
-    "case", "skill", "binding", "declaration", "pace layer",
+    "case", "skill", "binding", "declaration", "profile", "pace layer",
     "deployment", "server", "reviewer", "judge", "model class", "check",
     "finding", "grade", "ceiling", "verdict", "calibration", "glossary",
 ]
@@ -142,6 +142,14 @@ held_by = "the binding's pipeline"
 [[requirement]]
 group = "Binding"
 text = "A binding's declarations.toml pairs policies with repositories."
+
+[[requirement]]
+group = "Binding"
+text = "A binding's profiles.toml names sets of a reviewer's policies."
+
+[[requirement]]
+group = "Binding"
+text = "A reviewer the binding names no default profile for has one of every policy of it the server answers."
 
 [[requirement]]
 group = "Binding"
