@@ -21,6 +21,7 @@ from bugflow.archive.infrastructure import (
 )
 from bugflow.forge.infrastructure import (
     sqlalchemy_forge_facts,
+    sqlalchemy_known_repositories,
     sqlalchemy_snapshots,
 )
 from bugflow.method.infrastructure import (
@@ -60,6 +61,7 @@ def defined() -> sa.MetaData:
         sqlalchemy_repository_associations.metadata,
         sqlalchemy_snapshots.metadata,
         sqlalchemy_forge_facts.metadata,
+        sqlalchemy_known_repositories.metadata,
         sqlalchemy_review_facts.metadata,
         sqlalchemy_stocktake_facts.metadata,
         sqlalchemy_method_facts.metadata,

@@ -104,6 +104,7 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "gnome_setting",
             "gnome_setting_change",
             "repository",
+            "repository_finding",
             "repository_name",
             "pull_request",
             "workflow",

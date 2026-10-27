@@ -22,6 +22,11 @@ FINDING_DISMISSED = "finding.dismissed"
 WEBHOOK_RECONCILED = "webhook.reconciled"
 
 
+#: Discovery found a repository new, renamed, archived or unarchived at
+#: its forge (ADR 008). The payload's ``change`` says which.
+REPOSITORY_FOUND = "repository.found"
+
+
 #: A judge was asked to assess a pull request against one policy. The
 #: review context records this fact. This context only reads it, to tell
 #: whether a pull request has already been reviewed.
@@ -37,3 +42,11 @@ def delivery_id(forge: str, delivery_id: str) -> UUID:
     recorded and is not recorded again.
     """
     return fact_id("delivery", forge, delivery_id)
+
+
+def repository_found_id(
+    forge: str, forge_key: str, change: str, name: str, when: str
+) -> UUID:
+    """The id of a "repository found" fact, made from the repository's
+    key at its forge, what changed, its name and the time."""
+    return fact_id("repository-found", forge, forge_key, change, name, when)

@@ -23,6 +23,7 @@ from bugflow.forge.domain.errors import (
     ForgeUnavailableError,
 )
 from bugflow.forge.domain.models.delivery import forge_time
+from bugflow.forge.domain.models.forge_repository import ListedRepository
 from bugflow.forge.domain.models.polling import (
     PolledComment,
     PolledPullRequest,
@@ -230,6 +231,8 @@ class GitHubTokens:
         held."""
         parts = path.split("/")
         if len(parts) > 3 and parts[1] == "repos" and parts[2]:
+            return self.for_owner(parts[2])
+        if len(parts) > 3 and parts[1] in ("orgs", "users") and parts[2]:
             return self.for_owner(parts[2])
         token = self.any_owner or next(iter(self.by_owner.values()), None)
         if not token:
@@ -491,6 +494,25 @@ class GitHubForge:
             json=_hook_body(url, secret, events),
         )
         return webhook_from_payload(payload)
+
+    def repositories_of(self, owner: str) -> list[ListedRepository]:
+        """An organisation's repositories, or a user's public ones where
+        the owner is a user. An organisation that refuses the token is a
+        failure, not its public repositories."""
+        account = self._get(f"/users/{owner}")
+        if account.get("type") == "Organization":
+            found = self._get_all(f"/orgs/{owner}/repos")
+        else:
+            found = self._get_all(f"/users/{owner}/repos")
+        return [
+            ListedRepository(
+                forge="github",
+                name=str(one["full_name"]),
+                forge_key=str(one["id"]),
+                archived=bool(one.get("archived", False)),
+            )
+            for one in found
+        ]
 
     def current_name(self, owner: str, repo: str) -> str | None:
         found = self._send("GET", f"/repos/{owner}/{repo}", missing_ok=True)
