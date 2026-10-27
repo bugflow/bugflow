@@ -30,6 +30,7 @@ from bugflow.method.infrastructure import (
 from bugflow.review.infrastructure import (
     sqlalchemy_cadence_boundaries,
     sqlalchemy_enforcement,
+    sqlalchemy_gnome_settings,
     sqlalchemy_governance,
     sqlalchemy_judge_archive,
     sqlalchemy_layer_boundaries,
@@ -69,6 +70,7 @@ def defined() -> sa.MetaData:
         sqlalchemy_judge_archive.metadata,
         sqlalchemy_write_up_archive.metadata,
         sqlalchemy_governance.metadata,
+        sqlalchemy_gnome_settings.metadata,
         sqlalchemy_enforcement.metadata,
         sqlalchemy_withholding.metadata,
         sqlalchemy_spend_bindings.metadata,
