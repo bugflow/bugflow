@@ -23,6 +23,7 @@ from bugflow.method.domain.models.policy_deployment import (
 PATTERNS = (
     "pace-layers.toml",
     "declarations.toml",
+    "profiles.toml",
     "*/manifest.md",
     "*/reviewer.md",
     "*/policies/*.md",
