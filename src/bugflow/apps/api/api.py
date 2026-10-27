@@ -1,9 +1,11 @@
-"""Authenticated policy deployment and evaluation reads.
+"""Authenticated policy deployment, evaluation reads, and the gnomes'
+settings with their page.
 
 Run by uvicorn with --factory as api_from_environment.
 """
 
 import os
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Annotated
@@ -15,14 +17,23 @@ from bugflow.apps.api.evaluations import EvaluationReading, evaluation_routes
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
 )
+from bugflow.apps.api.settings import (
+    SettingsAdministration,
+    settings_routes,
+    sign_in_from,
+)
 from bugflow.apps.shared.deploying import (
     Deploying,
     checks_from,
     deploying_over,
 )
-from bugflow.apps.shared.journals import build_sha
+from bugflow.apps.shared.journals import build_sha, stamped_journal
+from bugflow.apps.shared.policies import reviewers_in_force
 from bugflow.apps.shared.submission_source import ForgeBoundedSubmissionSource
 from bugflow.apps.shared.telemetry import configure_telemetry, instrument_app
+from bugflow.forge.infrastructure.sqlalchemy_known_repositories import (
+    SqlAlchemyKnownRepositories,
+)
 from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
     SqlAlchemySnapshotStore,
 )
@@ -39,16 +50,26 @@ from bugflow.method.dtos.deploy_policies import (
     DeployPoliciesResponse,
     InForce,
 )
+from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
+    SqlAlchemyPolicyDeployments,
+)
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
+)
 from bugflow.review.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
 )
 from bugflow.review.infrastructure.sqlalchemy_judge_archive import (
     SqlAlchemyJudgeArchive,
 )
+from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
+    SqlAlchemyLayerBoundaries,
+)
 from bugflow.review.usecases.read_review_record import (
     ReadReviewHistoryUseCase,
     ReadReviewRecordUseCase,
 )
+from bugflow.review.usecases.set_gnome import SetGnomeUseCase
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.services.bearer_token import BearerTokenService
 from bugflow.shared.domain.values.caller import Caller
@@ -56,6 +77,7 @@ from bugflow.shared.infrastructure.jwt_bearer_token import (
     JwtBearerToken,
     published_keys,
 )
+from bugflow.shared.infrastructure.system_clock import SystemClock
 
 
 @dataclass(frozen=True)
@@ -71,6 +93,7 @@ def create_api(
     tokens: BearerTokenService,
     deploying: PolicyDeploying,
     reading: EvaluationReading | None = None,
+    administration: SettingsAdministration | None = None,
 ) -> FastAPI:
     """Build the API over the token check and what deploys."""
     app = FastAPI(title="bugflow API")
@@ -95,6 +118,8 @@ def create_api(
     policy_deployment_routes(app, caller, deploying)
     if reading is not None:
         evaluation_routes(app, caller, reading)
+    if administration is not None:
+        settings_routes(app, caller, administration)
     return app
 
 
@@ -201,6 +226,14 @@ def api_from_environment(
     - ``EVALUATION_IDENTITIES``: a JSON list of issuer, subject and commit
       email aliases, managed by the operator. Unset, contributors have no
       aliases. Changes take effect on API restart.
+    - ``SETTINGS_ROLE``: the role that may read and change what each
+      gnome does on each repository, through ``/api/settings``. Unset,
+      the routes and the page are not served.
+    - ``SETTINGS_CLIENT_ID``: the public client the settings page signs
+      a person in as, at ``API_ISSUER``, and ``SETTINGS_SCOPE``, the
+      scopes it asks for, ``openid profile`` if unset. The client must
+      be one of ``API_CLIENTS``, and the scopes must give a token
+      ``API_AUDIENCE`` accepts with the caller's roles.
     - ``BUILD_SHA``: the full git sha of the build, recorded with every
       journal entry.
     - ``POLICY_CHECKS``: the checks this server performs, comma-separated.
@@ -262,6 +295,37 @@ def api_from_environment(
             ),
         ),
         reading=reading,
+        administration=administration_from(environ, issuer),
     )
     instrument_app(app, environ)
     return app
+
+
+def administration_from(
+    environ: Mapping[str, str], issuer: str
+) -> SettingsAdministration | None:
+    """The settings routes' composition, or None where ``SETTINGS_ROLE``
+    is not set."""
+    role = environ.get("SETTINGS_ROLE", "")
+    if not role:
+        return None
+    database_url = environ["DATABASE_URL"]
+    settings = SqlAlchemyGnomeSettings(database_url)
+    build = build_sha(environ)
+    checks = checks_from(environ)
+    deployments = SqlAlchemyPolicyDeployments(database_url)
+    known = SqlAlchemyKnownRepositories(database_url)
+    return SettingsAdministration(
+        role=role,
+        settings=settings,
+        set_gnome=lambda: SetGnomeUseCase(
+            settings,
+            stamped_journal(database_url, build),
+            SystemClock(),
+            uuid.uuid4().hex,
+        ),
+        repositories=known.everything,
+        reviewers=lambda: reviewers_in_force(deployments, checks),
+        boundaries=SqlAlchemyLayerBoundaries(database_url),
+        sign_in=sign_in_from(environ, issuer),
+    )
