@@ -8,7 +8,9 @@ A boundary may not be unset. Silence about one does not fail, it
 guesses: a weekly allowance that assumes Monday midnight while the
 stocktake reads 23:30 Sunday charges a run to the week about to end, and
 nothing says so until the money is counted. So a pair with no boundary
-stops the worker, rather than running on a guess.
+stops the worker, rather than running on a guess. A layer may state a
+default boundary for every repository that declares none (ADR 008),
+which is a statement and not a guess; ``Defaulted`` answers with it.
 """
 
 from collections.abc import Callable, Iterable, Mapping
@@ -16,9 +18,40 @@ from collections.abc import Callable, Iterable, Mapping
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.method.domain.models.boundary import settling_window
 from bugflow.method.domain.models.pace_layer import PaceLayer
+from bugflow.review.domain.models.layer_boundary import LayerBoundary
 from bugflow.review.domain.services.layer_boundaries import (
     LayerBoundariesService,
 )
+
+
+class Defaulted:
+    """Implements ``LayerBoundariesService``: each repository's declared
+    boundary on a layer, or the layer's default where it declared none.
+    What is declared is unchanged."""
+
+    def __init__(
+        self,
+        declared: LayerBoundariesService,
+        layers: Mapping[str, PaceLayer],
+    ) -> None:
+        self._declared = declared
+        self._layers = layers
+
+    def boundary(self, forge: str, repo: str, layer: str) -> str | None:
+        found = self._declared.boundary(forge, repo, layer)
+        if found is not None:
+            return found
+        held = self._layers.get(layer)
+        return held.default_boundary if held else None
+
+    def declare(self, boundary: LayerBoundary) -> None:
+        self._declared.declare(boundary)
+
+    def withdraw(self, forge: str, repo: str, layer: str) -> None:
+        self._declared.withdraw(forge, repo, layer)
+
+    def declarations(self) -> list[LayerBoundary]:
+        return self._declared.declarations()
 
 
 def without_a_boundary(

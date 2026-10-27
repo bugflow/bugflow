@@ -5,14 +5,21 @@ The command tests are skipped unless DATABASE_URL names a Postgres
 server.
 """
 
+from datetime import UTC, datetime
+
 import httpx2
 import pytest
 import sqlalchemy as sa
 
 from bugflow.apps.command.command import run
+from bugflow.apps.command.tests.watching import watching
 from bugflow.apps.command.webhooks import REQUIRED, HookSettings
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.tests.test_forge_conformance import FakeGitHub
+from bugflow.review.domain.models.gnome_setting import GnomeSetting
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
+)
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.sqlalchemy_journal import journal
 
@@ -21,7 +28,6 @@ BUILD = "4" * 40
 
 def environment(database_url: str = "postgresql://nowhere/none") -> dict:  # type: ignore[type-arg]
     return {
-        "WATCHED_REPOSITORIES": "o/r, o/other",
         "INGRESS_URL": "https://ingress.example/",
         "WEBHOOK_SECRET": "s3cret",
         "FORGE_TOKEN": "t",
@@ -30,8 +36,14 @@ def environment(database_url: str = "postgresql://nowhere/none") -> dict:  # typ
     }
 
 
+BOTH = (
+    WatchedRepository(owner="o", repo="r"),
+    WatchedRepository(owner="o", repo="other"),
+)
+
+
 def test_the_settings_are_read_and_the_route_is_added() -> None:
-    settings = HookSettings.from_environment(environment())
+    settings = HookSettings.from_environment(environment(), lambda: BOTH)
     assert settings.repositories == (
         WatchedRepository(owner="o", repo="r"),
         WatchedRepository(owner="o", repo="other"),
@@ -44,7 +56,7 @@ def test_the_settings_are_read_and_the_route_is_added() -> None:
 def test_a_missing_address_or_secret_is_named(name: str) -> None:
     environ = environment() | {name: ""}
     with pytest.raises(ValueError, match=name):
-        HookSettings.from_environment(environ)
+        HookSettings.from_environment(environ, lambda: BOTH)
 
 
 def test_every_variable_the_command_reads_is_listed() -> None:
@@ -53,15 +65,19 @@ def test_every_variable_the_command_reads_is_listed() -> None:
     assert set(REQUIRED) <= set(environment())
 
 
-def test_a_repository_on_forgejo_cannot_be_registered() -> None:
-    environ = environment() | {"WATCHED_REPOSITORIES": "forgejo:o/r"}
-    with pytest.raises(ValueError, match="only github"):
-        HookSettings.from_environment(environ)
+def test_a_repository_on_forgejo_is_left_to_the_poller() -> None:
+    on_forgejo = WatchedRepository(forge="forgejo", owner="o", repo="r")
+    settings = HookSettings.from_environment(
+        environment(), lambda: (on_forgejo, *BOTH)
+    )
+    assert settings.repositories == BOTH
 
 
 def test_no_repositories_need_no_token() -> None:
-    environ = environment() | {"WATCHED_REPOSITORIES": "", "FORGE_TOKEN": ""}
-    assert HookSettings.from_environment(environ).repositories == ()
+    environ = environment() | {"FORGE_TOKEN": ""}
+    assert (
+        HookSettings.from_environment(environ, lambda: ()).repositories == ()
+    )
 
 
 def test_the_command_names_the_missing_setting(
@@ -85,6 +101,7 @@ def test_the_command_registers_a_hook_and_records_it(
     github = FakeGitHub()
     transport = httpx2.MockTransport(github.handle)
     environ = environment(database_url)
+    watching(database_url, "o/r", "o/other")
     assert run(["webhooks"], environ=environ, transport=transport) == 0
     printed = capsys.readouterr().out
     assert "reconciled against https://ingress.example/webhooks/github" in (
@@ -111,3 +128,31 @@ def test_the_command_registers_a_hook_and_records_it(
     finally:
         engine.dispose()
     assert (("o/r", BUILD) in rows) and (("o/other", BUILD) in rows)
+
+
+def test_a_repository_set_off_keeps_its_webhook(
+    database_url: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A repository no gnome judges keeps a webhook it has (ADR 008), so
+    a run before the settings are made strips no repository of one."""
+    github = FakeGitHub()
+    transport = httpx2.MockTransport(github.handle)
+    environ = environment(database_url)
+    watching(database_url, "o/r")
+    assert run(["webhooks"], environ=environ, transport=transport) == 0
+    SqlAlchemyGnomeSettings(database_url).save(
+        GnomeSetting(
+            forge="github",
+            repo="o/r",
+            gnome="prose",
+            behaviour="off",
+            set_by="a test",
+            set_at=datetime.now(UTC),
+        )
+    )
+    capsys.readouterr()
+
+    assert run(["webhooks"], environ=environ, transport=transport) == 0
+
+    assert "removed" not in capsys.readouterr().out
+    assert len(github.hooks[("o", "r")]) == 1

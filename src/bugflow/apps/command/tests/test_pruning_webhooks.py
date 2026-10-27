@@ -1,11 +1,14 @@
 """Tests of ``bugflow prune-webhooks``, run by its command line against
-a fake of GitHub. It needs no database: it records nothing.
+a fake of GitHub. It records nothing, and reads the watched repositories
+from a database, so the command tests are skipped unless DATABASE_URL
+names a Postgres server.
 """
 
 import httpx2
 import pytest
 
 from bugflow.apps.command.command import run
+from bugflow.apps.command.tests.watching import watching
 from bugflow.apps.command.webhooks import PruneSettings
 from bugflow.forge.tests.test_forge_conformance import FakeGitHub
 
@@ -13,12 +16,20 @@ OLD = "https://old.example"
 NEW = "https://new.example"
 
 
-def environment() -> dict[str, str]:
+def environment(
+    database_url: str = "postgresql://nowhere/none",
+) -> dict[str, str]:
     return {
-        "WATCHED_REPOSITORIES": "o/r, o/other",
+        "DATABASE_URL": database_url,
         "INGRESS_URL": NEW + "/",
         "FORGE_TOKEN": "t",
     }
+
+
+def watched(database_url: str) -> dict[str, str]:
+    """The environment, with o/r and o/other watched in the database."""
+    watching(database_url, "o/r", "o/other")
+    return environment(database_url)
 
 
 def seeded() -> FakeGitHub:
@@ -48,12 +59,15 @@ def urls(github: FakeGitHub, repo: str) -> list[str]:
 
 
 def test_the_settings_add_the_route_to_both_addresses() -> None:
-    settings = PruneSettings.from_environment(environment(), OLD + "/")
+    settings = PruneSettings.from_environment(
+        environment(), OLD + "/", lambda: ()
+    )
     assert settings.url == "https://old.example/webhooks/github"
     assert settings.keep == "https://new.example/webhooks/github"
 
 
 def test_the_old_webhook_is_deleted_and_every_other_kept(
+    database_url: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     github = seeded()
@@ -61,7 +75,7 @@ def test_the_old_webhook_is_deleted_and_every_other_kept(
     assert (
         run(
             ["prune-webhooks", OLD],
-            environ=environment(),
+            environ=watched(database_url),
             transport=transport,
         )
         == 0
@@ -77,6 +91,7 @@ def test_the_old_webhook_is_deleted_and_every_other_kept(
 
 
 def test_a_dry_run_names_the_webhook_and_sends_no_delete(
+    database_url: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     github = seeded()
@@ -89,7 +104,7 @@ def test_a_dry_run_names_the_webhook_and_sends_no_delete(
     assert (
         run(
             ["prune-webhooks", OLD, "--dry-run"],
-            environ=environment(),
+            environ=watched(database_url),
             transport=httpx2.MockTransport(handle),
         )
         == 0
@@ -102,6 +117,7 @@ def test_a_dry_run_names_the_webhook_and_sends_no_delete(
 
 
 def test_the_current_address_is_refused_before_the_forge_is_asked(
+    database_url: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     def handle(request: httpx2.Request) -> httpx2.Response:
@@ -109,7 +125,7 @@ def test_the_current_address_is_refused_before_the_forge_is_asked(
 
     status = run(
         ["prune-webhooks", NEW],
-        environ=environment(),
+        environ=watched(database_url),
         transport=httpx2.MockTransport(handle),
     )
     assert status == 2
@@ -125,6 +141,7 @@ def test_a_missing_setting_is_named(
 
 
 def test_a_repository_the_forge_refuses_fails_the_run(
+    database_url: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     github = seeded()
@@ -136,7 +153,7 @@ def test_a_repository_the_forge_refuses_fails_the_run(
 
     status = run(
         ["prune-webhooks", OLD],
-        environ=environment(),
+        environ=watched(database_url),
         transport=httpx2.MockTransport(handle),
     )
     assert status == 1

@@ -50,7 +50,7 @@ from bugflow.shared.infrastructure.toml_validation import require
 _require = functools.partial(require, error=PaceLayerTopologyError)
 
 _PROCESS_KEYS = frozenset({"subject", "reviewer", "usd", "turns", "judges"})
-_LAYER_KEYS = frozenset({"cadence", "processes"})
+_LAYER_KEYS = frozenset({"cadence", "processes", "default_boundary"})
 _TABLES = frozenset({"process", "layer"})
 
 
@@ -176,7 +176,15 @@ def _layer(
         raise PaceLayerTopologyError(
             path, f"the layer {name!r} names a process that is not a string"
         )
-    return _refusing(path, lambda: layer(name, cadence, named, processes))
+    default = table.get("default_boundary")
+    if default is not None and not isinstance(default, str):
+        raise PaceLayerTopologyError(
+            path,
+            f"the layer {name!r} has a default_boundary that is not a string",
+        )
+    return _refusing(
+        path, lambda: layer(name, cadence, named, processes, default)
+    )
 
 
 def _refusing[T](path: Path, build: Callable[[], T]) -> T:
