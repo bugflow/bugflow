@@ -34,6 +34,7 @@ from bugflow.apps.shared.deploying import checks_from
 from bugflow.apps.shared.journals import (
     build_sha,
     delivery_journal,
+    dispatch_queries,
     stamped_journal,
 )
 from bugflow.apps.shared.policies import reviewers_in_force
@@ -82,9 +83,6 @@ from bugflow.shared.infrastructure.system_clock import SystemClock
 from bugflow.work.dtos.receive_completion import ReceiveCompletionRequest
 from bugflow.work.infrastructure.managed_agent_completion import (
     completion_from_managed_agent,
-)
-from bugflow.work.infrastructure.sqlalchemy_journal_queries import (
-    SqlAlchemyJournalQueries,
 )
 from bugflow.work.usecases.receive_completion import ReceiveCompletionUseCase
 
@@ -441,7 +439,7 @@ def app_from_environment(
             added.corpora(client, settings, loop) if added.corpora else None,
         )
         app.state.receive_completion = ReceiveCompletionUseCase(
-            SqlAlchemyJournalQueries(database_url),
+            dispatch_queries(database_url),
             starter,
             stamped_journal(database_url, build),
             SystemClock(),
