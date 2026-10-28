@@ -496,12 +496,22 @@ class GitHubForge:
         return webhook_from_payload(payload)
 
     def repositories_of(self, owner: str) -> list[ListedRepository]:
-        """An organisation's repositories, or a user's public ones where
-        the owner is a user. An organisation that refuses the token is a
-        failure, not its public repositories."""
+        """An organisation's repositories, or a user's.
+
+        An organisation's are listed with its token, and one that
+        refuses the token is a failure, not its public repositories. A
+        user's are listed as that user, private ones included, where the
+        token for the owner is the user's own; with another's token,
+        GitHub shows only the public ones."""
         account = self._get(f"/users/{owner}")
         if account.get("type") == "Organization":
             found = self._get_all(f"/orgs/{owner}/repos")
+        elif self._is_the_token_of(owner):
+            found = self._get_all(
+                "/user/repos",
+                params={"affiliation": "owner"},
+                token=self._tokens.for_owner(owner),
+            )
         else:
             found = self._get_all(f"/users/{owner}/repos")
         return [
@@ -514,6 +524,15 @@ class GitHubForge:
             )
             for one in found
         ]
+
+    def _is_the_token_of(self, owner: str) -> bool:
+        """Whether the token for ``owner`` signs in as that user."""
+        try:
+            token = self._tokens.for_owner(owner)
+        except ForgeRejectedError:
+            return False
+        me = self._get("/user", token=token)
+        return str(me.get("login", "")).lower() == owner.lower()
 
     def current_name(self, owner: str, repo: str) -> str | None:
         found = self._send("GET", f"/repos/{owner}/{repo}", missing_ok=True)
@@ -537,8 +556,11 @@ class GitHubForge:
         json: dict[str, Any] | None = None,
         missing_ok: bool = False,
         follow_redirects: bool = True,
+        token: str | None = None,
     ) -> Any:
-        token = self._tokens.for_path(path)
+        """``token`` signs the request where given; else the token for
+        the path does."""
+        token = token or self._tokens.for_path(path)
         try:
             response = self._client.request(
                 method,
@@ -565,20 +587,31 @@ class GitHubForge:
         params: dict[str, int | str] | None = None,
         *,
         follow_redirects: bool = True,
+        token: str | None = None,
     ) -> Any:
         return self._send(
-            "GET", path, params=params, follow_redirects=follow_redirects
+            "GET",
+            path,
+            params=params,
+            follow_redirects=follow_redirects,
+            token=token,
         )
 
     def _get_all(
-        self, path: str, *, follow_redirects: bool = True
+        self,
+        path: str,
+        *,
+        follow_redirects: bool = True,
+        params: dict[str, int | str] | None = None,
+        token: str | None = None,
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         for page in range(1, MAX_PAGES + 1):
             batch = self._get(
                 path,
-                {"per_page": PER_PAGE, "page": page},
+                {**(params or {}), "per_page": PER_PAGE, "page": page},
                 follow_redirects=follow_redirects,
+                token=token,
             )
             items.extend(batch)
             if len(batch) < PER_PAGE:
