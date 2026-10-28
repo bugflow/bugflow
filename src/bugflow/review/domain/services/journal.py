@@ -44,8 +44,10 @@ class JournalService(RecordingService, Protocol):
         self, ref: PullRequestRef, excluding: Correlation
     ) -> Correlation | None:
         """Return the most recent workflow run, other than
-        ``excluding``, that wrote something to the pull request. That
-        is the last evaluation that got as far as publishing. None if
+        ``excluding``, that recorded an action on the pull request: the
+        last evaluation that got as far as deciding what to publish,
+        whether or not anything reached the forge. Under ``observe``,
+        and after a merge, that is an evaluation nobody saw. None if
         there is none."""
         ...
 
