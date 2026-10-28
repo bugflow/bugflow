@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import pytest
 
+from bugflow.apps.shared.journals import DISPATCH_TABLES
 from bugflow.review.infrastructure.sqlalchemy_review_facts import (
     UNPACKERS as REVIEW_UNPACKERS,
 )
@@ -216,6 +217,20 @@ def test_a_dispatch_under_another_fact_matches_only_if_it_is_named(
         # The two in-memory journals are separate, so only the database
         # shows that the same entry is not matched when it is not named.
         assert not_named.dispatched_run(runner, "s-1") is None
+
+
+def test_the_ingress_matches_a_completion_to_a_stocktakes_dispatch(
+    make: Make,
+) -> None:
+    recording, queries = make(DISPATCH_TABLES)
+    runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
+    written = entry("stocktake.dispatched", dispatch(runner, "s-1"), repo=repo)
+    recording.append([written])
+
+    found = queries.dispatched_run(runner, "s-1")
+
+    assert found is not None
+    assert found.correlation.workflow_id == written.workflow_id
 
 
 def test_every_dispatch_that_started_a_run_comes_back_oldest_first(
