@@ -51,8 +51,8 @@ spend_bindings = sa.Table(
     ),
 )
 
-#: How specific a row is: the number of scope columns it names. The
-#: most specific match is the ceiling that applies.
+#: How specific a row is: the number of scope columns it names. Rows
+#: are listed most specific first; every match applies.
 _NAMED = (
     sa.case((spend_bindings.c.forge != "", 1), else_=0)
     + sa.case((spend_bindings.c.repo != "", 1), else_=0)
