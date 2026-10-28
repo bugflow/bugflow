@@ -1,5 +1,6 @@
 """Deploying refuses a deployment that drops a profile a setting names
-(ADR 008). The use case itself is the method context's, tested
+(ADR 008), and one that gives a layer a cadence a declared boundary
+cannot take. The use case itself is the method context's, tested
 there."""
 
 from datetime import UTC, datetime
@@ -25,8 +26,12 @@ from bugflow.review.domain.models.gnome_setting import (
     Behaviour,
     GnomeSetting,
 )
+from bugflow.review.domain.models.layer_boundary import LayerBoundary
 from bugflow.review.infrastructure.in_memory_gnome_settings import (
     InMemoryGnomeSettings,
+)
+from bugflow.review.infrastructure.in_memory_layer_boundaries import (
+    InMemoryLayerBoundaries,
 )
 from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 
@@ -41,8 +46,9 @@ class Fixture:
         self.deployments = InMemoryPolicyDeployments()
         self.journal = InMemoryJournal()
         self.settings = InMemoryGnomeSettings(*settings)
+        self.boundaries = InMemoryLayerBoundaries()
         self.deploying: Deploying = deploying_with(
-            self.deployments, self.journal, (), self.settings
+            self.deployments, self.journal, (), self.settings, self.boundaries
         )
 
     def deploy(
@@ -104,6 +110,37 @@ def test_a_profile_a_gnome_set_off_names_is_kept_too() -> None:
 
 def test_the_default_profile_is_never_dropped() -> None:
     fixture = Fixture(prose("gate", "default"))
+    assert fixture.deploy() == "deployed"
+
+
+def bounded(layer: str, boundary: str) -> LayerBoundary:
+    return LayerBoundary(
+        forge="github",
+        repo="example-org/widgets",
+        layer=layer,
+        boundary=boundary,
+    )
+
+
+@pytest.mark.parametrize("check_only", [False, True])
+def test_a_deployment_whose_cadence_a_boundary_cannot_take_is_refused(
+    check_only: bool,
+) -> None:
+    """The layer pull-request runs on an event, and a phase declared
+    on it would make the ingress raise on every delivery."""
+    fixture = Fixture()
+    fixture.boundaries.declare(bounded("pull-request", "SUN 23:30"))
+    with pytest.raises(
+        PolicyDeploymentError,
+        match="github:example-org/widgets begins pull-request at 'SUN 23:30'",
+    ):
+        fixture.deploy(check_only=check_only)
+
+
+def test_a_boundary_its_cadence_takes_or_on_no_layer_is_left_alone() -> None:
+    fixture = Fixture()
+    fixture.boundaries.declare(bounded("pull-request", "60s"))
+    fixture.boundaries.declare(bounded("weekly", "60s"))
     assert fixture.deploy() == "deployed"
 
 

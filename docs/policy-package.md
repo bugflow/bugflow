@@ -253,7 +253,8 @@ has one profile for each reviewer.
 Which repositories a gnome judges is not the binding's: the server's
 operator sets each gnome on each repository to a behaviour and one of
 its profiles (ADR 008). A deployment that drops a profile a setting
-judges by is refused. `declarations.toml`, which named each
+judges by is refused, as is one that gives a layer a cadence a
+boundary declared on it cannot take. `declarations.toml`, which named each
 repository's policies before, is refused.
 
 ## Deployment

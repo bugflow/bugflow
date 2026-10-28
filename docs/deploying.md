@@ -273,7 +273,9 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    minute are one review. For a layer a clock fires, it is where the
    period begins: `23:30`, `"SUN 23:30"`, `"1 23:30"` for a day of the
    month, or `"2026-09-01 09:00"`. A fortnight, a quarter and a year
-   take only the last form.
+   take only the last form. A boundary the layer's cadence in the
+   deployment in force cannot take is refused, and so is a deployment
+   that gives a layer a cadence a boundary declared on it cannot take.
 
 2. Set each gnome on the repository.
 
