@@ -15,11 +15,13 @@ is written to the error stream and returns 2, and nothing is written.
 
 import sys
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TextIO
 
 from bugflow.apps.shared.journals import stamped_journal
+from bugflow.apps.shared.policies import reviewers_in_force
 from bugflow.archive.domain.models.binding import ArchiveBinding
 from bugflow.archive.dtos.bind_ledger import BindLedgerRequest
 from bugflow.archive.infrastructure.sqlalchemy_bindings import (
@@ -27,12 +29,20 @@ from bugflow.archive.infrastructure.sqlalchemy_bindings import (
 )
 from bugflow.archive.usecases.bind_ledger import BindLedgerUseCase
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
+from bugflow.method.domain.errors import PolicyDeploymentError
 from bugflow.method.domain.models.boundary import (
     BoundaryError,
     phase,
     settling_window,
 )
-from bugflow.method.domain.models.pace_layer import CADENCES, EVENT
+from bugflow.method.domain.models.pace_layer import (
+    CADENCES,
+    EVENT,
+    check_boundary,
+)
+from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
+    SqlAlchemyPolicyDeployments,
+)
 from bugflow.review.domain.models.cadence_boundary import CadenceBoundary
 from bugflow.review.domain.models.layer_boundary import LayerBoundary
 from bugflow.review.domain.models.spend_binding import (
@@ -40,6 +50,7 @@ from bugflow.review.domain.models.spend_binding import (
     SpendScope,
 )
 from bugflow.review.domain.models.withholding import Withholding
+from bugflow.review.domain.values.checked_policy import CHECKS
 from bugflow.review.infrastructure.sqlalchemy_cadence_boundaries import (
     SqlAlchemyCadenceBoundaries,
 )
@@ -108,7 +119,7 @@ def _unreadable(boundary: str, zone: str, now: datetime) -> str | None:
 
     Which kind a layer takes is the topology's to say, and a boundary
     may be declared before any deployment is in force, so this checks
-    the shape and not the layer.
+    the shape and not the layer. ``_unfit`` checks the layer.
     """
     try:
         settling_window(boundary)
@@ -129,6 +140,39 @@ def _unreadable(boundary: str, zone: str, now: datetime) -> str | None:
     return None
 
 
+def _unfit(
+    database_url: str, checks: Collection[str], layer: str, boundary: str
+) -> str | None:
+    """Say why the layer's cadence cannot take the boundary, or return
+    None when it can.
+
+    The cadence is the one the deployment in force gives the layer.
+    With no deployment in force, or none that holds the layer, there is
+    no cadence to check against: the deployment that brings the layer
+    is checked against the boundaries already declared.
+    """
+    try:
+        reviewers = reviewers_in_force(
+            SqlAlchemyPolicyDeployments(database_url), checks
+        )
+    except PolicyDeploymentError as exc:
+        return (
+            "the deployment in force does not parse, so the cadence of "
+            f"{layer!r} cannot be read: {exc}"
+        )
+    held = reviewers.layers.get(layer) if reviewers else None
+    if held is None:
+        return None
+    try:
+        check_boundary(held.cadence, boundary)
+    except BoundaryError as exc:
+        return (
+            f"the layer {layer!r} runs at the {held.cadence.name} cadence, "
+            f"which cannot take that boundary: {exc}"
+        )
+    return None
+
+
 def run_declare(
     database_url: str,
     repository: str,
@@ -142,6 +186,7 @@ def run_declare(
     out: TextIO | None = None,
     err: TextIO | None = None,
     archive_origin: str | None = None,
+    checks: Collection[str] = CHECKS,
 ) -> int:
     """Declare a boundary, a repository's withheld share and a ledger
     whose archive this server keeps, and print what is held.
@@ -156,7 +201,8 @@ def run_declare(
     later updates must supply the same origin.
 
     ``zone`` is the timezone a boundary is read in, to refuse one that
-    does not read.
+    does not read. ``checks`` are the checks this server performs, which
+    the deployment in force is parsed with to read the layer's cadence.
     """
     console = _console(out, err)
     try:
@@ -204,7 +250,9 @@ def run_declare(
             "repository begin in different places"
         )
     if boundary:
-        unreadable = _unreadable(boundary, zone, SystemClock().now())
+        unreadable = _unreadable(
+            boundary, zone, SystemClock().now()
+        ) or _unfit(database_url, checks, layer, boundary)
         if unreadable:
             return console.refuse(unreadable)
     if withhold is not None:

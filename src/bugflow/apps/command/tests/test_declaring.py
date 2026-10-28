@@ -590,6 +590,38 @@ def test_a_window_declared_for_each_watched_repository_lets_a_worker_start(
     refuse_without_a_boundary(in_force.layers, watched, boundaries)
 
 
+def test_a_boundary_the_layers_cadence_cannot_take_is_refused(
+    tmp_path: Path, database_url: str
+) -> None:
+    """The deployment in force runs pull-request on an event, which a
+    settling window bounds; the ingress raises on a phase."""
+    install(laid_out(tmp_path), database_url)
+    said, name = Said(), repo()
+    status = run_declare(
+        database_url,
+        name,
+        layer="pull-request",
+        boundary="SUN 23:30",
+        err=said.err,
+    )
+    assert status == 2
+    assert "runs at the event cadence" in said.refused
+    assert SqlAlchemyLayerBoundaries(database_url).declarations() == []
+
+
+def test_a_boundary_on_a_layer_nothing_in_force_holds_is_kept(
+    tmp_path: Path, database_url: str
+) -> None:
+    """The deployment that brings the layer is checked against it."""
+    install(laid_out(tmp_path), database_url)
+    said, name = Said(), repo()
+    status = run_declare(
+        database_url, name, layer="weekly", boundary="SUN 23:30", out=said.out
+    )
+    assert status == 0
+    assert "begins its weekly period at SUN 23:30" in said.printed
+
+
 def test_the_command_line_allows_revokes_and_reads_back(
     database_url: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
