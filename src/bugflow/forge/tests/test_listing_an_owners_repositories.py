@@ -12,11 +12,15 @@ from bugflow.forge.infrastructure.github import GitHubForge, GitHubTokens
 def answering(
     routes: dict[str, list[dict[str, object]]],
     accounts: dict[str, str],
+    me: str = "the-server",
 ) -> httpx2.MockTransport:
-    """GitHub, holding ``routes`` and each account's type by login."""
+    """GitHub, holding ``routes`` and each account's type by login, and
+    answering ``/user`` as ``me``, whom the token signs in as."""
 
     def handle(request: httpx2.Request) -> httpx2.Response:
         path = request.url.path
+        if path == "/user":
+            return httpx2.Response(200, json={"login": me})
         login = path.removeprefix("/users/")
         if login in accounts:
             return httpx2.Response(200, json={"type": accounts[login]})
@@ -65,6 +69,29 @@ def test_an_owner_that_is_no_organisation_is_listed_as_a_user() -> None:
     forge = GitHubForge("t", transport)
     assert [one.name for one in forge.repositories_of("someone")] == [
         "someone/tool"
+    ]
+
+
+def test_a_user_whose_own_token_it_is_has_private_ones_listed() -> None:
+    """GitHub shows a user's private repositories only to that user, so
+    with the user's own token they are listed as the user."""
+    transport = answering(
+        {
+            "/user/repos": [
+                {"id": 41, "full_name": "someone/open"},
+                {"id": 42, "full_name": "someone/closed", "private": True},
+            ],
+            "/users/someone/repos": [{"id": 41, "full_name": "someone/open"}],
+        },
+        {"someone": "User"},
+        me="Someone",
+    )
+    forge = GitHubForge(GitHubTokens(by_owner={"someone": "t"}), transport)
+    assert [
+        (one.name, one.private) for one in forge.repositories_of("someone")
+    ] == [
+        ("someone/open", False),
+        ("someone/closed", True),
     ]
 
 

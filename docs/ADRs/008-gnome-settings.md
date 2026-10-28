@@ -122,10 +122,11 @@ including one archived when it is first listed. Each change is a
 server already holds a row for, made by the journal before discovery
 saw the rename, is recorded once and leaves both rows, each with its
 own settings: the forge's key moves to the row by the new name, and
-joining them is the renamed-repository record's. A user's repositories
-are listed as GitHub shows them to anyone, so a user's private
-repositories are not discovered; an organisation's are listed with its
-token, and an organisation that refuses the token is a failure.
+joining them is the renamed-repository record's. An organisation's
+repositories are listed with its token, and an organisation that
+refuses the token is a failure. A user's are listed as that user,
+private ones included, where the token for the owner is the user's own;
+with another's token GitHub shows only the public ones.
 
 ### Words
 
