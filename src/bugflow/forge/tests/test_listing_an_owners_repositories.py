@@ -34,7 +34,12 @@ def test_an_organisations_repositories_are_listed_with_their_keys() -> None:
         {
             "/orgs/gs-gs/repos": [
                 {"id": 11, "full_name": "gs-gs/one", "archived": False},
-                {"id": 12, "full_name": "gs-gs/two", "archived": True},
+                {
+                    "id": 12,
+                    "full_name": "gs-gs/two",
+                    "archived": True,
+                    "private": True,
+                },
             ]
         },
         {"gs-gs": "Organization"},
@@ -43,7 +48,11 @@ def test_an_organisations_repositories_are_listed_with_their_keys() -> None:
     assert forge.repositories_of("gs-gs") == [
         ListedRepository(forge="github", name="gs-gs/one", forge_key="11"),
         ListedRepository(
-            forge="github", name="gs-gs/two", forge_key="12", archived=True
+            forge="github",
+            name="gs-gs/two",
+            forge_key="12",
+            archived=True,
+            private=True,
         ),
     ]
 

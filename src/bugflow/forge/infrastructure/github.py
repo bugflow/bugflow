@@ -510,6 +510,7 @@ class GitHubForge:
                 name=str(one["full_name"]),
                 forge_key=str(one["id"]),
                 archived=bool(one.get("archived", False)),
+                private=bool(one.get("private", False)),
             )
             for one in found
         ]

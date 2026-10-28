@@ -46,24 +46,44 @@
   .state.ok { color: var(--ok); } .state.bad { color: var(--bad); }
   #message { color: var(--bad); margin: 8px 0; }
   .legend { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  .tag.private { color: var(--accent); }
+  th.gnome { white-space: normal; min-width: 200px; vertical-align: top; }
+  th.gnome .about, th.gnome .runs { font-weight: 400; font-size: 12px;
+         color: var(--muted); margin-top: 2px; }
+  th.gnome details { font-weight: 400; font-size: 12px; margin-top: 4px; }
+  th.gnome summary { cursor: pointer; color: var(--accent); }
+  th.gnome dl { margin: 4px 0 0; }
+  th.gnome dt { font-weight: 600; margin-top: 4px; }
+  th.gnome dd { margin: 0 0 0 8px; }
+  .defined { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .defined a { color: var(--accent); }
 </style>
 </head>
 <body>
 <main>
   <h1>Gnome settings</h1>
-  <p class="lede">What each gnome does on each repository. Off judges
-    nothing; observe judges and posts nothing; advise posts a comment and
-    a status that never fails; gate also fails its status on a fail.</p>
-  <div class="bar">
-    <input type="search" id="filter" placeholder="Filter repositories">
-    <label><input type="checkbox" id="archived"> Show archived</label>
-    <button id="signin" hidden>Sign in</button>
+  <div id="signedout" hidden>
+    <p class="lede">Sign in to see and set what each gnome does on each
+      repository.</p>
+    <button id="signin">Sign in</button>
   </div>
   <div id="message" role="alert"></div>
-  <div class="wrap"><table id="grid" hidden></table></div>
-  <p class="legend">Repositories no gnome has been set on yet are marked
-    at the left and listed first. Each change is recorded with who made
-    it.</p>
+  <div id="signedin" hidden>
+    <p class="lede">What each gnome does on each repository. Off judges
+      nothing; observe judges and posts nothing; advise posts a comment
+      and a status that never fails; gate also fails its status on a
+      fail.</p>
+    <p class="defined" id="defined"></p>
+    <div class="bar">
+      <input type="search" id="filter" placeholder="Filter repositories">
+      <label><input type="checkbox" id="archived"> Show archived</label>
+    </div>
+    <div class="wrap"><table id="grid"></table></div>
+    <p class="legend">Repositories no gnome has been set on yet are marked
+      at the left and listed first. Private and public are as the forge
+      lists them; a repository not yet listed by discovery says neither.
+      Each change is recorded with who made it.</p>
+  </div>
 </main>
 <script>
 "use strict";
@@ -166,7 +186,7 @@ async function api(method, path, body) {
   });
   if (answered.status === 401) {
     store(TOKEN, null);
-    document.getElementById("signin").hidden = false;
+    showSignIn();
     throw new Error("sign in again: the token was not accepted");
   }
   if (!answered.ok) {
@@ -230,6 +250,56 @@ function cell(repository, gnome) {
   return td;
 }
 
+function showSignIn() {
+  document.getElementById("signedin").hidden = true;
+  document.getElementById("signedout").hidden = false;
+}
+
+function element(tag, className, text) {
+  const made = document.createElement(tag);
+  if (className) made.className = className;
+  if (text !== undefined) made.textContent = text;
+  return made;
+}
+
+function gnomeHeading(gnome) {
+  const th = element("th", "gnome");
+  th.append(element("div", "", gnome));
+  const about = (held.gnomes || {})[gnome];
+  if (!about) return th;
+  if (about.summary) th.append(element("div", "about", about.summary));
+  th.append(element("div", "runs", about.runs.length
+    ? "Runs " + about.runs.join("; ") : "Runs no process"));
+  const details = element("details");
+  const names = Object.keys(about.profiles);
+  details.append(element("summary", "", names.length === 1
+    ? "Its profile" : names.length + " profiles"));
+  const list = element("dl");
+  names.forEach(name => {
+    const policies = about.profiles[name];
+    list.append(element("dt", "", name + " (" + policies.length + ")"));
+    if (!policies.length) list.append(element("dd", "", "no policies"));
+    policies.forEach(policy => list.append(element("dd", "",
+      policy + (about.policies[policy] ? ": " + about.policies[policy] : ""))));
+  });
+  details.append(list);
+  th.append(details);
+  return th;
+}
+
+function definedIn() {
+  const where = document.getElementById("defined");
+  where.replaceChildren();
+  if (!held.deployment) return;
+  const { repository, commit } = held.deployment;
+  const link = element("a", "", repository + " at " + commit.slice(0, 7));
+  link.href = "https://github.com/" + repository.split("/").map(encodeURIComponent).join("/") +
+    "/tree/" + encodeURIComponent(commit);
+  where.append("Each gnome, its profiles and their policies are defined in " +
+    "the policy deployment in force: profiles.toml and the gnomes' " +
+    "directories in ", link, ".");
+}
+
 function render() {
   const grid = document.getElementById("grid");
   const filter = document.getElementById("filter").value.trim().toLowerCase();
@@ -237,11 +307,8 @@ function render() {
   const gnomes = Object.keys(held.profiles);
   grid.replaceChildren();
   const head = grid.createTHead().insertRow();
-  ["Repository", ...gnomes].forEach(label => {
-    const th = document.createElement("th");
-    th.textContent = label;
-    head.append(th);
-  });
+  head.append(element("th", "", "Repository"));
+  gnomes.forEach(gnome => head.append(gnomeHeading(gnome)));
   const body = grid.createTBody();
   const rows = held.repositories
     .filter(r => showArchived || !r.archived)
@@ -256,14 +323,14 @@ function render() {
     name.className = "name";
     name.textContent = (repository.forge === "github" ? "" :
                         repository.forge + ":") + repository.name;
-    if (repository.archived) {
-      const tag = document.createElement("span");
-      tag.className = "tag"; tag.textContent = "archived";
-      name.append(tag);
+    if (repository.private === true) {
+      name.append(element("span", "tag private", "private"));
+    } else if (repository.private === false) {
+      name.append(element("span", "tag", "public"));
     }
+    if (repository.archived) name.append(element("span", "tag", "archived"));
     gnomes.forEach(gnome => row.append(cell(repository, gnome)));
   });
-  grid.hidden = false;
 }
 
 async function start() {
@@ -275,14 +342,17 @@ async function start() {
   try {
     if (params.get("code")) await finishSignIn(params);
     if (!fetched(TOKEN)) {
-      document.getElementById("signin").hidden = false;
+      showSignIn();
       return;
     }
     held = await api("GET", "api/settings");
+    document.getElementById("signedout").hidden = true;
     if (!Object.keys(held.profiles).length) {
       say("No policy deployment is in force, so there is no gnome to set.");
       return;
     }
+    document.getElementById("signedin").hidden = false;
+    definedIn();
     render();
   } catch (error) {
     say(error.message);

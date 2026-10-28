@@ -119,3 +119,26 @@ def test_a_rename_onto_a_held_name_is_recorded_once_and_both_rows_stay(
     ) == [("gs-gs/after", "77"), ("gs-gs/before", None)]
     (kept,) = SqlAlchemyGnomeSettings(database_url).settings()
     assert (kept.repo, kept.behaviour) == ("gs-gs/after", "off")
+
+
+def test_whether_a_repository_is_private_is_kept_as_listed(
+    database_url: str,
+) -> None:
+    listing = Listing(
+        ListedRepository(
+            forge="github", name="gs-gs/hidden", forge_key="88", private=True
+        )
+    )
+    run = Discovering(
+        database_url=database_url, owners=("gs-gs",), listing=listing
+    )
+    discover(run)
+    listing.repositories = [
+        ListedRepository(
+            forge="github", name="gs-gs/hidden", forge_key="88", private=False
+        )
+    ]
+    discover(run)
+
+    (held,) = SqlAlchemyKnownRepositories(database_url).everything()
+    assert held.private is False
