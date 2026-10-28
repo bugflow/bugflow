@@ -35,7 +35,7 @@ from bugflow.method.infrastructure.deployment_watch import DeployedFrom
 from bugflow.method.infrastructure.sqlalchemy_method_facts import (
     UNPACKERS as METHOD_UNPACKERS,
 )
-from bugflow.review.domain.facts import JUDGE_INVOKED
+from bugflow.review.domain.facts import JUDGE_INVOKED, STOCKTAKE_DISPATCHED
 from bugflow.review.domain.models.journal_facts import JudgeInvocation
 from bugflow.review.domain.models.observation import Observation
 from bugflow.review.domain.models.review_entry import ReviewEntry
@@ -51,6 +51,9 @@ from bugflow.review.infrastructure.sqlalchemy_review_facts import (
 from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
     UNPACKERS as STOCKTAKE_UNPACKERS,
 )
+from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
+    stocktake_dispatch,
+)
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.dismissal import Dismissal
@@ -58,6 +61,13 @@ from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     SqlAlchemyJournal,
     Unpacker,
+)
+from bugflow.work.domain.facts import AGENT_DISPATCHED
+from bugflow.work.infrastructure.sqlalchemy_journal_queries import (
+    AGENT_DISPATCH,
+)
+from bugflow.work.infrastructure.sqlalchemy_journal_queries import (
+    SqlAlchemyJournalQueries as WorkJournalQueries,
 )
 from bugflow.work.infrastructure.sqlalchemy_work_facts import (
     UNPACKERS as WORK_UNPACKERS,
@@ -81,6 +91,20 @@ UNPACKERS: dict[str, Unpacker] = {
 BUILD_VARIABLE = "BUILD_SHA"
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
+
+
+#: The kinds of dispatch a runner's completion answers, each with the
+#: table it is read from: a pull request reviewer's and a stocktake's.
+DISPATCH_TABLES = {
+    AGENT_DISPATCHED: AGENT_DISPATCH,
+    STOCKTAKE_DISPATCHED: stocktake_dispatch.name,
+}
+
+
+def dispatch_queries(database_url: str) -> WorkJournalQueries:
+    """The work context's questions of the journal, which match a
+    runner's completion to either kind of dispatch."""
+    return WorkJournalQueries(database_url, DISPATCH_TABLES)
 
 
 def build_sha(environ: Mapping[str, str]) -> str | None:
