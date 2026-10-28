@@ -1,9 +1,9 @@
 """Use case: keep the files a policy repository sent, and put them in
 force.
 
-The files are checked, stored and put in force, and a fact records it.
-Asked to check only, the files are checked and nothing is stored or
-recorded.
+The files are checked, stored and put in force, and a fact records it,
+in one transaction. Asked to check only, the files are checked and
+nothing is stored or recorded.
 """
 
 from bugflow.method.domain.facts import POLICIES_DEPLOYED
@@ -25,7 +25,6 @@ from bugflow.method.dtos.deploy_policies import (
 )
 from bugflow.shared.domain.models.journal_entry import JournalEntry, event_id
 from bugflow.shared.domain.services.clock import ClockService
-from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.domain.values.correlation import Correlation
 
 #: The workflow id the fact is recorded under. A deployment is sent by a
@@ -47,12 +46,10 @@ class DeployPoliciesUseCase:
         self,
         deployments: PolicyDeploymentRepository,
         check: PolicyDeploymentCheckService,
-        recording: RecordingService,
         clock: ClockService,
     ) -> None:
         self._deployments = deployments
         self._check = check
-        self._recording = recording
         self._clock = clock
 
     def execute(
@@ -73,12 +70,12 @@ class DeployPoliciesUseCase:
                 content_hash=deployment.content_hash,
                 in_force=self._in_force(),
             )
-        replaced = self._deployments.last_put_in_force()
-        changed = self._deployments.deploy(deployment)
-        if changed:
-            self._recording.append(
-                [self._fact(deployment, request.sent_by, replaced)]
-            )
+        changed = self._deployments.deploy(
+            deployment,
+            lambda replaced: [
+                self._fact(deployment, request.sent_by, replaced)
+            ],
+        )
         return DeployPoliciesResponse(
             outcome="deployed" if changed else "already_in_force",
             content_hash=deployment.content_hash,

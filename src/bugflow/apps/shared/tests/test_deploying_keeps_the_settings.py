@@ -43,12 +43,12 @@ STRICT = READ | {
 
 class Fixture:
     def __init__(self, *settings: GnomeSetting) -> None:
-        self.deployments = InMemoryPolicyDeployments()
         self.journal = InMemoryJournal()
+        self.deployments = InMemoryPolicyDeployments(journal=self.journal)
         self.settings = InMemoryGnomeSettings(*settings)
         self.boundaries = InMemoryLayerBoundaries()
         self.deploying: Deploying = deploying_with(
-            self.deployments, self.journal, (), self.settings, self.boundaries
+            self.deployments, (), self.settings, self.boundaries
         )
 
     def deploy(

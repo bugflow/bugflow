@@ -32,11 +32,9 @@ REPOSITORY = "example-org/pull-request-policies"
 
 class Host:
     def __init__(self) -> None:
-        self.deployments = InMemoryPolicyDeployments()
         self.journal = InMemoryJournal()
-        self.deploying: Deploying = deploying_with(
-            self.deployments, self.journal, ()
-        )
+        self.deployments = InMemoryPolicyDeployments(journal=self.journal)
+        self.deploying: Deploying = deploying_with(self.deployments, ())
         self.out = io.StringIO()
 
     def install(

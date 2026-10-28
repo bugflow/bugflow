@@ -7,7 +7,9 @@ what was in force on a day stays answerable. The table definitions
 mirror the script that creates them.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
+from typing import Protocol
 
 import sqlalchemy as sa
 
@@ -17,6 +19,8 @@ from bugflow.method.domain.models.policy_deployment import (
     PolicyDeployment,
     PutInForce,
 )
+from bugflow.method.domain.repositories.policy_deployment import Facts
+from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.database import engine_url
 
 metadata = sa.MetaData()
@@ -67,17 +71,36 @@ in_force = sa.Table(
 )
 
 
-class SqlAlchemyPolicyDeployments:
-    """Implements ``PolicyDeploymentRepository`` over Postgres."""
+class JournalOnAConnection(Protocol):
+    """A journal in the same database that appends in the caller's
+    transaction."""
 
-    def __init__(self, database_url: str) -> None:
+    def append_on(
+        self, connection: sa.Connection, entries: Sequence[JournalEntry]
+    ) -> None: ...
+
+
+class SqlAlchemyPolicyDeployments:
+    """Implements ``PolicyDeploymentRepository`` over Postgres.
+
+    ``journal`` is where the facts of a deployment are recorded. A store
+    given none refuses a deployment that has facts to record.
+    """
+
+    def __init__(
+        self, database_url: str, journal: JournalOnAConnection | None = None
+    ) -> None:
         self._engine = sa.create_engine(
             engine_url(database_url), pool_pre_ping=True
         )
+        self._journal = journal
 
-    def deploy(self, deployment: PolicyDeployment) -> bool:
-        """Store and put in force in one transaction, so a deployment is
-        never in force with only some of its files."""
+    def deploy(
+        self, deployment: PolicyDeployment, facts: Facts = lambda _: ()
+    ) -> bool:
+        """Store, put in force and record in one transaction, so a
+        deployment is never in force with only some of its files, or
+        without the facts that record it."""
         repository, commit = deployment.repository, deployment.commit
         with self._engine.begin() as connection:
             earlier = connection.execute(
@@ -109,14 +132,26 @@ class SqlAlchemyPolicyDeployments:
                     )
             elif earlier != deployment.content_hash:
                 raise PolicyDeploymentConflictError(repository, commit)
-            latest = connection.execute(self._latest()).one_or_none()
-            if latest is not None and tuple(latest) == (repository, commit):
+            latest = connection.execute(self._puts().limit(1)).one_or_none()
+            replaced = None if latest is None else self._put(latest)
+            if replaced and (replaced.repository, replaced.commit) == (
+                repository,
+                commit,
+            ):
                 return False
             connection.execute(
                 sa.insert(in_force).values(
                     repository=repository, commit=commit
                 )
             )
+            recorded = facts(replaced)
+            if recorded:
+                if self._journal is None:
+                    raise ValueError(
+                        "this store has no journal to record the "
+                        "deployment's facts in"
+                    )
+                self._journal.append_on(connection, recorded)
             return True
 
     def in_force(self) -> PolicyDeployment | None:

@@ -66,14 +66,13 @@ class Server:
     """The API over in-memory stores, each store readable by a test."""
 
     def __init__(self) -> None:
-        self.deployments = InMemoryPolicyDeployments()
         self.journal = InMemoryJournal()
+        self.deployments = InMemoryPolicyDeployments(journal=self.journal)
         self.settings = InMemoryGnomeSettings()
         self.deploying = Deploying(
             deploy=DeployPoliciesUseCase(
                 self.deployments,
                 deployment_check(CHECKS, self.settings),
-                self.journal,
                 Clock(),
             ),
             deployments=self.deployments,
