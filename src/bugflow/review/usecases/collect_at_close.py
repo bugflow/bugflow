@@ -163,9 +163,9 @@ class CollectAtCloseUseCase:
     def _outstanding(
         self, request: CollectAtCloseRequest, journal: JournalService
     ) -> list[Finding]:
-        """The findings the last evaluation that published raised. Each
-        evaluation records every finding it holds, so these are what was
-        still standing.
+        """The findings the last evaluation raised, published or not.
+        Each evaluation records every finding it holds, so these are
+        what was still standing.
         """
         last = journal.latest_acted_run(
             request.ref, excluding=request.correlation
