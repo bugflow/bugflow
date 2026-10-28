@@ -63,6 +63,7 @@ class SqlAlchemyKnownRepositories:
                 repository.c.name,
                 repository.c.forge_key,
                 repository.c.archived,
+                repository.c.private,
             )
             .select_from(
                 repository.join(forge, forge.c.id == repository.c.forge_id)
@@ -85,6 +86,7 @@ class SqlAlchemyKnownRepositories:
                     name=row.name,
                     forge_key=row.forge_key,
                     archived=row.archived,
+                    private=row.private,
                 )
                 for row in connection.execute(query)
             ]
@@ -98,6 +100,7 @@ class SqlAlchemyKnownRepositories:
                 repository.c.name,
                 repository.c.forge_key,
                 repository.c.archived,
+                repository.c.private,
             )
             .select_from(
                 repository.join(forge, forge.c.id == repository.c.forge_id)
@@ -111,6 +114,7 @@ class SqlAlchemyKnownRepositories:
                     name=row.name,
                     forge_key=row.forge_key,
                     archived=row.archived,
+                    private=row.private,
                 )
                 for row in connection.execute(query)
             ]
@@ -154,6 +158,7 @@ class SqlAlchemyKnownRepositories:
                         .values(
                             forge_key=listed.forge_key,
                             archived=listed.archived,
+                            private=listed.private,
                         )
                     )
                     return
@@ -181,7 +186,11 @@ class SqlAlchemyKnownRepositories:
             connection.execute(
                 sa.update(repository)
                 .where(repository.c.id == repository_id)
-                .values(forge_key=listed.forge_key, archived=listed.archived)
+                .values(
+                    forge_key=listed.forge_key,
+                    archived=listed.archived,
+                    private=listed.private,
+                )
             )
 
 
@@ -227,6 +236,7 @@ class InMemoryKnownRepositories:
                 name=listed.name,
                 forge_key=listed.forge_key,
                 archived=listed.archived,
+                private=listed.private,
             )
         )
 
