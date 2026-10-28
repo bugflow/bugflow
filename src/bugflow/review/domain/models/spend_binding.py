@@ -17,9 +17,9 @@ class SpendScope:
     Any part may be left open, and an open part matches anything. A row
     scoped to a repository alone caps everything that reads it; a row
     scoped to a layer and an agent caps that agent's run on that layer
-    in every repository. The most specific row that matches is the one
-    that applies, so a general ceiling can be set once and one
-    repository given its own.
+    in every repository. Every row that matches applies, and on each
+    resource a run gets the lowest of their limits, so a narrow row
+    can lower a general ceiling and cannot raise it.
     """
 
     #: The forge and repository, as the journal holds them, or empty for
@@ -37,7 +37,8 @@ class SpendScope:
         """How many parts of the scope are named.
 
         What makes one row more specific than another: a row naming a
-        repository and an agent beats one naming the repository alone.
+        repository and an agent is listed before one naming the
+        repository alone.
         """
         return sum(
             1
