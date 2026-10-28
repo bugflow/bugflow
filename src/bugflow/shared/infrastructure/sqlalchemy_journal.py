@@ -256,6 +256,17 @@ class SqlAlchemyJournal:
         }
 
     def append(self, entries: Sequence[JournalEntry]) -> None:
+        if not entries:
+            return
+        with self._engine.begin() as connection:
+            self.append_on(connection, entries)
+
+    def append_on(
+        self, connection: sa.Connection, entries: Sequence[JournalEntry]
+    ) -> None:
+        """Append in the caller's transaction, on a connection to this
+        journal's database, so that a change and the fact that records
+        it commit together or not at all."""
         for entry in entries:
             validate_assertion(entry)
         if not entries:
@@ -269,112 +280,108 @@ class SqlAlchemyJournal:
                 table.c.record_id == sa.cast(journal.c.event_id, sa.Text),
             ),
         )
-        with self._engine.begin() as connection:
-            # Serialize first writers as well as retries. Row locks alone
-            # cannot lock a run whose first event has not been inserted.
-            for key in sorted(
-                json.dumps(("journal-origin", *scope))
-                for scope in scopes
-                if scope[0] and scope[1]
-            ):
+        # Serialize first writers as well as retries. Row locks alone
+        # cannot lock a run whose first event has not been inserted.
+        for key in sorted(
+            json.dumps(("journal-origin", *scope))
+            for scope in scopes
+            if scope[0] and scope[1]
+        ):
+            connection.execute(
+                sa.select(
+                    sa.func.pg_advisory_xact_lock(
+                        sa.func.hashtextextended(key, 0)
+                    )
+                )
+            )
+        origins: dict[JournalScope, str | None] = {}
+        for scope in scopes:
+            if not scope[0] or not scope[1]:
+                origins[scope] = None
+                continue
+            retained = (
                 connection.execute(
-                    sa.select(
-                        sa.func.pg_advisory_xact_lock(
-                            sa.func.hashtextextended(key, 0)
-                        )
-                    )
+                    sa.select(table.c.origin)
+                    .select_from(joined)
+                    .where(*_scope_predicates(scope))
+                    .distinct()
                 )
-            origins: dict[JournalScope, str | None] = {}
-            for scope in scopes:
-                if not scope[0] or not scope[1]:
-                    origins[scope] = None
-                    continue
-                retained = (
-                    connection.execute(
-                        sa.select(table.c.origin)
+                .scalars()
+                .all()
+            )
+            origins[scope] = resolve_origin(
+                scope,
+                (
+                    entry.origin
+                    for entry in entries
+                    if scope_of(entry) == scope
+                    and (entry.origin is not None or entry.origin_asserted)
+                ),
+                retained,
+            )
+        # Stable event order prevents overlapping batches from taking
+        # unique-index locks in opposite orders.
+        for entry in sorted(entries, key=lambda one: str(one.event_id)):
+            # The envelope's fields alone: a context's subclass of an
+            # entry carries what it read beside them.
+            row = {
+                f.name: getattr(entry, f.name) for f in fields(JournalEntry)
+            } | self._stamps
+            row.pop("origin")
+            row.pop("origin_asserted")
+            pull_request_id, workflow_run_id = resolve_keys(connection, entry)
+            row["pull_request_id"] = pull_request_id
+            row["workflow_run_id"] = workflow_run_id
+            into = table_for(entry.event_type, self._placements)
+            if "payload" not in into.c:
+                row.pop("payload")
+            inserted = connection.execute(
+                insert(into)
+                .values(row)
+                .on_conflict_do_nothing(index_elements=["event_id"])
+                .returning(into.c.event_id)
+            ).scalar_one_or_none()
+            if inserted is None:
+                if entry.origin is not None or entry.origin_asserted:
+                    held = connection.execute(
+                        sa.select(
+                            journal.c.workflow_id,
+                            journal.c.run_id,
+                            journal.c.forge,
+                            journal.c.repo,
+                            journal.c.pr_number,
+                            table.c.origin,
+                        )
                         .select_from(joined)
-                        .where(*_scope_predicates(scope))
-                        .distinct()
-                    )
-                    .scalars()
-                    .all()
-                )
-                origins[scope] = resolve_origin(
-                    scope,
-                    (
-                        entry.origin
-                        for entry in entries
-                        if scope_of(entry) == scope
-                        and (entry.origin is not None or entry.origin_asserted)
-                    ),
-                    retained,
-                )
-            # Stable event order prevents overlapping batches from taking
-            # unique-index locks in opposite orders.
-            for entry in sorted(entries, key=lambda one: str(one.event_id)):
-                # The envelope's fields alone: a context's subclass of an
-                # entry carries what it read beside them.
-                row = {
-                    f.name: getattr(entry, f.name)
-                    for f in fields(JournalEntry)
-                } | self._stamps
-                row.pop("origin")
-                row.pop("origin_asserted")
-                pull_request_id, workflow_run_id = resolve_keys(
-                    connection, entry
-                )
-                row["pull_request_id"] = pull_request_id
-                row["workflow_run_id"] = workflow_run_id
-                into = table_for(entry.event_type, self._placements)
-                if "payload" not in into.c:
-                    row.pop("payload")
-                inserted = connection.execute(
-                    insert(into)
-                    .values(row)
-                    .on_conflict_do_nothing(index_elements=["event_id"])
-                    .returning(into.c.event_id)
-                ).scalar_one_or_none()
-                if inserted is None:
-                    if entry.origin is not None or entry.origin_asserted:
-                        held = connection.execute(
-                            sa.select(
-                                journal.c.workflow_id,
-                                journal.c.run_id,
-                                journal.c.forge,
-                                journal.c.repo,
-                                journal.c.pr_number,
-                                table.c.origin,
-                            )
-                            .select_from(joined)
-                            .where(journal.c.event_id == entry.event_id)
-                        ).one()
-                        check_retry(
-                            entry,
-                            (
-                                held.workflow_id,
-                                held.run_id,
-                                held.forge,
-                                held.repo,
-                                held.pr_number,
-                            ),
-                            held.origin,
-                        )
-                    continue
-                unpack = self._unpackers.get(entry.event_type)
-                if unpack is not None:
-                    unpack(connection, entry)
-                origin = origins[scope_of(entry)]
-                if origin is not None:
-                    associate_on_connection(
-                        connection,
+                        .where(journal.c.event_id == entry.event_id)
+                    ).one()
+                    check_retry(
+                        entry,
                         (
-                            RepositoryAssociation(
-                                kind="journal",
-                                record_id=str(entry.event_id),
-                                origin=RepositoryOrigin(origin),
-                            ),
+                            held.workflow_id,
+                            held.run_id,
+                            held.forge,
+                            held.repo,
+                            held.pr_number,
                         ),
+                        held.origin,
                     )
+                continue
+            unpack = self._unpackers.get(entry.event_type)
+            if unpack is not None:
+                unpack(connection, entry)
+            origin = origins[scope_of(entry)]
+            if origin is not None:
+                associate_on_connection(
+                    connection,
+                    (
+                        RepositoryAssociation(
+                            kind="journal",
+                            record_id=str(entry.event_id),
+                            origin=RepositoryOrigin(origin),
+                        ),
+                    ),
+                )
 
     def has_event(self, event_id: UUID) -> bool:
         query = sa.select(sa.exists().where(journal.c.event_id == event_id))
