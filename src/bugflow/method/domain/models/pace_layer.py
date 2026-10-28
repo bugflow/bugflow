@@ -133,6 +133,21 @@ def cadence(name: str) -> Cadence:
     return found
 
 
+def check_boundary(cadence: Cadence, boundary: str) -> None:
+    """Raise ``BoundaryError`` unless the cadence can take the boundary:
+    a phase of its span for a cadence a clock fires, and a settling
+    window for one no clock fires.
+
+    The ingress reads an event layer's boundary as a settling window and
+    the worker reads a clock layer's as a phase, and either raises on
+    one it cannot read, so a boundary is checked here before it is kept.
+    """
+    if cadence.on_a_clock:
+        phase(boundary, cadence.span, datetime.now(UTC), "UTC")
+    else:
+        settling_window(boundary)
+
+
 def process(
     name: str,
     subject: str,
@@ -182,10 +197,7 @@ def layer(
     found = cadence(cadence_name)
     if default_boundary is not None:
         try:
-            if found.on_a_clock:
-                phase(default_boundary, found.span, datetime.now(UTC), "UTC")
-            else:
-                settling_window(default_boundary)
+            check_boundary(found, default_boundary)
         except BoundaryError as exc:
             raise ValueError(
                 f"the layer {name!r} has a default boundary its cadence "
