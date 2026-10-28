@@ -9,17 +9,26 @@ what it put there itself and asserts nothing about what came before.
 """
 
 import uuid
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
 
 from bugflow.method.domain.errors import PolicyDeploymentConflictError
+from bugflow.method.domain.facts import POLICIES_DEPLOYED
 from bugflow.method.domain.models.policy_deployment import (
     DeployedFile,
     PolicyDeployment,
+    PutInForce,
 )
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
+)
+from bugflow.shared.domain.models.journal_entry import JournalEntry
+from bugflow.shared.infrastructure.sqlalchemy_journal import (
+    SqlAlchemyJournal,
+    journal,
 )
 
 
@@ -106,3 +115,100 @@ def test_the_last_put_in_force_names_the_deployment_in_force(
     assert (latest.repository, latest.commit) == (name, "c2")
     assert latest.content_hash == deployment(name, "c2", "two\n").content_hash
     assert latest == held.history()[0]
+
+
+def fact(name: str, replaced: PutInForce | None) -> list[JournalEntry]:
+    return [
+        JournalEntry(
+            event_id=uuid.uuid4(),
+            occurred_at=datetime.now(UTC),
+            event_type=POLICIES_DEPLOYED,
+            forge="",
+            repo="",
+            pr_number=None,
+            commit_sha=None,
+            corpus_version=None,
+            workflow_id="policies/deploy",
+            run_id=f"{name}@c1",
+            payload={
+                "repository": name,
+                "commit": "c1",
+                "content_hash": "",
+                "files": 2,
+                "sent_by": "a test",
+                "replaced": None
+                if replaced is None
+                else {
+                    "repository": replaced.repository,
+                    "commit": replaced.commit,
+                    "content_hash": replaced.content_hash,
+                },
+            },
+        )
+    ]
+
+
+def recorded(engine: sa.Engine, name: str) -> int:
+    with engine.connect() as connection:
+        return int(
+            connection.execute(
+                sa.select(sa.func.count()).where(
+                    journal.c.event_type == POLICIES_DEPLOYED,
+                    journal.c.run_id == f"{name}@c1",
+                )
+            ).scalar_one()
+        )
+
+
+def test_the_fact_is_recorded_with_the_deployment(
+    engine: sa.Engine, database_url: str
+) -> None:
+    held = SqlAlchemyPolicyDeployments(
+        database_url, SqlAlchemyJournal(database_url)
+    )
+    name = repository()
+    assert held.deploy(
+        deployment(name, "c1", "one\n"), lambda was: fact(name, was)
+    )
+    assert recorded(engine, name) == 1
+
+
+class RefusingJournal:
+    def append_on(
+        self, connection: sa.Connection, entries: Sequence[JournalEntry]
+    ) -> None:
+        raise RuntimeError("the journal refuses")
+
+
+def test_a_deployment_whose_fact_is_not_recorded_is_not_put_in_force(
+    engine: sa.Engine, database_url: str
+) -> None:
+    """Sent again, it is put in force and recorded then, rather than
+    answered as already in force with no fact."""
+    name = repository()
+    refusing = SqlAlchemyPolicyDeployments(database_url, RefusingJournal())
+    with pytest.raises(RuntimeError, match="the journal refuses"):
+        refusing.deploy(
+            deployment(name, "c1", "one\n"), lambda was: fact(name, was)
+        )
+    assert refusing.held(name, "c1") is None
+    assert name not in [one.repository for one in refusing.history()]
+
+    held = SqlAlchemyPolicyDeployments(
+        database_url, SqlAlchemyJournal(database_url)
+    )
+    assert held.deploy(
+        deployment(name, "c1", "one\n"), lambda was: fact(name, was)
+    )
+    assert recorded(engine, name) == 1
+
+
+def test_a_store_with_no_journal_refuses_a_deployment_with_facts(
+    engine: sa.Engine, database_url: str
+) -> None:
+    held, name = SqlAlchemyPolicyDeployments(database_url), repository()
+    with pytest.raises(ValueError, match="no journal"):
+        held.deploy(
+            deployment(name, "c1", "one\n"), lambda was: fact(name, was)
+        )
+    assert held.held(name, "c1") is None

@@ -58,7 +58,6 @@ from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
 from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
 )
-from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.infrastructure.system_clock import SystemClock
 
 #: The setting that names the checks this server performs, comma-
@@ -156,18 +155,17 @@ class Deploying:
 
 def deploying_with(
     deployments: PolicyDeploymentRepository,
-    recording: RecordingService,
     checks: Collection[str],
     settings: GnomeSettingsService | None = None,
     boundaries: LayerBoundariesService | None = None,
 ) -> Deploying:
     """Compose deploying over the stores given. For a test, or a program
-    that holds the stores already."""
+    that holds the stores already. ``deployments`` records the facts of
+    a deployment, so it is given the journal."""
     return Deploying(
         deploy=DeployPoliciesUseCase(
             deployments,
             deployment_check(checks, settings, boundaries),
-            recording,
             SystemClock(),
         ),
         deployments=deployments,
@@ -180,8 +178,9 @@ def deploying_over(
     """Compose deploying over the Postgres stores, the journal stamped
     with ``build``."""
     return deploying_with(
-        SqlAlchemyPolicyDeployments(database_url),
-        stamped_journal(database_url, build),
+        SqlAlchemyPolicyDeployments(
+            database_url, stamped_journal(database_url, build)
+        ),
         checks,
         SqlAlchemyGnomeSettings(database_url),
         SqlAlchemyLayerBoundaries(database_url),
