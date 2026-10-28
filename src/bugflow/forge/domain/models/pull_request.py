@@ -100,12 +100,9 @@ class PullRequestSnapshot:
     base_branch: str
     #: The commit the target branch was at, as the forge reported it.
     base_sha: str = ""
-    #: The account that opened the pull request.
-    #:
-    #: Names of people are kept in snapshots, which can be deleted. They
-    #: are deliberately not written to the journal, which can never be
-    #: changed: a name written there could not be removed if a person
-    #: asked.
+    #: The account that opened the pull request. The observation of
+    #: the pull request records it in the journal, with each commit's
+    #: author and committer, so that the record says who did what.
     author_login: str = ""
     commits: tuple[CommitSnapshot, ...]
     files: tuple[ChangedFile, ...]
