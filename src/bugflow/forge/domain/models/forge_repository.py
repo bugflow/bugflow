@@ -18,6 +18,8 @@ class ListedRepository:
     #: The forge's own id for the repository, which a rename keeps.
     forge_key: str
     archived: bool = False
+    #: Whether only those its forge admits may read it.
+    private: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -29,6 +31,8 @@ class KnownRepository:
     #: None for a repository known from the journal and not yet listed.
     forge_key: str | None = None
     archived: bool = False
+    #: None for a repository not yet listed.
+    private: bool | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

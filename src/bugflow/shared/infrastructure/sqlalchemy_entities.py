@@ -44,6 +44,8 @@ repository = sa.Table(
     sa.Column(
         "archived", sa.Boolean, nullable=False, server_default=sa.false()
     ),
+    # Whether the forge lists it as private; null until discovery lists it.
+    sa.Column("private", sa.Boolean),
     sa.UniqueConstraint(
         "forge_id", "name", name="repository_forge_id_name_key"
     ),

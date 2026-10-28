@@ -34,7 +34,12 @@ def test_an_organisations_repositories_are_listed_with_their_keys() -> None:
         {
             "/orgs/acme/repos": [
                 {"id": 11, "full_name": "acme/one", "archived": False},
-                {"id": 12, "full_name": "acme/two", "archived": True},
+                {
+                    "id": 12,
+                    "full_name": "acme/two",
+                    "archived": True,
+                    "private": True,
+                },
             ]
         },
         {"acme": "Organization"},
@@ -43,7 +48,11 @@ def test_an_organisations_repositories_are_listed_with_their_keys() -> None:
     assert forge.repositories_of("acme") == [
         ListedRepository(forge="github", name="acme/one", forge_key="11"),
         ListedRepository(
-            forge="github", name="acme/two", forge_key="12", archived=True
+            forge="github",
+            name="acme/two",
+            forge_key="12",
+            archived=True,
+            private=True,
         ),
     ]
 

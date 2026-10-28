@@ -55,24 +55,43 @@ def test_every_known_repository_is_listed_with_each_gnomes_profiles() -> None:
     deployed(server)
     server.repositories.keep(
         ListedRepository(
-            forge="github", name="example-org/widgets", forge_key="1"
+            forge="github",
+            name="example-org/widgets",
+            forge_key="1",
+            private=True,
         )
     )
     answered = server.client.get(
         "/api/settings", headers=bearer(ADMINISTRATOR)
     )
     assert answered.status_code == 200
-    assert answered.json() == {
-        "profiles": {"prose": ["default"]},
-        "repositories": [
-            {
-                "forge": "github",
-                "name": "example-org/widgets",
-                "archived": False,
-                "gnomes": {},
-            }
-        ],
-    }
+    held = answered.json()
+    assert held["profiles"] == {"prose": ["default"]}
+    assert held["repositories"] == [
+        {
+            "forge": "github",
+            "name": "example-org/widgets",
+            "archived": False,
+            "private": True,
+            "gnomes": {},
+        }
+    ]
+
+
+def test_each_gnome_says_what_it_reads_runs_and_judges_by() -> None:
+    """So that the page can say what a column is, without the person
+    opening the binding, and where the profiles are defined."""
+    server = Server()
+    deployed(server)
+    held = server.client.get(
+        "/api/settings", headers=bearer(ADMINISTRATOR)
+    ).json()
+    (prose,) = held["gnomes"].values()
+    assert prose["summary"]
+    assert prose["runs"] == ["evaluate-pull-request, each pull request"]
+    assert set(prose["profiles"]) == {"default"}
+    assert set(prose["policies"]) <= set(prose["profiles"]["default"])
+    assert held["deployment"] == {"repository": REPOSITORY, "commit": "c1"}
 
 
 def test_a_gnome_is_set_and_recorded_as_set_by_the_caller() -> None:
