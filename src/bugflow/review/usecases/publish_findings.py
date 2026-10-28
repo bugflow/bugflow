@@ -468,8 +468,10 @@ class PublishFindingsUseCase:
     def _previous_findings(
         self, journal: JournalService, request: PublishFindingsRequest
     ) -> tuple[Correlation | None, list[Finding]]:
-        """The last evaluation before this one that published, and the
-        findings it raised.
+        """The last evaluation before this one that decided what to
+        publish, and the findings it raised, whether or not anything was
+        published. A reviewer's first published comment shows all its
+        findings whatever that evaluation raised.
         """
         previous = journal.latest_acted_run(
             request.ref, excluding=request.correlation
