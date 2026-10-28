@@ -34,13 +34,17 @@ class SqlAlchemyWithholding:
         )
 
     def share_for(self, forge: str, repo: str) -> float:
+        """The repository's share, checked as ``declarations`` checks it:
+        a row set out of range by hand raises here too."""
         query = sa.select(repository_withholding.c.share).where(
             repository_withholding.c.forge == forge,
             repository_withholding.c.repo == repo,
         )
         with self._engine.connect() as connection:
             found = connection.execute(query).scalar()
-        return float(found) if found is not None else 0.0
+        if found is None:
+            return 0.0
+        return Withholding(forge=forge, repo=repo, share=float(found)).share
 
     def declarations(self) -> list[Withholding]:
         query = sa.select(repository_withholding).order_by(
