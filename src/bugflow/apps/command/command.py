@@ -802,6 +802,7 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
         scope=args.scope,
         zone=zone,
         build=build,
+        checks=checks_from(environ),
     )
 
 
