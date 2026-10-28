@@ -1,6 +1,7 @@
 """Tests of the use case that keeps a deployment and puts it in force:
 what it stores, what it records, and what it refuses."""
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -22,6 +23,7 @@ from bugflow.method.infrastructure.policy_deployment_parsing import (
 )
 from bugflow.method.tests.policy_files import MANIFEST, READ, REFERENCES
 from bugflow.method.usecases.deploy_policies import DeployPoliciesUseCase
+from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 
 REPOSITORY = "example-org/pull-request-policies"
@@ -38,13 +40,12 @@ class Clock:
 
 class Fixture:
     def __init__(self) -> None:
-        self.deployments = InMemoryPolicyDeployments()
         self.journal = InMemoryJournal()
+        self.deployments = InMemoryPolicyDeployments(journal=self.journal)
         self.clock = Clock()
         self.deploy = DeployPoliciesUseCase(
             self.deployments,
             ParsedPolicyDeploymentCheck(),
-            self.journal,
             self.clock,
         )
 
@@ -180,3 +181,19 @@ def test_a_commit_held_with_other_content_is_refused() -> None:
     with pytest.raises(PolicyDeploymentConflictError):
         fixture.deploy.execute(request("c1", edited("Changed.\n")))
     assert len(fixture.journal.entries) == 1
+
+
+class RefusingJournal(InMemoryJournal):
+    def append(self, entries: Sequence[JournalEntry]) -> None:
+        raise RuntimeError("the journal refuses")
+
+
+def test_a_deployment_whose_fact_is_refused_is_not_put_in_force() -> None:
+    deployments = InMemoryPolicyDeployments(journal=RefusingJournal())
+    deploy = DeployPoliciesUseCase(
+        deployments, ParsedPolicyDeploymentCheck(), Clock()
+    )
+    with pytest.raises(RuntimeError, match="the journal refuses"):
+        deploy.execute(request())
+    assert deployments.in_force() is None
+    assert deployments.held(REPOSITORY, "c1") is None

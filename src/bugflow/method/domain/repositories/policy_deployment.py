@@ -7,22 +7,32 @@ written and read by key but not listed has to be worked around before
 a page can show it.
 """
 
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from bugflow.method.domain.models.policy_deployment import (
     PolicyDeployment,
     PutInForce,
 )
+from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.repositories.base import BaseRepository
+
+#: The facts that record a deployment put in force, given the deployment
+#: it replaced, or None for the server's first.
+Facts = Callable[[PutInForce | None], Sequence[JournalEntry]]
 
 
 class PolicyDeploymentRepository(BaseRepository[PolicyDeployment], Protocol):
-    def deploy(self, deployment: PolicyDeployment) -> bool:
-        """Keep the deployment and put it in force.
+    def deploy(
+        self, deployment: PolicyDeployment, facts: Facts = lambda _: ()
+    ) -> bool:
+        """Keep the deployment and put it in force, and record ``facts``
+        in the journal in the same transaction, so a deployment is never
+        in force without them.
 
         Returns whether anything changed. Sending the deployment already
-        in force changes nothing, so a sender may repeat itself. Sending
-        one held earlier puts it back in force.
+        in force changes nothing and records nothing, so a sender may
+        repeat itself. Sending one held earlier puts it back in force.
 
         Raises ``PolicyDeploymentConflictError`` if that repository and
         commit are held with other content: a commit names one
