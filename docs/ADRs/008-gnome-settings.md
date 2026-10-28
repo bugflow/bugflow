@@ -7,7 +7,10 @@ settings from the declarations, and the change is released in two
 steps; the label is decided by the gnomes that publish where none
 gates, and by every gnome that judges where none publishes; a process
 that names a reviewer runs where that gnome judges; a webhook is
-registered when `bugflow webhooks` runs.
+registered when `bugflow webhooks` runs. Accepted, 2026-10-29: the
+settings, the profiles, discovery and the settings page are released
+in v0.0.17 and v0.0.18, and a deployment carrying `declarations.toml`
+is refused.
 
 ## Context
 
