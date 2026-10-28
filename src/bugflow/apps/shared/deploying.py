@@ -6,7 +6,9 @@ The use case is the method context's and the gnomes' settings are the
 review context's, so the two are joined here, where both may be
 imported. A deployment that drops a profile, or a gnome, that a setting
 names is refused (ADR 008), so a repository is never left set to a
-profile that is gone, even with its gnome off. The API's route and the
+profile that is gone, even with its gnome off. So is one that gives a
+layer a cadence a declared boundary on it cannot take, which the
+ingress or the worker would raise on. The API's route and the
 command's ``install-policies`` run the same composition, so a
 deployment made on the host is checked and recorded as one a pipeline
 sends is.
@@ -23,6 +25,8 @@ from bugflow.method.domain.errors import (
     PolicyDeploymentConflictError,
     PolicyDeploymentError,
 )
+from bugflow.method.domain.models.boundary import BoundaryError
+from bugflow.method.domain.models.pace_layer import check_boundary
 from bugflow.method.domain.models.policy_deployment import PolicyDeployment
 from bugflow.method.domain.models.policy_text import JUDGED_SUBJECTS
 from bugflow.method.domain.repositories.policy_deployment import (
@@ -44,9 +48,15 @@ from bugflow.method.usecases.deploy_policies import DeployPoliciesUseCase
 from bugflow.review.domain.services.gnome_settings import (
     GnomeSettingsService,
 )
+from bugflow.review.domain.services.layer_boundaries import (
+    LayerBoundariesService,
+)
 from bugflow.review.domain.values.checked_policy import CHECKS
 from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
     SqlAlchemyGnomeSettings,
+)
+from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
+    SqlAlchemyLayerBoundaries,
 )
 from bugflow.shared.domain.services.recording import RecordingService
 from bugflow.shared.infrastructure.system_clock import SystemClock
@@ -72,20 +82,45 @@ def checks_from(environ: Mapping[str, str]) -> tuple[str, ...]:
 class SettledDeploymentCheck:
     """Implements ``PolicyDeploymentCheckService``: a retired file is
     refused, then the parse, told which checks this server has and which
-    subjects it renders, and then each setting, which must name a gnome
-    and a profile the deployment holds."""
+    subjects it renders, then each setting, which must name a gnome and
+    a profile the deployment holds, and then each declared boundary,
+    which the cadence the deployment gives its layer must take."""
 
     def __init__(
         self,
         checks: Collection[str],
         settings: GnomeSettingsService | None = None,
+        boundaries: LayerBoundariesService | None = None,
     ) -> None:
         self._checks = checks
         self._settings = settings
+        self._boundaries = boundaries
 
     def check(self, deployment: PolicyDeployment) -> None:
         refuse_retired(deployment)
         parsed = parse_deployment(deployment, self._checks, JUDGED_SUBJECTS)
+        if self._boundaries is not None:
+            unfit = []
+            for one in self._boundaries.declarations():
+                layer = parsed.layers.get(one.layer)
+                if layer is None:
+                    continue
+                try:
+                    check_boundary(layer.cadence, one.boundary)
+                except BoundaryError:
+                    unfit.append(
+                        f"{one.forge}:{one.repo} begins {one.layer} at "
+                        f"{one.boundary!r}, which the "
+                        f"{layer.cadence.name} cadence cannot take"
+                    )
+            if unfit:
+                raise PolicyDeploymentError(
+                    "the deployment gives a layer a cadence a declared "
+                    "boundary cannot take: "
+                    + "; ".join(sorted(unfit))
+                    + ". Declare those boundaries again, or withdraw "
+                    "them, first"
+                )
         if self._settings is None:
             return
         dropped = sorted(
@@ -102,10 +137,12 @@ class SettledDeploymentCheck:
 
 
 def deployment_check(
-    checks: Collection[str], settings: GnomeSettingsService | None = None
+    checks: Collection[str],
+    settings: GnomeSettingsService | None = None,
+    boundaries: LayerBoundariesService | None = None,
 ) -> SettledDeploymentCheck:
     """Return the check a deployment passes before it is stored."""
-    return SettledDeploymentCheck(checks, settings)
+    return SettledDeploymentCheck(checks, settings, boundaries)
 
 
 @dataclass(frozen=True)
@@ -122,13 +159,14 @@ def deploying_with(
     recording: RecordingService,
     checks: Collection[str],
     settings: GnomeSettingsService | None = None,
+    boundaries: LayerBoundariesService | None = None,
 ) -> Deploying:
     """Compose deploying over the stores given. For a test, or a program
     that holds the stores already."""
     return Deploying(
         deploy=DeployPoliciesUseCase(
             deployments,
-            deployment_check(checks, settings),
+            deployment_check(checks, settings, boundaries),
             recording,
             SystemClock(),
         ),
@@ -146,6 +184,7 @@ def deploying_over(
         stamped_journal(database_url, build),
         checks,
         SqlAlchemyGnomeSettings(database_url),
+        SqlAlchemyLayerBoundaries(database_url),
     )
 
 
