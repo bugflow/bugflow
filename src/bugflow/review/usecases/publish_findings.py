@@ -288,7 +288,7 @@ READ = (
 # A checkout agent's commit status and its text, for each verdict.
 _AGENT_STATUS: dict[ReviewStatus, tuple[CommitState, str]] = {
     "pass": ("success", "nothing to raise"),
-    "warn": ("success", "something to consider"),
+    "warn": ("success", "something to consider; advisory"),
     "fail": ("failure", "a problem to fix"),
 }
 
@@ -324,12 +324,13 @@ def _enforced(
 
     A status fails only for a reviewer at ``gate`` on the repository,
     and only on a ``fail`` verdict. Otherwise a status that would have
-    failed is set to success and marked "advisory".
+    failed is set to success and marked "advisory". A warning's text
+    says "advisory" already, because no behaviour fails a status on a
+    warning.
     """
     if fails(enforcement, agent_id, verdict):
         return "failure", description
-    gates = agent_id in enforcement.gating
-    if state == "failure" or (gates and verdict == "warn"):
+    if state == "failure":
         return "success", f"{description}; advisory"
     return state, description
 
