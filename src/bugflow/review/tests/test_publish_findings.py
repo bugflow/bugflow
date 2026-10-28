@@ -1105,6 +1105,29 @@ def test_under_advise_a_failing_finding_is_published_and_fails_nothing() -> (
     ]
 
 
+def test_a_gating_reviewers_warnings_are_called_advisory_once() -> None:
+    forge = RecordingForge()
+    publisher(forge, enforcement=GATE).execute(
+        request(finding("warn"), finding("warn"))
+    )
+    assert forge.statuses == [(HEAD, PROSE, "success", "2 warnings; advisory")]
+
+
+def test_a_gating_checkout_agents_warning_is_called_advisory_once() -> None:
+    forge = RecordingForge()
+    publisher(
+        forge,
+        enforcement=gate((PROSE, SAFETY)),
+        agents={**AGENTS, SAFETY: ()},
+    ).execute(reviewed("warn"))
+    assert (
+        HEAD,
+        SAFETY,
+        "success",
+        "something to consider; advisory",
+    ) in forge.statuses
+
+
 def test_under_observe_nothing_reaches_the_forge() -> None:
     forge = RecordingForge()
     response = publisher(forge, enforcement=OBSERVE).execute(
