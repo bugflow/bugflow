@@ -27,6 +27,7 @@ from temporalio.client import (
     ScheduleUpdate,
     ScheduleUpdateInput,
 )
+from temporalio.service import RPCError, RPCStatusCode
 
 from bugflow.method.domain.models.boundary import phase
 from bugflow.method.domain.models.pace_layer import Cadence, PaceLayer
@@ -35,6 +36,11 @@ from bugflow.review.domain.services.layer_boundaries import (
 )
 from bugflow.review.dtos.take_stock import TakeStockRequest
 from bugflow.shared.domain.values.correlation import Correlation
+
+#: What every stocktake schedule's id begins with. A schedule with it,
+#: on this worker's task queue, that the topology no longer asks for is
+#: deleted.
+STOCKTAKE_SCHEDULE = "stocktake/"
 
 #: The months a quarter fires in, counted from the month its boundary
 #: names: that month and every third one after it.
@@ -156,7 +162,8 @@ def _levelled(spec: ScheduleSpec) -> tuple[object, ...]:
 
 class ScheduleClient(Protocol):
     """What reconciling needs of a scheduler: one call that makes a
-    schedule, and may be repeated."""
+    schedule, and may be repeated, and the two that find and delete one
+    nothing asks for any more."""
 
     async def ensure_schedule(
         self,
@@ -166,6 +173,22 @@ class ScheduleClient(Protocol):
         task_queue: str,
         request: TakeStockRequest,
     ) -> None: ...
+
+    async def stocktake_schedules(self, task_queue: str) -> list[str]:
+        """The id of each stocktake schedule that starts its workflow on
+        that task queue."""
+        ...
+
+    async def delete_schedule(self, schedule_id: str) -> None: ...
+
+
+@dataclass(frozen=True, kw_only=True)
+class Reconciled:
+    """What reconciling did: the schedules the topology asks for, each
+    made or kept, and those it deleted."""
+
+    scheduled: list[str]
+    deleted: list[str]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -209,7 +232,7 @@ def wanted_schedules(
             declared = boundaries.boundary(forge, repo, layer.name)
             if declared is None:
                 continue
-            schedule_id = f"stocktake/{forge}/{repo}/{layer.name}"
+            schedule_id = f"{STOCKTAKE_SCHEDULE}{forge}/{repo}/{layer.name}"
             wanted[schedule_id] = Scheduled(
                 schedule_id=schedule_id,
                 forge=forge,
@@ -229,14 +252,20 @@ async def reconcile(
     boundaries: LayerBoundariesService,
     now: datetime,
     zone: str,
-) -> list[str]:
-    """Create the schedules the topology asks for, and return their
-    ids.
+) -> Reconciled:
+    """Create the schedules the topology asks for, delete those on this
+    task queue it no longer asks for, and say which are which.
 
     A schedule already there keeps its next firing, which is the
     server's business, unless what it fires on has changed: a boundary
     declared after the schedule was made would otherwise reach nothing.
     A layer whose cadence no clock fires is not scheduled.
+
+    A schedule nothing asks for is one whose repository no gnome judges
+    any more, whose layer the deployment in force no longer holds or
+    puts on a clock, or whose boundary was withdrawn. Left, it would
+    go on starting stocktakes, and a stocktake dispatches whatever the
+    repository is still set to.
     """
     wanted = wanted_schedules(layers, watched, boundaries)
     for schedule_id, one in sorted(wanted.items()):
@@ -254,7 +283,12 @@ async def reconcile(
                 correlation=Correlation(workflow_id="", run_id=""),
             ),
         )
-    return sorted(wanted)
+    deleted = sorted(
+        set(await client.stocktake_schedules(task_queue)) - set(wanted)
+    )
+    for schedule_id in deleted:
+        await client.delete_schedule(schedule_id)
+    return Reconciled(scheduled=sorted(wanted), deleted=deleted)
 
 
 class TemporalScheduler:
@@ -293,6 +327,51 @@ class TemporalScheduler:
             )
         except ScheduleAlreadyRunningError:
             await self._retime(schedule_id, spec)
+
+    async def stocktake_schedules(self, task_queue: str) -> list[str]:
+        """Each stocktake schedule on that task queue. The listing does
+        not carry the task queue, so each is described.
+
+        The listing lags the server, so it can name a schedule already
+        deleted, which is left out. A server that does not implement
+        schedules, as Temporal's time-skipping test server does not,
+        holds none.
+        """
+        try:
+            listed = [
+                one.id
+                async for one in await self._client.list_schedules()
+                if one.id.startswith(STOCKTAKE_SCHEDULE)
+            ]
+        except RPCError as exc:
+            if exc.status == RPCStatusCode.UNIMPLEMENTED:
+                return []
+            raise
+        found = []
+        for schedule_id in listed:
+            try:
+                described = await self._client.get_schedule_handle(
+                    schedule_id
+                ).describe()
+            except RPCError as exc:
+                if exc.status == RPCStatusCode.NOT_FOUND:
+                    continue
+                raise
+            action = described.schedule.action
+            if (
+                isinstance(action, ScheduleActionStartWorkflow)
+                and action.task_queue == task_queue
+            ):
+                found.append(schedule_id)
+        return found
+
+    async def delete_schedule(self, schedule_id: str) -> None:
+        """Delete it. One already gone is not an error."""
+        try:
+            await self._client.get_schedule_handle(schedule_id).delete()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
 
     async def _retime(self, schedule_id: str, spec: ScheduleSpec) -> None:
         """Move an existing schedule onto the spec it should fire on.
