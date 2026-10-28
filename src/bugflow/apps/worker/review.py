@@ -686,7 +686,7 @@ def parts_from_environment(
     async def schedule_for(
         client: Client, task_queue: str, repositories: tuple[str, ...]
     ) -> None:
-        made = await reconcile(
+        reconciled = await reconcile(
             TemporalScheduler(client, STOCKTAKE_WORKFLOW),
             layers,
             repositories,
@@ -695,8 +695,13 @@ def parts_from_environment(
             SystemClock().now(),
             zone,
         )
-        if made:
-            _say(f"stocktakes scheduled: {', '.join(made)}")
+        if reconciled.scheduled:
+            _say(f"stocktakes scheduled: {', '.join(reconciled.scheduled)}")
+        if reconciled.deleted:
+            _say(
+                "stocktakes no longer asked for, deleted: "
+                + ", ".join(reconciled.deleted)
+            )
 
     async def schedule_stocktakes(client: Client, task_queue: str) -> None:
         # One schedule for each layer on a clock, for each watched

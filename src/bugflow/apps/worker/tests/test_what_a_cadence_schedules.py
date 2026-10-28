@@ -8,7 +8,7 @@ and read in the timezone the caller gives.
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -20,6 +20,7 @@ from temporalio.client import (
     ScheduleCalendarSpec,
     ScheduleSpec,
 )
+from temporalio.service import RPCError, RPCStatusCode
 
 from bugflow.apps.worker.schedules import (
     Scheduled,
@@ -220,10 +221,13 @@ def test_a_boundary_that_is_no_boundary_is_refused() -> None:
 
 
 class FakeScheduler:
-    """A scheduler that remembers what it was asked for."""
+    """A scheduler that remembers what it was asked for. ``held`` are
+    the stocktake schedules already on its task queue."""
 
-    def __init__(self) -> None:
+    def __init__(self, *held: str) -> None:
         self.asked: list[tuple[str, str, str]] = []
+        self.held = list(held)
+        self.deleted: list[str] = []
 
     async def ensure_schedule(
         self,
@@ -237,10 +241,16 @@ class FakeScheduler:
             (schedule_id, task_queue, request.layer)  # type: ignore[attr-defined]
         )
 
+    async def stocktake_schedules(self, task_queue: str) -> list[str]:
+        return list(self.held)
+
+    async def delete_schedule(self, schedule_id: str) -> None:
+        self.deleted.append(schedule_id)
+
 
 def test_reconciling_creates_one_schedule_per_layer_and_repository() -> None:
     scheduler = FakeScheduler()
-    made = asyncio.run(
+    reconciled = asyncio.run(
         reconcile(
             scheduler,
             {"weekly": WEEKLY},
@@ -252,10 +262,11 @@ def test_reconciling_creates_one_schedule_per_layer_and_repository() -> None:
         )
     )
 
-    assert made == [
+    assert reconciled.scheduled == [
         "stocktake/github/example-org/gadgets/weekly",
         "stocktake/github/example-org/widgets/weekly",
     ]
+    assert reconciled.deleted == []
     assert [one[2] for one in scheduler.asked] == ["weekly", "weekly"]
     assert {one[1] for one in scheduler.asked} == {"a-queue"}
 
@@ -274,10 +285,33 @@ def test_reconciling_a_delivery_layer_asks_for_nothing() -> None:
                 NOW,
                 ZONE,
             )
-        )
+        ).scheduled
         == []
     )
     assert scheduler.asked == []
+
+
+def test_reconciling_deletes_a_schedule_nothing_asks_for() -> None:
+    """A repository no gnome judges any more would otherwise go on
+    taking stock, and dispatching what it is still set to."""
+    stale = "stocktake/github/example-org/retired/weekly"
+    scheduler = FakeScheduler(
+        "stocktake/github/example-org/widgets/weekly", stale
+    )
+    reconciled = asyncio.run(
+        reconcile(
+            scheduler,
+            {"weekly": WEEKLY},
+            WATCHED,
+            "a-queue",
+            weekly_at(),
+            NOW,
+            ZONE,
+        )
+    )
+
+    assert reconciled.deleted == [stale]
+    assert scheduler.deleted == [stale]
 
 
 class FakeHandle:
@@ -288,7 +322,14 @@ class FakeHandle:
         self._id = schedule_id
 
     async def describe(self) -> object:
+        if self._id not in self._held.schedules:
+            raise RPCError("not found", RPCStatusCode.NOT_FOUND, b"")
         return SimpleNamespace(schedule=self._held.schedules[self._id])
+
+    async def delete(self) -> None:
+        if self._id not in self._held.schedules:
+            raise RPCError("not found", RPCStatusCode.NOT_FOUND, b"")
+        del self._held.schedules[self._id]
 
     async def update(self, onto: Callable[[object], object]) -> None:
         described = SimpleNamespace(schedule=self._held.schedules[self._id])
@@ -303,6 +344,16 @@ class FakeServer:
     def __init__(self, schedules: dict[str, object] | None = None) -> None:
         self.schedules: dict[str, object] = dict(schedules or {})
         self.updated: list[str] = []
+        #: Ids the listing still names after they were deleted, as the
+        #: server's listing lags it.
+        self.lagging: list[str] = []
+
+    async def list_schedules(self) -> AsyncIterator[SimpleNamespace]:
+        async def listed() -> AsyncIterator[SimpleNamespace]:
+            for schedule_id in [*self.schedules, *self.lagging]:
+                yield SimpleNamespace(id=schedule_id)
+
+        return listed()
 
     async def create_schedule(
         self, schedule_id: str, schedule: object
@@ -315,7 +366,7 @@ class FakeServer:
         return FakeHandle(self, schedule_id)
 
 
-def held_on(spec: ScheduleSpec) -> Schedule:
+def held_on(spec: ScheduleSpec, task_queue: str = "a-queue") -> Schedule:
     return Schedule(
         action=ScheduleActionStartWorkflow(
             "StocktakeWorkflow",
@@ -326,7 +377,7 @@ def held_on(spec: ScheduleSpec) -> Schedule:
                 correlation=Correlation(workflow_id="", run_id=""),
             ),
             id="stocktake/github/example-org/widgets/weekly/run",
-            task_queue="a-queue",
+            task_queue=task_queue,
         ),
         spec=spec,
     )
@@ -451,3 +502,57 @@ def test_an_interval_schedule_the_server_answers_alike_is_left_alone() -> None:
     ask(scheduling(server), wanted)
 
     assert server.updated == []
+
+
+def test_only_stocktakes_on_this_task_queue_are_found() -> None:
+    """Another worker's stocktakes, and schedules that are no stocktake,
+    are not this worker's to delete. One the listing names after it was
+    deleted is left out."""
+    spec = spec_for(CADENCES["weekly"], "SUN 23:30", NOW, ZONE)
+    server = FakeServer(
+        {
+            "stocktake/github/example-org/widgets/weekly": held_on(spec),
+            "stocktake/github/example-org/theirs/weekly": held_on(
+                spec, "another-queue"
+            ),
+            "archive-index": held_on(spec),
+        }
+    )
+    server.lagging = ["stocktake/github/example-org/gone/weekly"]
+
+    found = asyncio.run(scheduling(server).stocktake_schedules("a-queue"))
+
+    assert found == ["stocktake/github/example-org/widgets/weekly"]
+
+
+def test_deleting_a_schedule_already_gone_is_not_an_error() -> None:
+    server = FakeServer()
+    asyncio.run(
+        scheduling(server).delete_schedule(
+            "stocktake/github/example-org/gone/weekly"
+        )
+    )
+
+
+class Unimplemented:
+    """A listing whose first page is refused, as the time-skipping
+    server refuses it: when the listing is iterated."""
+
+    def __aiter__(self) -> "Unimplemented":
+        return self
+
+    async def __anext__(self) -> SimpleNamespace:
+        raise RPCError("unimplemented", RPCStatusCode.UNIMPLEMENTED, b"")
+
+
+class NoSchedules(FakeServer):
+    async def list_schedules(self) -> Unimplemented:
+        return Unimplemented()
+
+
+def test_a_server_that_does_not_implement_schedules_holds_none() -> None:
+    """Temporal's time-skipping test server is one."""
+    found = asyncio.run(
+        scheduling(NoSchedules()).stocktake_schedules("a-queue")
+    )
+    assert found == []
