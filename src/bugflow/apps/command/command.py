@@ -83,10 +83,10 @@ layer begins, and the share of its warnings withheld from its pull
 requests. Only what the call names is written.
 
 ``allow`` binds what a run may spend, in dollars and turns, to a scope:
-a repository, a layer and a reviewer, each of which may be left out to
-mean any. ``--per`` names the cadence the allowance is counted per, and
-is ``event`` if left out. ``revoke`` removes one allowance, which is
-not the same as allowing zero.
+a repository or every repository of one owner, a layer and a reviewer,
+each of which may be left out to mean any. ``--per`` names the cadence
+the allowance is counted per, and is ``event`` if left out. ``revoke``
+removes one allowance, which is not the same as allowing zero.
 
 ``cadence`` says where this server's periods of one cadence begin,
 which is what an allowance is counted over where no repository's own
@@ -399,6 +399,11 @@ def _declaring_parsers(
     commands: "argparse._SubParsersAction[argparse.ArgumentParser]",
 ) -> None:
     repository = "owner/name, or forgejo:owner/name for one on a Forgejo"
+    # An allowance can also name every repository of one owner.
+    allowed = (
+        "owner/name, or owner/* for every repository of that owner, "
+        "either after forgejo: for a Forgejo"
+    )
     set_gnome = commands.add_parser(
         "set",
         help="set what one gnome does on one repository, and the profile "
@@ -507,7 +512,7 @@ def _declaring_parsers(
         "repository",
         nargs="?",
         default="",
-        help=repository + ", or omitted for every repository",
+        help=allowed + ", or omitted for every repository",
     )
     allow.add_argument(
         "--usd",
@@ -559,7 +564,7 @@ def _declaring_parsers(
         "repository",
         nargs="?",
         default="",
-        help=repository + ", or omitted for the allowance bound to every "
+        help=allowed + ", or omitted for the allowance bound to every "
         "repository",
     )
     revoke.add_argument(

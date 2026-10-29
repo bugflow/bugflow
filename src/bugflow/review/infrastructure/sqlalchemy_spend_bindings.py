@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
     SpendScope,
+    owner_of,
 )
 from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.infrastructure.database import engine_url
@@ -27,6 +28,9 @@ spend_bindings = sa.Table(
     # is not equal to null, and two unscoped rows would both be allowed
     # in.
     sa.Column("forge", sa.Text, primary_key=True, server_default=""),
+    # The owner whose every repository the row covers. A row names an
+    # owner or a repository, and not both.
+    sa.Column("owner", sa.Text, primary_key=True, server_default=""),
     sa.Column("repo", sa.Text, primary_key=True, server_default=""),
     sa.Column("layer", sa.Text, primary_key=True, server_default=""),
     sa.Column("agent_id", sa.Text, primary_key=True, server_default=""),
@@ -55,6 +59,7 @@ spend_bindings = sa.Table(
 #: are listed most specific first; every match applies.
 _NAMED = (
     sa.case((spend_bindings.c.forge != "", 1), else_=0)
+    + sa.case((spend_bindings.c.owner != "", 1), else_=0)
     + sa.case((spend_bindings.c.repo != "", 1), else_=0)
     + sa.case((spend_bindings.c.layer != "", 1), else_=0)
     + sa.case((spend_bindings.c.agent_id != "", 1), else_=0)
@@ -62,11 +67,12 @@ _NAMED = (
 
 
 def _binding(
-    row: sa.Row[tuple[str, str, str, str, float, float]],
+    row: sa.Row[tuple[str, str, str, str, str, float, float]],
 ) -> SpendBinding:
     return SpendBinding(
         scope=SpendScope(
             forge=row.forge,
+            owner=row.owner,
             repo=row.repo,
             layer=row.layer,
             agent_id=row.agent_id,
@@ -96,6 +102,7 @@ class SqlAlchemySpendBindings:
             sa.select(spend_bindings)
             .where(
                 spend_bindings.c.forge.in_(("", forge)),
+                spend_bindings.c.owner.in_(("", owner_of(repo))),
                 spend_bindings.c.repo.in_(("", repo)),
                 spend_bindings.c.layer.in_(("", layer)),
                 spend_bindings.c.agent_id.in_(("", agent_id)),
@@ -109,6 +116,7 @@ class SqlAlchemySpendBindings:
         query = sa.select(spend_bindings).order_by(
             _NAMED.desc(),
             spend_bindings.c.forge,
+            spend_bindings.c.owner,
             spend_bindings.c.repo,
             spend_bindings.c.layer,
             spend_bindings.c.agent_id,
@@ -119,6 +127,7 @@ class SqlAlchemySpendBindings:
     def revoke(self, scope: SpendScope, per: str) -> None:
         statement = sa.delete(spend_bindings).where(
             spend_bindings.c.forge == scope.forge,
+            spend_bindings.c.owner == scope.owner,
             spend_bindings.c.repo == scope.repo,
             spend_bindings.c.layer == scope.layer,
             spend_bindings.c.agent_id == scope.agent_id,
@@ -131,6 +140,7 @@ class SqlAlchemySpendBindings:
         scope = binding.scope
         statement = insert(spend_bindings).values(
             forge=scope.forge,
+            owner=scope.owner,
             repo=scope.repo,
             layer=scope.layer,
             agent_id=scope.agent_id,
@@ -139,7 +149,14 @@ class SqlAlchemySpendBindings:
             per=binding.per,
         )
         statement = statement.on_conflict_do_update(
-            index_elements=["forge", "repo", "layer", "agent_id", "per"],
+            index_elements=[
+                "forge",
+                "owner",
+                "repo",
+                "layer",
+                "agent_id",
+                "per",
+            ],
             set_={
                 "usd": statement.excluded.usd,
                 "turns": statement.excluded.turns,

@@ -252,3 +252,41 @@ def test_revoking_what_was_never_bound_changes_nothing(
         for one in bindings.binding_for("github", name, "", "")
         if one.scope.repo == name
     ] == []
+
+
+def owned(bindings: SqlAlchemySpendBindings, name: str) -> list[float | None]:
+    """What covers the repository, of what names its owner or itself:
+    other tests bind wider scopes in the same database."""
+    return sorted(
+        (
+            one.budget.usd
+            for one in bindings.binding_for("github", name, "", "")
+            if one.scope.owner or one.scope.repo
+        ),
+        key=lambda usd: usd or 0.0,
+    )
+
+
+def test_a_ceiling_bound_to_an_owner_covers_each_of_its_repositories(
+    engine: sa.Engine, database_url: str
+) -> None:
+    bindings = SqlAlchemySpendBindings(database_url)
+    owner = str(uuid.uuid4())
+    bind(bindings, SpendScope(forge="github", owner=owner), 4.0)
+    assert owned(bindings, f"{owner}/one") == [4.0]
+    assert owned(bindings, f"{owner}/two") == [4.0]
+    assert owned(bindings, f"{uuid.uuid4()}/one") == []
+
+
+def test_an_owners_ceiling_is_its_own_row_and_revoked_alone(
+    engine: sa.Engine, database_url: str
+) -> None:
+    bindings = SqlAlchemySpendBindings(database_url)
+    owner = str(uuid.uuid4())
+    name = f"{owner}/one"
+    mine = SpendScope(forge="github", owner=owner)
+    bind(bindings, mine, 4.0)
+    bind(bindings, SpendScope(forge="github", repo=name), 2.5)
+    assert owned(bindings, name) == [2.5, 4.0]
+    bindings.revoke(mine, "event")
+    assert owned(bindings, name) == [2.5]

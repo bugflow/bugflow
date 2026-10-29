@@ -119,6 +119,24 @@ def test_a_days_allowance_that_is_spent_refuses_and_says_which() -> None:
     assert "has spent $10.00" in found
 
 
+def test_an_owners_allowance_counts_each_of_its_repositories() -> None:
+    """An owner's allowance is shared: what one repository spent leaves
+    less for the next."""
+    record = InMemorySpendRecord()
+    record.costs = [
+        ("github", "o/r", "weekly", "security", NOW, 6.0),
+        ("github", "o/other", "weekly", "security", NOW, 4.0),
+        ("github", "p/r", "weekly", "security", NOW, 50.0),
+    ]
+    owner = bound(10.0, scope=SpendScope(forge="github", owner="o"))
+    found = refused_by(
+        owner, record, deployment(), NOW, "github", "o/third", settings()
+    )
+    assert found is not None
+    assert "github:o/* is allowed $10.00 per nightly" in found
+    assert "has spent $10.00" in found
+
+
 def test_an_invocation_allowance_is_not_a_period_question() -> None:
     """It is the ceiling handed to the run, and the vendor holds the run
     to it. Nothing here asks what an invocation has already spent."""
