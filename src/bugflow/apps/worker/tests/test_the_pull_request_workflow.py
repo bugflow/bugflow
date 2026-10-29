@@ -124,7 +124,10 @@ async def deliver(
     task_queue: str,
     delivery_id: str,
     evaluations_per_run: int = 20,
+    settling: float | None = None,
 ) -> WorkflowHandle[PullRequestWorkflow, None]:
+    """Deliver as the ingress does: a delivery with the settling window
+    the repository declares, if it declares one."""
     return await env.client.start_workflow(
         PullRequestWorkflow.run,
         PullRequestWorkflowInput(
@@ -136,7 +139,9 @@ async def deliver(
         task_queue=task_queue,
         id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         start_signal=DELIVERY_SIGNAL,
-        start_signal_args=[delivery_id],
+        start_signal_args=(
+            [delivery_id] if settling is None else [delivery_id, settling]
+        ),
     )
 
 
@@ -234,6 +239,54 @@ def test_the_workflow_continues_as_new_and_keeps_evaluating() -> None:
         await close(env)
         assert first.result_run_id != second.result_run_id
         assert [ids for _, ids in evaluations] == [("d-1",), ("d-2",)]
+
+    run(scenario)
+
+
+SETTLING = timedelta(seconds=300)
+
+
+def test_a_window_declared_since_it_started_reaches_the_workflow() -> None:
+    """A boundary changed while a pull request is followed applies from
+    its next delivery, not only to pull requests opened after it."""
+
+    async def scenario(env: WorkflowEnvironment, task_queue: str) -> None:
+        await deliver(env, task_queue, "d-1")
+        await env.sleep(DEBOUNCE + timedelta(seconds=1))
+        await evaluated(1)
+        await deliver(
+            env, task_queue, "d-2", settling=SETTLING.total_seconds()
+        )
+        await env.sleep(DEBOUNCE + timedelta(seconds=1))
+        await asyncio.sleep(0.2)
+        assert len(evaluations) == 1
+        await env.sleep(SETTLING - DEBOUNCE)
+        await evaluated(2)
+        await close(env)
+
+    run(scenario)
+
+
+def test_the_window_in_force_is_carried_into_the_next_run() -> None:
+    async def scenario(env: WorkflowEnvironment, task_queue: str) -> None:
+        await deliver(
+            env,
+            task_queue,
+            "d-1",
+            evaluations_per_run=1,
+            settling=SETTLING.total_seconds(),
+        )
+        await env.sleep(SETTLING + timedelta(seconds=1))
+        await evaluated(1)
+        # A delivery that names no window, as one signalled before the
+        # argument existed does, leaves the window as it was.
+        await deliver(env, task_queue, "d-2", evaluations_per_run=1)
+        await env.sleep(DEBOUNCE + timedelta(seconds=1))
+        await asyncio.sleep(0.2)
+        assert len(evaluations) == 1
+        await env.sleep(SETTLING - DEBOUNCE)
+        await evaluated(2)
+        await close(env)
 
     run(scenario)
 

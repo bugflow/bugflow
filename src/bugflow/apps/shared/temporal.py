@@ -146,9 +146,8 @@ class TemporalEvaluationStarter:
         self._loop = loop
         self._workflows = workflows
         # How long a burst of deliveries settles for, as the repository
-        # declared it. None where it declared none, and then the
-        # workflow waits its own default, which is what every run already
-        # in flight waits.
+        # declares it when the delivery arrives. None where it declared
+        # none, and then the workflow waits the window it already has.
         self._settling = settling or (lambda forge, repo: None)
 
     def start(self, ref: PullRequestRef, delivery_id: str) -> Correlation:
@@ -195,7 +194,11 @@ class TemporalEvaluationStarter:
             task_queue=self._settings.task_queue,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             start_signal=self._workflows.delivery_signal,
-            start_signal_args=[delivery_id],
+            # The window goes with the delivery as well as the input,
+            # since a workflow already running takes no new input.
+            start_signal_args=(
+                [delivery_id] if settling is None else [delivery_id, settling]
+            ),
         )
         if handle.result_run_id is None:
             raise EvaluationStartError("Temporal returned no run id")

@@ -272,7 +272,8 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
 
    For a layer an event fires, the boundary is the window a burst of
    deliveries settles in, in seconds: with `60s`, five pushes inside a
-   minute are one review. For a layer a clock fires, it is where the
+   minute are one review. A changed window applies to a pull request
+   already being followed from its next delivery. For a layer a clock fires, it is where the
    period begins: `23:30`, `"SUN 23:30"`, `"1 23:30"` for a day of the
    month, or `"2026-09-01 09:00"`. A fortnight, a quarter and a year
    take only the last form. A boundary the layer's cadence in the
