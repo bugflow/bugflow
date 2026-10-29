@@ -3,6 +3,7 @@
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
     SpendScope,
+    owner_of,
 )
 
 
@@ -13,6 +14,7 @@ def matches(
     anything."""
     return (
         scope.forge in ("", forge)
+        and scope.owner in ("", owner_of(repo))
         and scope.repo in ("", repo)
         and scope.layer in ("", layer)
         and scope.agent_id in ("", agent)
@@ -42,6 +44,7 @@ class InMemorySpendBindings:
                 key=lambda one: (
                     -one[0][0].parts,
                     one[0][0].forge,
+                    one[0][0].owner,
                     one[0][0].repo,
                     one[0][0].layer,
                     one[0][0].agent_id,

@@ -26,6 +26,8 @@ class Spent:
     agent_id: str
     since: datetime
     until: datetime
+    #: The owner whose repositories it covers, or empty.
+    owner: str = ""
     #: What it cost, in dollars, summed from what each fact recorded.
     usd: float
     #: How many runs and calls the figure is made of. A sum with no

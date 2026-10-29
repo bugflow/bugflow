@@ -148,6 +148,33 @@ def test_only_what_the_scope_names_is_counted(
     assert theirs.facts == 0
 
 
+def test_an_owner_counts_each_of_its_repositories(
+    engine: sa.Engine, database_url: str
+) -> None:
+    owner = str(uuid.uuid4())
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
+        [
+            entry(
+                f"{owner}/one",
+                "agent.dispatched",
+                {"step": "collected", "cost": {"usd": 2.0}},
+            ),
+            entry(
+                f"{owner}/two",
+                "agent.dispatched",
+                {"step": "collected", "cost": {"usd": 3.0}},
+            ),
+            entry(
+                f"{owner}x/one",
+                "agent.dispatched",
+                {"step": "collected", "cost": {"usd": 9.0}},
+            ),
+        ]
+    )
+    found = SqlAlchemySpendRecord(database_url).spent(*WINDOW, owner=owner)
+    assert (round(found.usd, 4), found.facts) == (5.0, 2)
+
+
 def test_a_cost_outside_the_window_is_not_counted(
     engine: sa.Engine, database_url: str
 ) -> None:

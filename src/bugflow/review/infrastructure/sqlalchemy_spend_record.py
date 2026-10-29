@@ -59,6 +59,7 @@ select coalesce(sum(usd), 0) as usd, count(*) as facts
 from ({_costs(relation)}) costs
 where occurred_at >= :since and occurred_at < :until
   and (:forge = '' or forge = :forge)
+  and (:owner = '' or split_part(repo, '/', 1) = :owner)
   and (:repo = '' or repo = :repo)
   and (:layer = '' or layer = :layer)
   and (:agent = '' or agent_id = :agent)
@@ -90,6 +91,7 @@ class SqlAlchemySpendRecord:
         repo: str = "",
         layer: str = "",
         agent_id: str = "",
+        owner: str = "",
     ) -> Spent:
         with self._engine.connect() as connection:
             row = connection.execute(
@@ -99,6 +101,7 @@ class SqlAlchemySpendRecord:
                     "since": since,
                     "until": until,
                     "forge": forge,
+                    "owner": owner,
                     "repo": repo,
                     "layer": layer,
                     "agent": agent_id,
@@ -106,6 +109,7 @@ class SqlAlchemySpendRecord:
             ).one()
         return Spent(
             forge=forge,
+            owner=owner,
             repo=repo,
             layer=layer,
             agent_id=agent_id,

@@ -374,6 +374,7 @@ def out_of_room(
             repo=scope.repo,
             layer=scope.layer,
             agent_id=scope.agent_id,
+            owner=scope.owner,
         )
         if already.usd >= binding.budget.usd:
             where = where_named(scope) or "everything"
@@ -443,6 +444,7 @@ def where_named(scope: SpendScope) -> str:
         part
         for part in (
             f"{scope.forge}:{scope.repo}" if scope.repo else "",
+            f"{scope.forge}:{scope.owner}/*" if scope.owner else "",
             scope.layer,
             scope.agent_id,
         )
