@@ -90,13 +90,27 @@ class PullRequestWorkflow:
         self._closed = False
         self._merged = False
         self._close_delivery = ""
+        # The settling window the latest delivery came with, which the
+        # workflow waits from then on. None until one comes with one.
+        self._settling: float | None = None
 
     @workflow.signal(name=DELIVERY_SIGNAL)
-    def delivery(self, delivery_id: str) -> None:
-        """Note a delivery. A delivery already pending is not added twice."""
+    def delivery(
+        self, delivery_id: str, settling_seconds: float | None = None
+    ) -> None:
+        """Note a delivery. A delivery already pending is not added twice.
+
+        ``settling_seconds`` is the window the repository declares when
+        the delivery arrives, so a changed boundary reaches a pull
+        request already being followed. It has a default so that a
+        delivery signalled before the argument existed still replays,
+        and changes nothing.
+        """
         if delivery_id not in self._pending:
             self._pending.append(delivery_id)
         self._received += 1
+        if settling_seconds is not None:
+            self._settling = settling_seconds
 
     @workflow.signal(name=CLOSE_SIGNAL)
     def close(self, delivery_id: str, merged: bool = False) -> None:
@@ -113,7 +127,6 @@ class PullRequestWorkflow:
             *input.pending,
             *(d for d in self._pending if d not in input.pending),
         ]
-        debounce = timedelta(seconds=input.debounce_seconds)
         idle_check = timedelta(seconds=input.idle_check_seconds)
         evaluations = 0
         while True:
@@ -122,13 +135,9 @@ class PullRequestWorkflow:
                     await self._collect(input.ref)
                     return
                 if workflow.info().is_continue_as_new_suggested():
-                    workflow.continue_as_new(
-                        input.model_copy(
-                            update={"pending": tuple(self._pending)}
-                        )
-                    )
+                    workflow.continue_as_new(self._carried(input))
             if not self._closed:
-                await self._quiet_for(debounce)
+                await self._quiet_for(timedelta(seconds=self._settled(input)))
             if self._closed:
                 await self._judge_what_merged(input.ref)
                 await self._collect(input.ref)
@@ -143,9 +152,28 @@ class PullRequestWorkflow:
                 evaluations >= input.evaluations_per_run
                 or workflow.info().is_continue_as_new_suggested()
             ) and not self._closed:
-                workflow.continue_as_new(
-                    input.model_copy(update={"pending": tuple(self._pending)})
-                )
+                workflow.continue_as_new(self._carried(input))
+
+    def _settled(self, input: PullRequestWorkflowInput) -> float:
+        """The settling window in force: the latest delivery's, or the
+        one the run started with."""
+        return (
+            input.debounce_seconds
+            if self._settling is None
+            else self._settling
+        )
+
+    def _carried(
+        self, input: PullRequestWorkflowInput
+    ) -> PullRequestWorkflowInput:
+        """The next run's input: the deliveries not yet evaluated, and
+        the settling window in force."""
+        return input.model_copy(
+            update={
+                "pending": tuple(self._pending),
+                "debounce_seconds": self._settled(input),
+            }
+        )
 
     async def _evaluate(
         self,
