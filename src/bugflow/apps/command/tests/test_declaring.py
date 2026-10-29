@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
@@ -33,6 +34,12 @@ from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
 )
 from bugflow.method.tests.policy_files import laid_out
 from bugflow.review.domain.models.gnome_setting import GnomeSetting
+from bugflow.review.infrastructure.sqlalchemy_declaration_facts import (
+    allowance_declaration,
+    boundary_declaration,
+    cadence_declaration,
+    withholding_declaration,
+)
 from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
     SqlAlchemyGnomeSettings,
 )
@@ -795,3 +802,112 @@ def test_archive_origin_requires_archive(shared: str) -> None:
         == 2
     )
     assert "--archive-origin needs --archive" in said.refused
+
+
+def declared_facts(
+    url: str, table: sa.Table, *where: sa.ColumnElement[bool]
+) -> list[sa.Row[Any]]:
+    """The typed rows of the declarations the journal holds, oldest
+    first, with the repository each names."""
+    engine = sa.create_engine(engine_url(url))
+    try:
+        with engine.connect() as connection:
+            return list(
+                connection.execute(
+                    sa.select(table, journal.c.forge, journal.c.repo)
+                    .join_from(
+                        journal, table, journal.c.event_id == table.c.event_id
+                    )
+                    .where(*where)
+                    .order_by(journal.c.occurred_at)
+                )
+            )
+    finally:
+        engine.dispose()
+
+
+def test_a_boundary_and_its_withdrawal_are_recorded(shared: str) -> None:
+    name = repo()
+    run_declare(
+        shared, name, layer="weekly", boundary="SUN 23:30", out=quiet()
+    )
+    run_declare(
+        shared, name, layer="weekly", boundary="SUN 23:30", out=quiet()
+    )
+    run_declare(shared, name, layer="weekly", boundary="", out=quiet())
+    facts = declared_facts(
+        shared, boundary_declaration, journal.c.repo == name
+    )
+    assert [(f.layer, f.boundary, f.was) for f in facts] == [
+        ("weekly", "SUN 23:30", None),
+        ("weekly", None, "SUN 23:30"),
+    ]
+    assert facts[0].declared_by.startswith("host:")
+
+
+def test_a_withheld_share_is_recorded_with_what_it_replaced(
+    shared: str,
+) -> None:
+    name = repo()
+    run_declare(shared, name, withhold=0.3, out=quiet())
+    run_declare(shared, name, withhold=0.1, out=quiet())
+    facts = declared_facts(
+        shared, withholding_declaration, journal.c.repo == name
+    )
+    assert [(f.share, f.was) for f in facts] == [(0.3, 0.0), (0.1, 0.3)]
+
+
+def test_an_allowance_and_its_revocation_are_recorded(shared: str) -> None:
+    name = repo()
+    run_allow(shared, name, usd=2.5, turns=None, out=quiet())
+    run_allow(shared, name, usd=2.5, turns=None, out=quiet())
+    run_allow(shared, name, turns=60.0, out=quiet())
+    run_revoke(shared, name, out=quiet())
+    facts = declared_facts(
+        shared, allowance_declaration, journal.c.repo == name
+    )
+    assert [
+        (f.held, f.usd, f.turns, f.was_held, f.was_usd, f.was_turns)
+        for f in facts
+    ] == [
+        (True, 2.5, None, False, None, None),
+        (True, 2.5, 60.0, True, 2.5, None),
+        (False, None, None, True, 2.5, 60.0),
+    ]
+    assert {(f.per, f.layer, f.agent_id, f.owner) for f in facts} == {
+        ("event", "", "", "")
+    }
+
+
+def test_an_owners_allowance_is_recorded_without_a_repository(
+    shared: str,
+) -> None:
+    owner = str(uuid.uuid4())
+    run_allow(shared, f"{owner}/*", usd=5.0, turns=None, out=quiet())
+    (fact,) = declared_facts(
+        shared,
+        allowance_declaration,
+        allowance_declaration.c.owner == owner,
+    )
+    assert (fact.forge, fact.repo, fact.usd) == ("github", "", 5.0)
+
+
+def test_a_cadence_boundary_is_recorded_without_a_repository(
+    database_url: str,
+) -> None:
+    run_cadence(database_url, "nightly", "03:17", out=quiet())
+    facts = declared_facts(
+        database_url,
+        cadence_declaration,
+        cadence_declaration.c.boundary == "03:17",
+    )
+    assert [(f.cadence, f.repo) for f in facts][-1:] == [("nightly", "")]
+    engine = sa.create_engine(engine_url(database_url))
+    try:
+        with engine.connect() as connection:
+            nameless = connection.execute(
+                sa.text("select count(*) from repository where name = ''")
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert nameless == 0

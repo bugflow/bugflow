@@ -104,3 +104,32 @@ def gnome_set_id(
         *(was or ("", "")),
         when.isoformat(),
     )
+
+
+#: An operator declared where one repository's period on a layer
+#: begins, or withdrew it. The payload has the layer, the boundary, null
+#: when withdrawn, what it replaced, and who declared it.
+BOUNDARY_DECLARED = "boundary.declared"
+
+#: An operator declared where this server's periods of one cadence
+#: begin, or withdrew it. It names no repository. The payload is as a
+#: boundary's, with the cadence in place of the layer.
+CADENCE_DECLARED = "cadence.declared"
+
+#: An operator declared the share of a repository's warnings withheld.
+#: The payload has the share, what it replaced, and who declared it.
+WITHHOLDING_DECLARED = "withholding.declared"
+
+#: An operator allowed a scope to spend per one cadence, or revoked
+#: that allowance. It names the repository the scope names, or none.
+#: The payload has the rest of the scope, the cadence, the money and the
+#: turns, whether the allowance is held after it and was held before,
+#: what it replaced, and who declared it.
+ALLOWANCE_DECLARED = "allowance.declared"
+
+
+def declaration_id(event_type: str, *parts: str, when: datetime) -> UUID:
+    """The id of a declaration's fact, made from what it declares, what
+    it replaced and the time. Declaring the same again later is a new
+    fact, and so is a second change in the same instant."""
+    return fact_id(event_type, *parts, when.isoformat())
