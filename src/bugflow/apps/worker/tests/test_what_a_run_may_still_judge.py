@@ -1,9 +1,10 @@
 """Tests of when a run may judge no more, and why it stopped.
 
-Judging is spending and is capped like any other. The ceiling is the
-allowance per run covering the repository with no reviewer named, since
-judging is the evaluation itself and names none. What the run has spent
-is every cost it recorded.
+Judging is spending and needs an allowance like any other. A run is
+covered by an allowance per run for the repository with no reviewer
+named, since judging is the evaluation itself and names none. A run
+nothing covers judges nothing. What a covered run has spent is every
+cost it recorded.
 """
 
 from bugflow.apps.worker.reviewers import judging_over_ceiling
@@ -90,20 +91,42 @@ def test_the_lowest_of_several_ceilings_holds_the_run() -> None:
     assert "$1.00" in refusal
 
 
-def test_a_period_allowance_is_not_a_run_s_ceiling() -> None:
+def test_a_run_nothing_allows_may_not_judge() -> None:
+    """A deployment that has bound nothing spends nothing, as a
+    dispatched reviewer does not."""
+    refusal = over(InMemorySpendBindings(), InMemorySpendRecord())
+
+    assert refusal == "nothing allows the judge to spend on o/r"
+
+
+def test_an_allowance_for_another_repository_does_not_cover_the_run() -> None:
+    other = bound(2.50, scope=SpendScope(forge="github", repo="o/other"))
+
+    assert over(other, InMemorySpendRecord()) is not None
+
+
+def test_an_allowance_for_every_repository_covers_the_run() -> None:
+    everything = bound(2.50, scope=SpendScope())
+
+    assert over(everything, spent(1.10)) is None
+
+
+def test_a_period_allowance_is_not_a_run_s_allowance() -> None:
     """A week's allowance says whether the run happens, not what it may
     spend once it does."""
-    assert over(bound(150.0, per="weekly"), spent(9.99)) is None
+    refusal = over(bound(150.0, per="weekly"), InMemorySpendRecord())
+
+    assert refusal == "nothing allows the judge to spend on o/r"
 
 
-def test_an_allowance_naming_a_reviewer_does_not_hold_the_judge() -> None:
+def test_an_allowance_naming_a_reviewer_does_not_cover_the_judge() -> None:
     """Judging names no reviewer, so a reviewer's allowance is not its
-    ceiling: the evaluation is not that agent's run."""
+    own: the evaluation is not that agent's run."""
     reviewer = bound(
         0.50, scope=SpendScope(forge="github", repo="o/r", agent_id="security")
     )
 
-    assert over(reviewer, spent(1.20)) is None
+    assert over(reviewer, InMemorySpendRecord()) is not None
 
 
 def test_an_unlimited_allowance_holds_the_run_to_nothing() -> None:
@@ -112,7 +135,10 @@ def test_an_unlimited_allowance_holds_the_run_to_nothing() -> None:
 
 def test_a_deployment_with_no_record_is_not_over_every_limit() -> None:
     assert over(bound(2.50), None) is None
-    assert over(None, spent(99.0)) is None
+
+
+def test_a_deployment_with_no_allowances_set_up_judges_nothing() -> None:
+    assert over(None, spent(0.0)) is not None
 
 
 def test_a_run_with_no_id_is_not_held() -> None:

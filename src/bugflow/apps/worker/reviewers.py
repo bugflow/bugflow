@@ -394,25 +394,37 @@ def judging_over_ceiling(
 ) -> str | None:
     """Say why this run may judge no more, or return None while it may.
 
-    Judging is spending and is capped like any other. The ceiling is
-    the allowance per run for this repository and layer with no
-    reviewer named, because judging is the evaluation itself and names
-    none. What the run has spent is every cost it has recorded, since
-    an allowance per run is what one run may spend and not what one
-    kind of spending may.
+    Judging is spending and needs an allowance like any other. The run
+    is covered by each allowance per run for this repository and layer
+    with no reviewer named, because judging is the evaluation itself
+    and names none. Its ceiling is the lowest money limit among them.
+    What the run has spent is every cost it has recorded, since an
+    allowance per run is what one run may spend and not what one kind
+    of spending may.
 
-    None if nothing is set up to answer either question, and if no
-    binding limits money: a deployment without the spend record is not
-    thereby over every limit, which is how ``out_of_room`` reads the
-    same silence.
+    A run that no allowance covers may judge nothing, and nor may one
+    when nothing is set up to say what covers it: a deployment that has
+    bound nothing spends nothing, as at a dispatch.
+
+    None for a covered run if nothing records what it spent, or if it
+    has no id: a deployment without the spend record is not thereby
+    over every limit, which is how ``out_of_room`` reads the same
+    silence.
     """
-    if ceilings is None or spend is None or not run_id:
+    covering = (
+        []
+        if ceilings is None
+        else [
+            one
+            for one in ceilings.binding_for(forge, repo, layer, "")
+            if one.per == EVENT.name
+        ]
+    )
+    if not covering:
+        return f"nothing allows the judge to spend on {repo}"
+    if spend is None or not run_id:
         return None
-    bound = [
-        one.budget.usd
-        for one in ceilings.binding_for(forge, repo, layer, "")
-        if one.per == EVENT.name and one.budget.usd is not None
-    ]
+    bound = [one.budget.usd for one in covering if one.budget.usd is not None]
     if not bound:
         return None
     ceiling = min(bound)

@@ -25,6 +25,7 @@ from bugflow.apps.worker.tests.activities import (
     FakeDoctrine,
     FixedClock,
     NarrowingJudge,
+    allowing_every_run,
     at_attempt,
     gating,
 )
@@ -64,6 +65,8 @@ def built_with(
     ceilings: InMemorySpendBindings | None = None,
     spend: InMemorySpendRecord | None = None,
 ) -> ReviewActivities:
+    """The activities over the judge, allowed every run unless
+    ``ceilings`` says otherwise."""
     return ReviewActivities(
         forge=FailingForge(ForgeRejectedError("unused")),
         doctrine=FakeDoctrine(),
@@ -73,7 +76,7 @@ def built_with(
         archive=InMemoryJudgeArchive(),
         clock=FixedClock(),
         enforcement=gating(),
-        ceilings=ceilings,
+        ceilings=allowing_every_run() if ceilings is None else ceilings,
         spend=spend,
     )
 
@@ -259,11 +262,15 @@ def test_a_run_with_room_still_judges() -> None:
     assert response.status == "judged by a-model"
 
 
-def test_a_deployment_that_bound_nothing_judges_as_before() -> None:
+def test_a_deployment_that_bound_nothing_judges_nothing() -> None:
+    """A dispatched reviewer spends nothing until something allows it,
+    and the judge is held the same way."""
     judge = NarrowingJudge(("P-01",))
     snapshots = InMemorySnapshotStore()
-    built = built_with(judge, snapshots)
+    built = built_with(judge, snapshots, InMemorySpendBindings())
 
-    at_attempt(1).run(built.judge, judging(snapshots))
+    response = at_attempt(1).run(built.judge, judging(snapshots))
 
-    assert judge.assessed == ["P-01"]
+    assert judge.assessed == []
+    assert response.unavailable == ("P-01",)
+    assert response.status == f"nothing allows the judge to spend on {REPO}"

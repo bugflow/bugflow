@@ -19,6 +19,7 @@ from bugflow.apps.worker.tests.activities import (
     FailingForge,
     FakeDoctrine,
     FixedClock,
+    allowing_every_run,
     at_attempt,
     gating,
 )
@@ -74,6 +75,7 @@ def activities(
         snapshots=snapshots,
         archive=InMemoryJudgeArchive(),
         clock=FixedClock(),
+        ceilings=allowing_every_run(),
         enforcement=gating(),
     )
     return built, journal, snapshots

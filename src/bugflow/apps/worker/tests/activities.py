@@ -1,5 +1,5 @@
 """Stand-ins the tests of the review activities share: one pull request,
-a clock, a doctrine, two forges and a judge."""
+a clock, a doctrine, two forges, a judge and an allowance."""
 
 import dataclasses
 from datetime import UTC, datetime
@@ -13,11 +13,19 @@ from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement
 from bugflow.review.domain.models.gnome_setting import GnomeSetting
 from bugflow.review.domain.models.judge_assessment import JudgeAssessment
+from bugflow.review.domain.models.spend_binding import (
+    SpendBinding,
+    SpendScope,
+)
 from bugflow.review.domain.models.submission import Submission
 from bugflow.review.infrastructure.in_memory_gnome_settings import (
     InMemoryGnomeSettings,
 )
+from bugflow.review.infrastructure.in_memory_spend_bindings import (
+    InMemorySpendBindings,
+)
 from bugflow.review.infrastructure.settled_review import SettledEnforcement
+from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
@@ -34,6 +42,20 @@ SNAPSHOT = PullRequestSnapshot(
     commits=(),
     files=(),
 )
+
+
+def allowing_every_run() -> InMemorySpendBindings:
+    """An allowance per run, with no limit, for every repository: what
+    a worker needs before its judge spends anything."""
+    held = InMemorySpendBindings()
+    held.declare(
+        SpendBinding(
+            scope=SpendScope(),
+            budget=Budget(usd=None, turns=None),
+            per="event",
+        )
+    )
+    return held
 
 
 class FixedClock:
