@@ -313,33 +313,37 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
        bugflow allow OWNER/NAME --usd 2 --no-turn-limit
 
    An allowance is bound to a repository, a layer and a reviewer. Leave
-   one out and it covers any. Every allowance that covers a run applies
-   to it, and the run gets the lowest figure of each resource. `--per`
-   names the cadence the allowance is counted per. Without it the
-   allowance is per `event`, which is one run.
+   one out and it covers any. `OWNER/*` in place of a repository binds
+   it to every repository of that owner, and an allowance per a cadence
+   then counts what they spent together. Every allowance that covers a
+   run applies to it, and the run gets the lowest figure of each
+   resource. `--per` names the cadence the allowance is counted per.
+   Without it the allowance is per `event`, which is one run.
 
-   Nothing spends until an allowance allows it. The judge judges a
-   pull request only if an allowance per `event` covers it: one bound
-   to the repository or to every repository, and to no layer and no
-   reviewer. Without one, each policy the judge answers is reported
-   as unanswered; a check needs no allowance and still runs. The
-   lowest money limit among those allowances is the most one
-   evaluation may spend. Once the evaluation has spent it, the
-   policies not yet judged are reported as unanswered too.
+   Nothing spends until an allowance allows it. The judge judges a pull
+   request only if an allowance per `event` covers it: one bound to the
+   repository, to its owner or to every repository, and to no layer and
+   no reviewer. Without one, each policy the judge answers is reported
+   as unanswered; a check needs no allowance and still runs. The lowest
+   money limit among those allowances is the most one evaluation may
+   spend. Once the evaluation has spent it, the policies not yet judged
+   are reported as unanswered too.
 
    A reviewer dispatched to a runner is held the same way. On a pull
-   request it is dispatched only if an allowance per `event` covers
-   it: one bound to the repository or to every repository, to that
-   reviewer or to any, and to no layer. An allowance that names a
-   layer does not cover a pull request's reviewer. A reviewer on a
-   layer a clock fires is covered by an allowance that names that
-   layer or none.
+   request it is dispatched only if an allowance per `event` covers it:
+   one bound to the repository, to its owner or to every repository, to
+   that reviewer or to any, and to no layer. An allowance that names a
+   layer does not cover a pull request's reviewer. A reviewer on a layer
+   a clock fires is covered by an allowance that names that layer or
+   none.
 
    An allowance per `event` with no repository covers every
    repository, including one first switched on from the settings
-   page:
+   page. One for `OWNER/*` covers every repository of that owner,
+   quoted so that the shell does not expand the `*`:
 
        bugflow allow --usd 2 --no-turn-limit
+       bugflow allow 'example/*' --usd 5 --no-turn-limit
 
    An allowance per a cadence a clock fires, such as `--per weekly`,
    refuses a dispatch once the scope has spent it in the current

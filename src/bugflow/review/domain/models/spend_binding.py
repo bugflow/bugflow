@@ -26,11 +26,21 @@ class SpendScope:
     #: every repository.
     forge: str = ""
     repo: str = ""
+    #: The owner whose every repository it covers, or empty. A scope
+    #: names an owner or one repository, and not both.
+    owner: str = ""
     #: The pace layer, a name the topology declares, or empty for every
     #: layer.
     layer: str = ""
     #: The reviewer, or empty for every reviewer.
     agent_id: str = ""
+
+    def __post_init__(self) -> None:
+        if self.owner and self.repo:
+            raise ValueError(
+                f"a scope names an owner or a repository, not both: "
+                f"{self.owner!r} and {self.repo!r}"
+            )
 
     @property
     def parts(self) -> int:
@@ -42,9 +52,20 @@ class SpendScope:
         """
         return sum(
             1
-            for one in (self.forge, self.repo, self.layer, self.agent_id)
+            for one in (
+                self.forge,
+                self.owner,
+                self.repo,
+                self.layer,
+                self.agent_id,
+            )
             if one
         )
+
+
+def owner_of(repo: str) -> str:
+    """The owner of a repository the journal names ``owner/name``."""
+    return repo.partition("/")[0]
 
 
 @dataclass(frozen=True, kw_only=True)

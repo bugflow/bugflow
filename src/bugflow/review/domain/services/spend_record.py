@@ -23,13 +23,15 @@ class SpendRecordService(Protocol):
         repo: str = "",
         layer: str = "",
         agent_id: str = "",
+        owner: str = "",
     ) -> Spent:
         """Return what the runs matching that scope cost between those
         times.
 
         An empty part of the scope matches anything, as a binding's
-        does. A window nothing ran in answers zero over no facts, which
-        is not the same as a window nobody asked about.
+        does. An owner matches each of that owner's repositories. A
+        window nothing ran in answers zero over no facts, which is not
+        the same as a window nobody asked about.
         """
         ...
 

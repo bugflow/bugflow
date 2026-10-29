@@ -167,6 +167,44 @@ def test_allowing_binds_what_a_run_may_spend(shared: str) -> None:
     assert "the runner is held to" in said.printed
 
 
+def test_allowing_an_owner_binds_each_of_its_repositories(
+    shared: str,
+) -> None:
+    said, owner = Said(), str(uuid.uuid4())
+    status = run_allow(shared, f"{owner}/*", usd=5.0, turns=None, out=said.out)
+    assert status == 0
+    assert f"github:{owner}/* may spend $5.00" in said.printed
+    listed = Said()
+    run_declared(shared, f"{owner}/r", out=listed.out)
+    assert f"github:{owner}/* may spend $5.00" in listed.printed
+    elsewhere = Said()
+    run_declared(shared, f"{uuid.uuid4()}/r", out=elsewhere.out)
+    assert f"github:{owner}/*" not in elsewhere.printed
+
+
+def test_revoking_an_owners_allowance_leaves_its_repositories(
+    shared: str,
+) -> None:
+    said, owner = Said(), str(uuid.uuid4())
+    run_allow(shared, f"{owner}/*", usd=5.0, turns=None, out=quiet())
+    run_allow(shared, f"{owner}/r", usd=2.5, turns=None, out=quiet())
+    run_revoke(shared, f"{owner}/*", out=said.out)
+    assert f"github:{owner}/* has no allowance of its own" in said.printed
+    listed = Said()
+    run_declared(shared, f"{owner}/r", out=listed.out)
+    assert f"github:{owner}/r may spend $2.50" in listed.printed
+    assert f"github:{owner}/*" not in listed.printed
+
+
+def test_what_is_no_owner_is_refused(shared: str) -> None:
+    said = Said()
+    status = run_allow(shared, "a/b/*", usd=5.0, turns=None, err=said.err)
+    assert status == 2
+    assert "is not owner/name, owner/* or either after forgejo:" in (
+        said.refused
+    )
+
+
 def test_allowing_a_layer_and_an_agent_says_which(shared: str) -> None:
     said = Said()
     run_allow(

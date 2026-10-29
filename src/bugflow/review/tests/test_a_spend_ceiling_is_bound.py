@@ -8,6 +8,8 @@ must satisfy each. The narrowest comes first for a reader's
 convenience and takes no precedence.
 """
 
+import pytest
+
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
     SpendScope,
@@ -77,6 +79,23 @@ def test_a_ceiling_bound_to_nothing_covers_everything() -> None:
     """One row caps the whole deployment, which is what a deployment
     reaching for this at two in the morning wants first."""
     assert allowed(bindings((SpendScope(), 1.0))) == [1.0]
+
+
+def test_a_ceiling_bound_to_an_owner_covers_each_of_its_repositories() -> None:
+    held = bindings((SpendScope(forge="github", owner="o"), 4.0))
+    assert allowed(held) == [4.0]
+    assert allowed(held, repo="o/other") == [4.0]
+    assert allowed(held, repo="p/r") == []
+
+
+def test_an_owners_ceiling_and_a_repositorys_both_apply() -> None:
+    held = bindings((SpendScope(forge="github", owner="o"), 4.0), (REPO, 2.5))
+    assert set(allowed(held)) == {2.5, 4.0}
+
+
+def test_a_scope_names_an_owner_or_a_repository_and_not_both() -> None:
+    with pytest.raises(ValueError, match="not both"):
+        SpendScope(forge="github", owner="o", repo="o/r")
 
 
 def test_a_binding_says_what_shares_it_and_defaults_to_one_run() -> None:

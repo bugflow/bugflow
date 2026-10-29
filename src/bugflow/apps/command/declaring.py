@@ -48,6 +48,7 @@ from bugflow.review.domain.models.layer_boundary import LayerBoundary
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
     SpendScope,
+    owner_of,
 )
 from bugflow.review.domain.models.withholding import Withholding
 from bugflow.review.domain.values.checked_policy import CHECKS
@@ -111,6 +112,23 @@ def _split(name: str) -> tuple[str, str]:
     ``owner/name`` nor ``forgejo:owner/name``."""
     repository = WatchedRepository.parse(name)
     return repository.forge, f"{repository.owner}/{repository.repo}"
+
+
+def _owner_or_repository(name: str) -> tuple[str, str, str]:
+    """Return the forge, the owner and the repository an allowance
+    names: ``owner/name`` names one repository and ``owner/*`` every
+    repository of that owner, either after ``forgejo:`` for a Forgejo.
+    Raises ``ValueError`` for a name that is neither."""
+    if not name.endswith("/*"):
+        forge, repo = _split(name)
+        return forge, "", repo
+    try:
+        watched = WatchedRepository.parse(name[:-1] + "any")
+    except ValueError:
+        raise ValueError(
+            f"{name!r} is not owner/name, owner/* or either after forgejo:"
+        ) from None
+    return watched.forge, watched.owner, ""
 
 
 def _unreadable(boundary: str, zone: str, now: datetime) -> str | None:
@@ -361,16 +379,16 @@ def _scope(
 ) -> tuple[SpendScope, str] | str:
     """Return the scope an allowance is bound to and its name, or the
     reason the repository is not one."""
-    forge, repo = "", ""
+    forge, owner, repo = "", "", ""
     if repository:
         try:
-            forge, repo = _split(repository)
+            forge, owner, repo = _owner_or_repository(repository)
         except ValueError as exc:
             return str(exc)
-    return (
-        SpendScope(forge=forge, repo=repo, layer=layer, agent_id=agent),
-        where_of(forge, repo, layer, agent),
+    scope = SpendScope(
+        forge=forge, owner=owner, repo=repo, layer=layer, agent_id=agent
     )
+    return scope, where_of(scope)
 
 
 def _not_a_cadence(per: str) -> str | None:
@@ -463,9 +481,7 @@ def _held(
     return next(
         (
             one.budget
-            for one in bindings.binding_for(
-                scope.forge, scope.repo, scope.layer, scope.agent_id
-            )
+            for one in bindings.bindings()
             if one.scope == scope and one.per == per
         ),
         None,
@@ -497,13 +513,7 @@ def run_revoke(
     scope, where = found
     bindings = SqlAlchemySpendBindings(database_url)
     bindings.revoke(scope, per)
-    left = [
-        one
-        for one in bindings.binding_for(
-            scope.forge, scope.repo, scope.layer, scope.agent_id
-        )
-        if one.scope == scope
-    ]
+    left = [one for one in bindings.bindings() if one.scope == scope]
     console.say(f"{where} is no longer allowed anything per {per}")
     if not left:
         console.say(
@@ -517,13 +527,18 @@ def run_revoke(
     return 0
 
 
-def where_of(forge: str, repo: str, layer: str, agent: str) -> str:
-    """Name a scope as a person does: its named parts, or
-    ``everything`` for a scope that names none."""
+def where_of(scope: SpendScope) -> str:
+    """Name a scope as a person does: its named parts, with an owner as
+    ``forge:owner/*``, or ``everything`` for a scope that names none."""
     return (
         " ".join(
             part
-            for part in (f"{forge}:{repo}" if repo else "", layer, agent)
+            for part in (
+                f"{scope.forge}:{scope.repo}" if scope.repo else "",
+                f"{scope.forge}:{scope.owner}/*" if scope.owner else "",
+                scope.layer,
+                scope.agent_id,
+            )
             if part
         )
         or "everything"
@@ -582,6 +597,15 @@ def run_declared(
     def wanted(forge: str, repo: str) -> bool:
         return only is None or (forge, repo) == only
 
+    def covering(scope: SpendScope) -> bool:
+        if scope.repo:
+            return wanted(scope.forge, scope.repo)
+        return (
+            only is None
+            or not scope.owner
+            or (scope.forge, scope.owner) == (only[0], owner_of(only[1]))
+        )
+
     lines = [
         f"{one.forge}:{one.repo} {one.gnome} is {one.behaviour}, judging "
         f"by {one.profile}"
@@ -589,12 +613,10 @@ def run_declared(
         if wanted(one.forge, one.repo)
     ]
     for binding in SqlAlchemySpendBindings(database_url).bindings():
-        scope = binding.scope
-        if not scope.repo or wanted(scope.forge, scope.repo):
-            where = where_of(
-                scope.forge, scope.repo, scope.layer, scope.agent_id
+        if covering(binding.scope):
+            lines.append(
+                _said(where_of(binding.scope), binding.budget, binding.per)
             )
-            lines.append(_said(where, binding.budget, binding.per))
     lines += [
         _server_begins(ours.cadence, ours.boundary)
         for ours in SqlAlchemyCadenceBoundaries(database_url).declarations()

@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from bugflow.review.domain.models.spend import RunSpend, Spent
+from bugflow.review.domain.models.spend_binding import owner_of
 
 
 class InMemorySpendRecord:
@@ -21,6 +22,7 @@ class InMemorySpendRecord:
         repo: str = "",
         layer: str = "",
         agent_id: str = "",
+        owner: str = "",
     ) -> Spent:
         found = [
             usd
@@ -29,12 +31,14 @@ class InMemorySpendRecord:
             )
             if since <= when < until
             and forge in ("", one_forge)
+            and owner in ("", owner_of(one_repo))
             and repo in ("", one_repo)
             and layer in ("", one_layer)
             and agent_id in ("", one_agent)
         ]
         return Spent(
             forge=forge,
+            owner=owner,
             repo=repo,
             layer=layer,
             agent_id=agent_id,
