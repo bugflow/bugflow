@@ -1,8 +1,9 @@
 """What a workflow is started with, when a repository declared a window.
 
 An event cadence is bounded by the window its signals settle in, and that
-window is the repository's to declare. The workflow takes the figure from
-its input; the starter is what sets it.
+window is the repository's to declare. A workflow takes the figure from
+its input when it starts and from each delivery after; the starter is
+what sets both.
 """
 
 import asyncio
@@ -62,7 +63,6 @@ def test_a_declared_window_is_what_the_workflow_waits() -> None:
 
 
 def test_a_repository_that_declared_none_waits_the_default() -> None:
-    """Which is what every run already in flight waits."""
     _, input, _ = started_with(None)
     assert input.debounce_seconds == DEBOUNCE.total_seconds()
 
@@ -84,3 +84,10 @@ def test_the_delivery_is_signalled_to_the_pull_requests_workflow() -> None:
         "delivery",
         ["d-1"],
     )
+
+
+def test_a_declared_window_goes_with_the_delivery() -> None:
+    """A workflow already running takes no new input, so the window
+    reaches it with the delivery."""
+    _, _, kwargs = started_with(300.0)
+    assert kwargs["start_signal_args"] == ["d-1", 300.0]
