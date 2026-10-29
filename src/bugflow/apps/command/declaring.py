@@ -13,9 +13,11 @@ not echoed, so a run that wrote nothing prints nothing new. A refusal
 is written to the error stream and returns 2, and nothing is written.
 """
 
+import getpass
+import json
 import sys
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TextIO
@@ -43,6 +45,13 @@ from bugflow.method.domain.models.pace_layer import (
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
+from bugflow.review.domain.facts import (
+    ALLOWANCE_DECLARED,
+    BOUNDARY_DECLARED,
+    CADENCE_DECLARED,
+    WITHHOLDING_DECLARED,
+    declaration_id,
+)
 from bugflow.review.domain.models.cadence_boundary import CadenceBoundary
 from bugflow.review.domain.models.layer_boundary import LayerBoundary
 from bugflow.review.domain.models.spend_binding import (
@@ -67,6 +76,7 @@ from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
 from bugflow.review.infrastructure.sqlalchemy_withholding import (
     SqlAlchemyWithholding,
 )
+from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 from bugflow.shared.infrastructure.system_clock import SystemClock
@@ -104,6 +114,61 @@ class Console:
 
 def _console(out: TextIO | None, err: TextIO | None) -> Console:
     return Console(out=out or sys.stdout, err=err or sys.stderr)
+
+
+#: A journal entry names the workflow that recorded it. A declaration
+#: comes from an operator and not from a workflow, so its entries use
+#: this fixed name in that place, as a gnome's setting does.
+DECLARED_WORKFLOW = "operator/declare"
+
+
+class Declarations:
+    """Writes the fact of each declaration a command makes, before the
+    declaration itself, so that none stands without its record and the
+    setting in force at a past moment can be read back."""
+
+    def __init__(
+        self, database_url: str, build: str | None, by: str | None = None
+    ) -> None:
+        self._journal = stamped_journal(database_url, build)
+        self._clock = SystemClock()
+        self._run_id = uuid.uuid4().hex
+        self._by = by or f"host:{getpass.getuser()}"
+
+    def record(
+        self,
+        event_type: str,
+        forge: str,
+        repo: str,
+        payload: Mapping[str, object],
+        agent_id: str = "",
+    ) -> None:
+        when = self._clock.now()
+        said = {**payload, "declared_by": self._by}
+        self._journal.append(
+            [
+                JournalEntry(
+                    event_id=declaration_id(
+                        event_type,
+                        forge,
+                        repo,
+                        json.dumps(said, sort_keys=True),
+                        when=when,
+                    ),
+                    occurred_at=when,
+                    event_type=event_type,
+                    forge=forge,
+                    repo=repo,
+                    pr_number=None,
+                    commit_sha=None,
+                    corpus_version=None,
+                    workflow_id=DECLARED_WORKFLOW,
+                    run_id=self._run_id,
+                    agent_id=agent_id or None,
+                    payload=said,
+                )
+            ]
+        )
 
 
 def _split(name: str) -> tuple[str, str]:
@@ -314,6 +379,16 @@ def run_declare(
                 "unless its ledger was started again, and an archive "
                 "replaced looks the same"
             )
+    recorded = Declarations(database_url, build)
+    if boundary is not None:
+        before = boundaries.boundary(forge, repo, layer)
+        if (boundary or None) != before:
+            recorded.record(
+                BOUNDARY_DECLARED,
+                forge,
+                repo,
+                {"layer": layer, "boundary": boundary or None, "was": before},
+            )
     if boundary:
         boundaries.declare(
             LayerBoundary(
@@ -323,6 +398,14 @@ def run_declare(
     elif boundary is not None:
         boundaries.withdraw(forge, repo, layer)
     if withhold is not None:
+        held_share = withholding.share_for(forge, repo)
+        if held_share != share.share:
+            recorded.record(
+                WITHHOLDING_DECLARED,
+                forge,
+                repo,
+                {"share": share.share, "was": held_share},
+            )
         withholding.declare(share)
     where = f"{forge}:{repo}"
     if layer:
@@ -410,6 +493,7 @@ def run_allow(
     per: str = EVENT.name,
     out: TextIO | None = None,
     err: TextIO | None = None,
+    build: str | None = None,
 ) -> int:
     """Bind what a run of that scope may spend, and print what is held.
 
@@ -440,24 +524,27 @@ def run_allow(
     scope, where = found
     bindings = SqlAlchemySpendBindings(database_url)
     held = _held(bindings, scope, per)
-    if held is None:
-        if not (money and turning):
-            return console.refuse(
-                "this scope has no allowance for that cadence, so there "
-                "is nothing to leave alone: name both resources, with "
-                "--usd or --no-money-limit and --turns or --no-turn-limit"
-            )
-        held = Budget(usd=None, turns=None)
-    bindings.declare(
-        SpendBinding(
-            scope=scope,
-            budget=Budget(
-                usd=held.usd if isinstance(usd, Unnamed) else usd,
-                turns=held.turns if isinstance(turns, Unnamed) else turns,
-            ),
-            per=per,
+    if held is None and not (money and turning):
+        return console.refuse(
+            "this scope has no allowance for that cadence, so there "
+            "is nothing to leave alone: name both resources, with "
+            "--usd or --no-money-limit and --turns or --no-turn-limit"
         )
+    was = held
+    held = held or Budget(usd=None, turns=None)
+    budget = Budget(
+        usd=held.usd if isinstance(usd, Unnamed) else usd,
+        turns=held.turns if isinstance(turns, Unnamed) else turns,
     )
+    if budget != was:
+        Declarations(database_url, build).record(
+            ALLOWANCE_DECLARED,
+            scope.forge,
+            scope.repo,
+            _allowance(scope, per, budget, was),
+            scope.agent_id,
+        )
+    bindings.declare(SpendBinding(scope=scope, budget=budget, per=per))
     console.say(_said(where, _held(bindings, scope, per), per))
     if (
         CADENCES[per].on_a_clock
@@ -470,6 +557,26 @@ def run_allow(
             f"`bugflow cadence {per} --boundary BOUNDARY`"
         )
     return 0
+
+
+def _allowance(
+    scope: SpendScope, per: str, budget: Budget | None, was: Budget | None
+) -> dict[str, object]:
+    """The payload of an allowance's fact: the scope beyond its
+    repository, the cadence, and what it holds after and held before.
+    None is an allowance not held, and a limit held and None is none."""
+    return {
+        "owner": scope.owner,
+        "layer": scope.layer,
+        "agent_id": scope.agent_id,
+        "per": per,
+        "held": budget is not None,
+        "usd": budget.usd if budget else None,
+        "turns": budget.turns if budget else None,
+        "was_held": was is not None,
+        "was_usd": was.usd if was else None,
+        "was_turns": was.turns if was else None,
+    }
 
 
 def _held(
@@ -496,6 +603,7 @@ def run_revoke(
     per: str = EVENT.name,
     out: TextIO | None = None,
     err: TextIO | None = None,
+    build: str | None = None,
 ) -> int:
     """Remove one allowance, and print what the scope is left with.
 
@@ -512,6 +620,15 @@ def run_revoke(
         return console.refuse(found)
     scope, where = found
     bindings = SqlAlchemySpendBindings(database_url)
+    was = _held(bindings, scope, per)
+    if was is not None:
+        Declarations(database_url, build).record(
+            ALLOWANCE_DECLARED,
+            scope.forge,
+            scope.repo,
+            _allowance(scope, per, None, was),
+            scope.agent_id,
+        )
     bindings.revoke(scope, per)
     left = [one for one in bindings.bindings() if one.scope == scope]
     console.say(f"{where} is no longer allowed anything per {per}")
@@ -654,6 +771,7 @@ def run_cadence(
     zone: str = "UTC",
     out: TextIO | None = None,
     err: TextIO | None = None,
+    build: str | None = None,
 ) -> int:
     """Declare where this server's periods of one cadence begin, and
     print what is held.
@@ -687,6 +805,16 @@ def run_cadence(
             phase(boundary, found.span, SystemClock().now(), zone)
         except BoundaryError as exc:
             return console.refuse(str(exc))
+    if boundary is not None:
+        was = declared.boundary(cadence)
+        if (boundary or None) != was:
+            Declarations(database_url, build).record(
+                CADENCE_DECLARED,
+                "",
+                "",
+                {"cadence": cadence, "boundary": boundary or None, "was": was},
+            )
+    if boundary:
         declared.declare(CadenceBoundary(cadence=cadence, boundary=boundary))
     elif boundary is not None:
         declared.withdraw(cadence)

@@ -153,9 +153,16 @@ def resolve_keys(
     connection: sa.Connection, entry: JournalEntry
 ) -> tuple[int | None, int]:
     """The keys of the entry's pull request, or None when it is about
-    none, and of its workflow run, each made if it is not there."""
-    repository_id = resolve_repository(
-        connection, entry.forge, entry.repo, entry.occurred_at
+    none, and of its workflow run, each made if it is not there.
+
+    An entry that names no repository, such as an operator's declaration
+    for every repository, makes no repository's row."""
+    repository_id = (
+        resolve_repository(
+            connection, entry.forge, entry.repo, entry.occurred_at
+        )
+        if entry.repo
+        else None
     )
     pull_request_id = (
         None

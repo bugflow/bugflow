@@ -755,24 +755,6 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
             file=sys.stderr,
         )
         return 2
-    if args.command == "allow":
-        return run_allow(
-            database_url,
-            args.repository,
-            _limit(args.no_money_limit, args.usd),
-            _limit(args.no_turn_limit, args.turns),
-            layer=args.layer,
-            agent=args.agent,
-            per=args.per,
-        )
-    if args.command == "revoke":
-        return run_revoke(
-            database_url,
-            args.repository,
-            layer=args.layer,
-            agent=args.agent,
-            per=args.per,
-        )
     if args.command == "declared":
         return run_declared(database_url, args.repository)
     if args.command == "settings":
@@ -783,8 +765,30 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if args.command == "allow":
+        return run_allow(
+            database_url,
+            args.repository,
+            _limit(args.no_money_limit, args.usd),
+            _limit(args.no_turn_limit, args.turns),
+            layer=args.layer,
+            agent=args.agent,
+            per=args.per,
+            build=build,
+        )
+    if args.command == "revoke":
+        return run_revoke(
+            database_url,
+            args.repository,
+            layer=args.layer,
+            agent=args.agent,
+            per=args.per,
+            build=build,
+        )
     if args.command == "cadence":
-        return run_cadence(database_url, args.cadence, args.boundary, zone)
+        return run_cadence(
+            database_url, args.cadence, args.boundary, zone, build=build
+        )
     if args.command == "set":
         return run_set(
             database_url,

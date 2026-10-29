@@ -39,6 +39,9 @@ from bugflow.review.domain.facts import JUDGE_INVOKED, STOCKTAKE_DISPATCHED
 from bugflow.review.domain.models.journal_facts import JudgeInvocation
 from bugflow.review.domain.models.observation import Observation
 from bugflow.review.domain.models.review_entry import ReviewEntry
+from bugflow.review.infrastructure.sqlalchemy_declaration_facts import (
+    UNPACKERS as DECLARATION_UNPACKERS,
+)
 from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
     UNPACKERS as SETTING_UNPACKERS,
 )
@@ -77,6 +80,7 @@ from bugflow.work.infrastructure.sqlalchemy_work_facts import (
 #: every context's unpackers, gathered here for every program.
 UNPACKERS: dict[str, Unpacker] = {
     **ARCHIVE_UNPACKERS,
+    **DECLARATION_UNPACKERS,
     **FORGE_UNPACKERS,
     **DISCOVERY_UNPACKERS,
     **METHOD_UNPACKERS,

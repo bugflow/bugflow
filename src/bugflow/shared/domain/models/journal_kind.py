@@ -52,6 +52,12 @@ KIND_OF: dict[str, str] = {
     "policy.calibrated": "policy",
     # What an operator set a gnome to do on a repository.
     "gnome.set": "policy",
+    # What an operator declared a repository's or this server's periods
+    # begin at, the warnings it withholds, and what may be spent.
+    "boundary.declared": "policy",
+    "cadence.declared": "policy",
+    "withholding.declared": "policy",
+    "allowance.declared": "policy",
 }
 
 

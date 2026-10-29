@@ -367,6 +367,12 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    `bugflow revoke OWNER/NAME --per event` removes an allowance. That
    is not the same as allowing zero, which refuses everything.
 
+   Each change to an allowance, to a boundary of a repository or of
+   this server, and to a withheld share is recorded in the policy
+   journal with what it replaced and who made it, so the setting in
+   force at a past evaluation can be read back. A call that changes
+   nothing records nothing.
+
 4. Bind a ledger, if this server keeps archives.
 
        bugflow declare OWNER/NAME --archive LEDGER
