@@ -182,7 +182,9 @@ one. A repository no gnome has been set on is listed first. The page
 signs the person in at the identity provider in the browser, and each
 change is recorded with the person's id at the provider. A change that
 would leave a watched repository with no boundary on a layer, declared
-or by the layer's default, is refused.
+or by the layer's default, is refused. Setting a gnome there allows
+nothing to spend: the repository is judged only once an allowance
+covers it, as step 3 of "Before the first review" says.
 
 ### Telemetry
 
@@ -316,20 +318,28 @@ repository on GitHub, and `forgejo:OWNER/NAME` is one on a Forgejo.
    names the cadence the allowance is counted per. Without it the
    allowance is per `event`, which is one run.
 
-   A reviewer dispatched to a runner spends nothing until something
-   allows it. On a pull request it is dispatched only if an allowance
-   per `event` covers it: one bound to the repository or to every
-   repository, to that reviewer or to any, and to no layer. An
-   allowance that names a layer does not cover a pull request's
-   reviewer. A reviewer on a layer a clock fires is covered by an
-   allowance that names that layer or none.
+   Nothing spends until an allowance allows it. The judge judges a
+   pull request only if an allowance per `event` covers it: one bound
+   to the repository or to every repository, and to no layer and no
+   reviewer. Without one, each policy the judge answers is reported
+   as unanswered; a check needs no allowance and still runs. The
+   lowest money limit among those allowances is the most one
+   evaluation may spend. Once the evaluation has spent it, the
+   policies not yet judged are reported as unanswered too.
 
-   The judge is not held back the same way. It judges a pull request
-   with no allowance at all. An allowance per `event` with a money
-   limit, bound to the repository or to every repository and to no
-   layer and no reviewer, is the most one evaluation may spend. Once
-   the evaluation has spent it, the policies not yet judged are
-   reported as unavailable.
+   A reviewer dispatched to a runner is held the same way. On a pull
+   request it is dispatched only if an allowance per `event` covers
+   it: one bound to the repository or to every repository, to that
+   reviewer or to any, and to no layer. An allowance that names a
+   layer does not cover a pull request's reviewer. A reviewer on a
+   layer a clock fires is covered by an allowance that names that
+   layer or none.
+
+   An allowance per `event` with no repository covers every
+   repository, including one first switched on from the settings
+   page:
+
+       bugflow allow --usd 2 --no-turn-limit
 
    An allowance per a cadence a clock fires, such as `--per weekly`,
    refuses a dispatch once the scope has spent it in the current

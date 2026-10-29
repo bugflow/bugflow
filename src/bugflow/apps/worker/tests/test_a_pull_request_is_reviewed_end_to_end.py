@@ -58,7 +58,15 @@ from bugflow.review.domain.models.journal_facts import (
 )
 from bugflow.review.domain.models.judge_assessment import JudgeAssessment
 from bugflow.review.domain.models.judgement import JudgeExchange
+from bugflow.review.domain.models.spend_binding import (
+    SpendBinding,
+    SpendScope,
+)
 from bugflow.review.domain.models.submission import Submission
+from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
+    SqlAlchemySpendBindings,
+)
+from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.sqlalchemy_journal import journal
@@ -190,6 +198,13 @@ def test_a_pull_request_is_reviewed_and_a_finding_published(
 ) -> None:
     put_in_force(database_url, FILES | ON_AN_EVENT)
     set_gnomes(database_url, "advise")
+    SqlAlchemySpendBindings(database_url).declare(
+        SpendBinding(
+            scope=SpendScope(),
+            budget=Budget(usd=None, turns=None),
+            per="event",
+        )
+    )
     forge, judge = OnePullRequest(), FindsOneThing()
     workflows = worker_workflows()
 
