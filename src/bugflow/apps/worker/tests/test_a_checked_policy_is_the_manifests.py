@@ -19,6 +19,7 @@ from bugflow.apps.worker.tests.activities import (
     FakeDoctrine,
     FixedClock,
     NarrowingJudge,
+    allowing_every_run,
     at_attempt,
 )
 from bugflow.apps.worker.tests.journal import ActivityJournal
@@ -64,6 +65,7 @@ class Built:
             snapshots=self.snapshots,
             archive=InMemoryJudgeArchive(),
             clock=FixedClock(),
+            ceilings=allowing_every_run(),
             checked={"P-09": Checked(agent_id="prose", clause="EX-21")},
         )
 
