@@ -24,6 +24,9 @@ from bugflow.method.domain.models.policy_deployment import (
 )
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
+    deployments,
+    files,
+    in_force,
 )
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
@@ -47,6 +50,39 @@ def repository() -> str:
     return f"example/{uuid.uuid4()}"
 
 
+def puts(engine: sa.Engine, name: str) -> list[str]:
+    """The commits of the repository put in force, in the order they
+    were, read from the table."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                sa.select(in_force.c.commit)
+                .where(in_force.c.repository == name)
+                .order_by(in_force.c.id)
+            ).scalars()
+        )
+
+
+def kept(engine: sa.Engine, name: str, commit: str) -> dict[str, str] | None:
+    """The files the tables keep for that repository and commit, by
+    path, or None if they keep no such deployment."""
+    with engine.connect() as connection:
+        known = connection.execute(
+            sa.select(deployments.c.commit).where(
+                deployments.c.repository == name,
+                deployments.c.commit == commit,
+            )
+        ).one_or_none()
+        if known is None:
+            return None
+        rows = connection.execute(
+            sa.select(files.c.path, files.c.text).where(
+                files.c.repository == name, files.c.commit == commit
+            )
+        )
+        return {row.path: row.text for row in rows}
+
+
 def test_the_deployment_sent_last_is_in_force_with_its_files(
     engine: sa.Engine, database_url: str
 ) -> None:
@@ -54,10 +90,8 @@ def test_the_deployment_sent_last_is_in_force_with_its_files(
     name = repository()
     assert held.deploy(deployment(name, "c1", "one\n")) is True
     assert held.deploy(deployment(name, "c2", "two\n")) is True
-    in_force = held.in_force()
-    assert in_force == deployment(name, "c2", "two\n")
-    assert [put.commit for put in held.history()[:2]] == ["c2", "c1"]
-    assert held.history()[0].content_hash == in_force.content_hash
+    assert held.in_force() == deployment(name, "c2", "two\n")
+    assert puts(engine, name) == ["c1", "c2"]
 
 
 def test_sending_the_one_in_force_again_changes_nothing(
@@ -66,9 +100,8 @@ def test_sending_the_one_in_force_again_changes_nothing(
     held = SqlAlchemyPolicyDeployments(database_url)
     name = repository()
     held.deploy(deployment(name, "c1", "one\n"))
-    before = len(held.history())
     assert held.deploy(deployment(name, "c1", "one\n")) is False
-    assert len(held.history()) == before
+    assert puts(engine, name) == ["c1"]
 
 
 def test_sending_an_earlier_one_again_puts_it_back_in_force(
@@ -91,16 +124,9 @@ def test_a_commit_held_with_other_content_is_refused(
     held.deploy(deployment(name, "c1", "one\n"))
     with pytest.raises(PolicyDeploymentConflictError):
         held.deploy(deployment(name, "c1", "something else\n"))
-    kept = held.held(name, "c1")
-    assert kept is not None
-    assert kept.text_of("prose/reviewer.md") == "one\n"
-
-
-def test_a_commit_never_sent_is_not_held(
-    engine: sa.Engine, database_url: str
-) -> None:
-    held = SqlAlchemyPolicyDeployments(database_url)
-    assert held.held(repository(), "c1") is None
+    stored = kept(engine, name, "c1")
+    assert stored is not None
+    assert stored["prose/reviewer.md"] == "one\n"
 
 
 def test_the_last_put_in_force_names_the_deployment_in_force(
@@ -114,7 +140,6 @@ def test_the_last_put_in_force_names_the_deployment_in_force(
     assert latest is not None
     assert (latest.repository, latest.commit) == (name, "c2")
     assert latest.content_hash == deployment(name, "c2", "two\n").content_hash
-    assert latest == held.history()[0]
 
 
 def fact(name: str, replaced: PutInForce | None) -> list[JournalEntry]:
@@ -191,8 +216,8 @@ def test_a_deployment_whose_fact_is_not_recorded_is_not_put_in_force(
         refusing.deploy(
             deployment(name, "c1", "one\n"), lambda was: fact(name, was)
         )
-    assert refusing.held(name, "c1") is None
-    assert name not in [one.repository for one in refusing.history()]
+    assert kept(engine, name, "c1") is None
+    assert puts(engine, name) == []
 
     held = SqlAlchemyPolicyDeployments(
         database_url, SqlAlchemyJournal(database_url)
@@ -211,4 +236,4 @@ def test_a_store_with_no_journal_refuses_a_deployment_with_facts(
         held.deploy(
             deployment(name, "c1", "one\n"), lambda was: fact(name, was)
         )
-    assert held.held(name, "c1") is None
+    assert kept(engine, name, "c1") is None
