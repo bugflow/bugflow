@@ -10,15 +10,12 @@ from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 from bugflow.work.domain.facts import AGENT_DISPATCHED, JUDGE_INVOKED
 from bugflow.work.domain.models.journal import (
     DispatchedRun,
-    DispatchedWork,
-    dispatched_from_entry,
 )
 
 
 class QueryableJournal(InMemoryJournal):
     """The in-memory journal, with the queries declared in
-    ``work/domain/services/journal.py`` and
-    ``work/domain/services/dispatch_record.py``.
+    ``work/domain/services/journal.py``.
 
     ``dispatch_tables`` names, by the kind of fact, the kinds of dispatch
     that ``dispatched_run`` searches, as it does for the Postgres
@@ -78,18 +75,3 @@ class QueryableJournal(InMemoryJournal):
                     commit_sha=e.commit_sha,
                 )
         return None
-
-    def dispatched_work(self) -> list[DispatchedWork]:
-        return [
-            dispatched_from_entry(e)
-            for e in sorted(self._dispatches(), key=lambda e: e.occurred_at)
-        ]
-
-    def _dispatches(self) -> list[JournalEntry]:
-        """The entries that say a run was started."""
-        return [
-            e
-            for e in self.entries
-            if e.event_type == AGENT_DISPATCHED
-            and e.payload.get("step") == "dispatched"
-        ]
