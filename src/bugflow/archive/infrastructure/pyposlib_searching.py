@@ -105,6 +105,30 @@ def _everything(path: str) -> bool:
     return True
 
 
+def _enrolled(data: bytes) -> list[str]:
+    """The CIDs of the files one event enrols: those it adds, and those a
+    conversion gives a CID.
+
+    An event enrols a path once and no later event replaces it, so the
+    files a ledger holds are those its events enrol, and the files new
+    since a position are those the events after it enrol. A hidden path
+    is left out, as an archive leaves it out.
+    """
+    event = json.loads(data)
+    if not isinstance(event, dict):
+        return []
+    found: list[str] = []
+    for listed in (event.get("add"), event.get("convert")):
+        if not isinstance(listed, dict):
+            continue
+        for path, entry in listed.items():
+            cid = entry.get("cid") if isinstance(entry, dict) else None
+            hidden = any(part.startswith(".") for part in path.split("/"))
+            if isinstance(cid, str) and not hidden:
+                found.append(cid)
+    return found
+
+
 class PyposlibSearching:
     def __init__(
         self,
@@ -160,15 +184,16 @@ class PyposlibSearching:
     def catch_up(self, ledger_id: str) -> CaughtUp:
         files = 0
         described = self._reading.describe(ledger_id)
-        while described.events > self._positions.position(ledger_id):
-            layout = self._layout(
-                ledger_id, described.events, described.erased
-            )
+        while described.events > (
+            reached := self._positions.position(ledger_id)
+        ):
+            # Only the events since the last catch-up: what earlier ones
+            # enrolled is indexed already.
             wanted: list[str] = []
-            for path in layout.paths(_everything):
-                cid = layout.cids[path]
-                if cid not in wanted:
-                    wanted.append(cid)
+            for number in range(reached + 1, described.events + 1):
+                for cid in _enrolled(self._reading.event(ledger_id, number)):
+                    if cid not in wanted and cid not in described.erased:
+                        wanted.append(cid)
             held = self._files.indexed(wanted)
             for cid in wanted:
                 if cid in held:

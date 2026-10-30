@@ -17,6 +17,7 @@ from pyposlib.search import DiskArchiveSearch
 
 from bugflow.archive.domain.errors import ArchiveRefusedError
 from bugflow.archive.domain.models.binding import ArchiveBinding
+from bugflow.archive.domain.models.kept_event import KeptEvent
 from bugflow.archive.dtos.index_archive import IndexArchiveRequest
 from bugflow.archive.dtos.search_archive import SearchArchiveRequest
 from bugflow.archive.infrastructure.in_memory_bindings import InMemoryBindings
@@ -60,6 +61,27 @@ READER = caller(ARCHIVE_READER)
 STRANGER = caller("some-other-role")
 
 
+class CountedEvents(InMemoryKeptEvents):
+    """Kept events that count what was read: each read of a whole ledger,
+    and the number of each event read alone."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ledgers_read = 0
+        self.numbers_read: list[int] = []
+
+    def of_ledger(self, ledger_id: str) -> list[KeptEvent]:
+        self.ledgers_read += 1
+        return super().of_ledger(ledger_id)
+
+    def numbered(self, ledger_id: str, number: int) -> KeptEvent | None:
+        self.numbers_read.append(number)
+        return super().numbered(ledger_id, number)
+
+    def forget(self) -> None:
+        self.ledgers_read, self.numbers_read = 0, []
+
+
 class Kept:
     """A registered ledger with two items stored, the search index over it,
     and pyposlib's own search over the same archive on disk for comparison.
@@ -72,7 +94,7 @@ class Kept:
         self.bindings.save(
             ArchiveBinding(ledger_id=ledger, forge="github", repo="some/one")
         )
-        self.events = InMemoryKeptEvents()
+        self.events = CountedEvents()
         self.store = InMemoryObjectStore()
         self.keeping = PyposlibKeeping(self.events, self.store)
         self.files = InMemoryIndexedFiles()
@@ -230,6 +252,35 @@ def test_the_index_follows_the_ledger_by_its_event_count(
     assert kept.catch_up() == (2, 1)
     assert len(kept.hits("first")) == 2
     assert kept.positions.position(LEDGER) == 2
+
+
+def test_a_catch_up_reads_only_the_events_since_the_last(kept: Kept) -> None:
+    """What earlier events enrolled is indexed already, so a catch-up
+    costs what was appended since and not the length of the ledger."""
+    kept.seal("notes", {"later.txt": b"a later first\n"})
+    kept.events.forget()
+    assert kept.catch_up() == (3, 1)
+    assert kept.events.numbers_read == [3]
+    assert len(kept.hits("later")) == 1
+
+
+def test_a_search_reads_the_ledger_once(kept: Kept) -> None:
+    """Once to say which files the ledger holds, and each event alone, not
+    the ledger again for every event."""
+    kept.events.forget()
+    kept.hits("first")
+    assert kept.events.ledgers_read == 1
+    assert kept.events.numbers_read == [1, 2]
+
+
+def test_an_event_is_read_alone(kept: Kept) -> None:
+    kept.events.forget()
+    assert (
+        kept.keeping.event(LEDGER, 2) == kept.events.of_ledger(LEDGER)[1].data
+    )
+    assert (kept.events.numbers_read, kept.events.ledgers_read) == ([2], 1)
+    with pytest.raises(ArchiveRefusedError, match="No event 3"):
+        kept.keeping.event(LEDGER, 3)
 
 
 def test_a_file_two_ledgers_enrol_is_indexed_once(tmp_path: Path) -> None:

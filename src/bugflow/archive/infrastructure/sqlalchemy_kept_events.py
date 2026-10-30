@@ -34,6 +34,17 @@ archive_events = sa.Table(
 )
 
 
+def _event(row: sa.RowMapping) -> KeptEvent:
+    return KeptEvent(
+        ledger_id=row["ledger_id"],
+        number=row["number"],
+        name=row["name"],
+        data=bytes(row["data"]),
+        claims=dict(row["claims"]),
+        caller=row["caller"],
+    )
+
+
 class SqlAlchemyKeptEvents:
     def __init__(self, database_url: str) -> None:
         self._engine = sa.create_engine(
@@ -48,17 +59,16 @@ class SqlAlchemyKeptEvents:
         )
         with self._engine.connect() as connection:
             rows = connection.execute(query).mappings().all()
-        return [
-            KeptEvent(
-                ledger_id=row["ledger_id"],
-                number=row["number"],
-                name=row["name"],
-                data=bytes(row["data"]),
-                claims=dict(row["claims"]),
-                caller=row["caller"],
-            )
-            for row in rows
-        ]
+        return [_event(row) for row in rows]
+
+    def numbered(self, ledger_id: str, number: int) -> KeptEvent | None:
+        query = sa.select(archive_events).where(
+            archive_events.c.ledger_id == ledger_id,
+            archive_events.c.number == number,
+        )
+        with self._engine.connect() as connection:
+            row = connection.execute(query).mappings().one_or_none()
+        return None if row is None else _event(row)
 
     def add(self, event: KeptEvent) -> None:
         statement = sa.insert(archive_events).values(
