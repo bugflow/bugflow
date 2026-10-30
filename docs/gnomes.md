@@ -169,6 +169,14 @@ and change one thing between two measurements.
 
 This repository has no command that runs a calibration.
 
+Before a disputed finding becomes a case, `bugflow reproduce
+EXCHANGE_ID` on the server asks whether the model would say it again.
+A judged finding names the exchange it came from. The command sends
+that exchange's request to the model once more and prints the
+violations each run found: the same ones point to the policy, and
+different ones to the model's variance. It costs one model call, and
+the rerun is kept beside the first.
+
 ### Copy the doctrine into the skills
 
 After changing anything in `doctrine/` or `policies/`, run the build
