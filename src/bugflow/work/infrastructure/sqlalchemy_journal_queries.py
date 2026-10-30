@@ -27,8 +27,6 @@ from bugflow.shared.infrastructure.sqlalchemy_journal import (
 from bugflow.work.domain.facts import AGENT_DISPATCHED, JUDGE_INVOKED
 from bugflow.work.domain.models.journal import (
     DispatchedRun,
-    DispatchedWork,
-    dispatched_from,
 )
 
 #: The table a review's dispatch is read from.
@@ -154,55 +152,6 @@ class SqlAlchemyJournalQueries:
                     commit_sha=row.commit_sha,
                 )
         return None
-
-    def dispatched_work(self) -> list[DispatchedWork]:
-        dispatch = _dispatch_table(AGENT_DISPATCH)
-        query = (
-            sa.select(
-                *ENTRY_COLUMNS,
-                dispatch.c.agent_id.label("dispatch_agent_id"),
-                dispatch.c.runner,
-                dispatch.c.fingerprint,
-                dispatch.c.remote_id,
-                dispatch.c.budget_usd,
-                dispatch.c.budget_turns,
-            )
-            .select_from(
-                journal.join(
-                    dispatch, dispatch.c.event_id == journal.c.event_id
-                )
-            )
-            .where(
-                journal.c.event_type == AGENT_DISPATCHED,
-                dispatch.c.step == "dispatched",
-            )
-            .order_by(journal.c.occurred_at, journal.c.recorded_at)
-        )
-        with self._engine.connect() as connection:
-            rows = connection.execute(query).mappings().all()
-        extra = {
-            "dispatch_agent_id",
-            "runner",
-            "fingerprint",
-            "remote_id",
-            "budget_usd",
-            "budget_turns",
-        }
-        return [
-            dispatched_from(
-                from_columns(
-                    JournalEntry,
-                    {name: row[name] for name in row if name not in extra},
-                ),
-                agent_id=row["dispatch_agent_id"],
-                runner=row["runner"],
-                fingerprint=row["fingerprint"],
-                remote_id=row["remote_id"],
-                budget_usd=row["budget_usd"],
-                budget_turns=row["budget_turns"],
-            )
-            for row in rows
-        ]
 
 
 def _about(ref: PullRequestRef) -> list[sa.ColumnElement[bool]]:

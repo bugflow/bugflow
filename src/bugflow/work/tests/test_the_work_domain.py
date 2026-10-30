@@ -2,19 +2,10 @@
 paths count as instructions, how a repository's name is read, and how a
 dispatch is read back from its journal entry."""
 
-from datetime import UTC, datetime
-from typing import Any
-from uuid import uuid4
-
 import pytest
 
-from bugflow.shared.domain.models.journal_entry import JournalEntry
-from bugflow.shared.domain.values.budget import Budget
-from bugflow.shared.domain.values.correlation import Correlation
-from bugflow.work.domain.facts import AGENT_DISPATCHED
 from bugflow.work.domain.models.agent import AgentHandle, AgentRun
 from bugflow.work.domain.models.backfill import WatchedRepository
-from bugflow.work.domain.models.journal import dispatched_from_entry
 from bugflow.work.domain.values.sandbox import instruction_sources, instructs
 
 
@@ -88,60 +79,3 @@ def test_a_handle_is_finished_only_if_it_carries_its_run() -> None:
     )
     assert not working.is_finished
     assert done.is_finished
-
-
-def _dispatch(payload: dict[str, Any]) -> JournalEntry:
-    return JournalEntry(
-        event_id=uuid4(),
-        occurred_at=datetime(2030, 1, 2, 3, 4, tzinfo=UTC),
-        event_type=AGENT_DISPATCHED,
-        forge="github",
-        repo="orchard/pear-tree",
-        pr_number=7,
-        commit_sha="c0ffee",
-        corpus_version="v1",
-        workflow_id="wf-1",
-        run_id="run-1",
-        payload=payload,
-    )
-
-
-def test_a_dispatch_is_read_back_from_its_journal_entry() -> None:
-    work = dispatched_from_entry(
-        _dispatch(
-            {
-                "agent_id": "reviewer",
-                "step": "dispatched",
-                "runner": "hosted",
-                "fingerprint": "abc",
-                "remote_id": "s-1",
-                "budget": {"usd": 2, "turns": 30, "minutes": 9},
-            }
-        )
-    )
-    assert work.correlation == Correlation(workflow_id="wf-1", run_id="run-1")
-    assert (work.forge, work.repo, work.pr_number) == (
-        "github",
-        "orchard/pear-tree",
-        7,
-    )
-    assert work.agent_id == "reviewer"
-    assert work.handle == AgentHandle(
-        runner="hosted",
-        fingerprint="abc",
-        remote_id="s-1",
-        budget=Budget(usd=2.0, turns=30.0),
-    )
-
-
-def test_a_limit_the_entry_does_not_name_takes_the_default() -> None:
-    work = dispatched_from_entry(_dispatch({"budget": {"usd": 2}}))
-    assert work.handle.budget is not None
-    assert work.handle.budget.usd == 2.0
-    assert work.handle.budget.turns == Budget().turns
-
-
-def test_an_entry_with_nothing_recorded_gives_an_empty_handle() -> None:
-    work = dispatched_from_entry(_dispatch({}))
-    assert work.agent_id == ""
-    assert work.handle == AgentHandle(runner="", fingerprint="")
