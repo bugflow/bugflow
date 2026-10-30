@@ -16,6 +16,7 @@ Its subcommands include::
     bugflow discover
     bugflow migrate [--check]
     bugflow repository-origins [--apply MAPPINGS.json]
+    bugflow reproduce EXCHANGE_ID
     bugflow poll [--once]
     bugflow prune-webhooks OLD_INGRESS_URL [--dry-run]
     bugflow revoke [REPOSITORY] [--layer LAYER] [--agent REVIEWER]
@@ -103,6 +104,15 @@ Exit status: 0 if the command wrote or read what it was asked to. 2 if
 or if the command refused what it was asked, and then nothing was
 written.
 
+``reproduce`` runs an archived judgement again, for calibration: it
+sends the request of the exchange EXCHANGE_ID, which a judged finding
+names, to the model once more, archives the new exchange, and prints
+the violations each found.
+
+Exit status: 0 if the model reported the same violations. 1 if it did
+not. 2 if a setting is missing, no exchange has the id, or the model
+did not answer.
+
 ``migrate`` brings the database named by ``DATABASE_URL`` up to date by
 running the scripts it has not run: the package's, and those in the
 directories ``DATABASE_SCRIPTS`` names, a deployment's own branch. With
@@ -180,6 +190,7 @@ from bugflow.apps.command.declaring import (
     run_revoke,
 )
 from bugflow.apps.command.repository_origins import apply_mapping, inventory
+from bugflow.apps.command.reproducing import run_reproduce
 from bugflow.apps.command.setting import run_set, run_settings
 from bugflow.apps.command.webhooks import (
     HookSettings,
@@ -351,6 +362,14 @@ def _parser() -> argparse.ArgumentParser:
         "discover",
         help="list the repositories of the owners this server can reach "
         "and keep each that is new, renamed or archived",
+    )
+    reproduce = commands.add_parser(
+        "reproduce",
+        help="run an archived judgement again and compare what the model "
+        "finds now, for calibration (calls the judge's model once)",
+    )
+    reproduce.add_argument(
+        "exchange_id", help="the exchange a judged finding names"
     )
     poll = commands.add_parser(
         "poll",
@@ -633,6 +652,8 @@ def run(
         return _migrate(args.check, environ)
     if args.command == "repository-origins":
         return _repository_origins(args.apply, environ)
+    if args.command == "reproduce":
+        return run_reproduce(args.exchange_id, environ)
     if args.command == "install-policies":
         return _install_policies(args, environ)
     if args.command == "poll":
