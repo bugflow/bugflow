@@ -161,26 +161,10 @@ class SqlAlchemyPolicyDeployments:
                 return None
             return self._read(connection, latest[0], latest[1])
 
-    def held(self, repository: str, commit: str) -> PolicyDeployment | None:
-        with self._engine.connect() as connection:
-            known = connection.execute(
-                sa.select(deployments.c.commit).where(
-                    deployments.c.repository == repository,
-                    deployments.c.commit == commit,
-                )
-            ).one_or_none()
-            if known is None:
-                return None
-            return self._read(connection, repository, commit)
-
     def last_put_in_force(self) -> PutInForce | None:
         with self._engine.connect() as connection:
             row = connection.execute(self._puts().limit(1)).one_or_none()
         return None if row is None else self._put(row)
-
-    def history(self) -> list[PutInForce]:
-        with self._engine.connect() as connection:
-            return [self._put(row) for row in connection.execute(self._puts())]
 
     @staticmethod
     def _puts() -> sa.Select[str, str, str, datetime]:
