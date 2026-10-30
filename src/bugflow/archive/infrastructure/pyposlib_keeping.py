@@ -268,8 +268,13 @@ class PyposlibKeeping:
         return _description(ledger_id, _refusing(keeper.describe))
 
     def event(self, ledger_id: str, number: int) -> bytes:
-        keeper = self._keeper(ledger_id)
-        return bytes(_refusing(lambda: keeper.event(number)))
+        # The bytes as stored, which is all pyposlib's keeper returns, read
+        # alone: building a keeper reads the whole ledger, and a search or
+        # a catch-up asks for many events in turn.
+        kept = self._events.numbered(ledger_id, number)
+        if kept is None:
+            raise ArchiveRefusedError("absent", f"No event {number}")
+        return kept.data
 
     def held(self, ledger_id: str, cids: Sequence[str]) -> list[str]:
         blocks = _Blocks(self._store)

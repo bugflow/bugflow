@@ -15,6 +15,9 @@ class InMemoryKeptEvents:
             if key[0] == ledger_id
         ]
 
+    def numbered(self, ledger_id: str, number: int) -> KeptEvent | None:
+        return self._kept.get((ledger_id, number))
+
     def add(self, event: KeptEvent) -> None:
         key = (event.ledger_id, event.number)
         if key in self._kept:
