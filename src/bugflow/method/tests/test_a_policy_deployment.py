@@ -102,7 +102,7 @@ def test_a_directory_is_read_as_the_files_a_server_reads(
 def test_a_server_never_sent_a_deployment_has_none_in_force() -> None:
     held = InMemoryPolicyDeployments()
     assert held.in_force() is None
-    assert held.history() == []
+    assert held.puts == []
 
 
 @pytest.mark.model(
@@ -115,14 +115,14 @@ def test_the_deployment_sent_last_is_in_force() -> None:
     assert held.deploy(deployment("c2", **{"a.md": "new"})) is True
     in_force = held.in_force()
     assert in_force is not None and in_force.commit == "c2"
-    assert [put.commit for put in held.history()] == ["c2", "c1"]
+    assert [put.commit for put in held.puts] == ["c1", "c2"]
 
 
 def test_sending_the_one_in_force_again_changes_nothing() -> None:
     held = InMemoryPolicyDeployments()
     held.deploy(deployment("c1"))
     assert held.deploy(deployment("c1")) is False
-    assert len(held.history()) == 1
+    assert len(held.puts) == 1
 
 
 def test_sending_an_earlier_one_again_puts_it_back_in_force() -> None:
@@ -132,7 +132,7 @@ def test_sending_an_earlier_one_again_puts_it_back_in_force() -> None:
     assert held.deploy(deployment("c1")) is True
     in_force = held.in_force()
     assert in_force is not None and in_force.commit == "c1"
-    assert [put.commit for put in held.history()] == ["c1", "c2", "c1"]
+    assert [put.commit for put in held.puts] == ["c1", "c2", "c1"]
 
 
 def test_a_commit_held_with_other_content_is_refused() -> None:
@@ -149,10 +149,9 @@ def test_an_earlier_deployment_is_still_held_after_it_is_replaced() -> None:
     held = InMemoryPolicyDeployments()
     held.deploy(deployment("c1"))
     held.deploy(deployment("c2", **{"a.md": "new"}))
-    earlier = held.held(REPOSITORY, "c1")
-    assert earlier is not None
+    earlier = held.kept[(REPOSITORY, "c1")]
     assert earlier.text_of("prose/reviewer.md") == "agent_id: prose\n"
-    assert held.held(REPOSITORY, "c3") is None
+    assert (REPOSITORY, "c3") not in held.kept
 
 
 def test_the_files_beside_the_reviewers_are_read(tmp_path: Path) -> None:

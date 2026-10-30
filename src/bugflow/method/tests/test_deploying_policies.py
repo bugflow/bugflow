@@ -153,7 +153,7 @@ def test_a_check_says_which_deployment_is_in_force() -> None:
         request("c2", edited("Second.\n"), check_only=True)
     )
     assert answered.in_force is not None and answered.in_force.commit == "c1"
-    assert fixture.deployments.held(REPOSITORY, "c2") is None
+    assert (REPOSITORY, "c2") not in fixture.deployments.kept
 
 
 @pytest.mark.model(
@@ -196,4 +196,4 @@ def test_a_deployment_whose_fact_is_refused_is_not_put_in_force() -> None:
     with pytest.raises(RuntimeError, match="the journal refuses"):
         deploy.execute(request())
     assert deployments.in_force() is None
-    assert deployments.held(REPOSITORY, "c1") is None
+    assert (REPOSITORY, "c1") not in deployments.kept

@@ -14,8 +14,10 @@ from bugflow.shared.domain.services.recording import RecordingService
 
 class InMemoryPolicyDeployments:
     """Implements ``PolicyDeploymentRepository`` in a dictionary and a
-    list. ``now`` is asked for the time each deployment is put in force,
-    and ``journal`` records its facts.
+    list, which a test reads: ``kept`` by repository and commit, and
+    ``puts`` in the order they were put in force. ``now`` is asked for
+    the time each deployment is put in force, and ``journal`` records its
+    facts.
     """
 
     def __init__(
@@ -25,22 +27,22 @@ class InMemoryPolicyDeployments:
     ) -> None:
         self._now = now
         self._journal = journal
-        self._held: dict[tuple[str, str], PolicyDeployment] = {}
-        self._put: list[PutInForce] = []
+        self.kept: dict[tuple[str, str], PolicyDeployment] = {}
+        self.puts: list[PutInForce] = []
 
     def deploy(
         self, deployment: PolicyDeployment, facts: Facts = lambda _: ()
     ) -> bool:
         key = (deployment.repository, deployment.commit)
-        earlier = self._held.get(key)
+        earlier = self.kept.get(key)
         if (
             earlier is not None
             and earlier.content_hash != deployment.content_hash
         ):
             raise PolicyDeploymentConflictError(*key)
-        latest = self._put[-1] if self._put else None
+        latest = self.puts[-1] if self.puts else None
         if latest and (latest.repository, latest.commit) == key:
-            self._held[key] = deployment
+            self.kept[key] = deployment
             return False
         # Recorded before anything is changed, so a journal that refuses
         # leaves the deployment unchanged, as a transaction would.
@@ -52,8 +54,8 @@ class InMemoryPolicyDeployments:
                     "deployment's facts in"
                 )
             self._journal.append(recorded)
-        self._held[key] = deployment
-        self._put.append(
+        self.kept[key] = deployment
+        self.puts.append(
             PutInForce(
                 repository=deployment.repository,
                 commit=deployment.commit,
@@ -64,16 +66,10 @@ class InMemoryPolicyDeployments:
         return True
 
     def in_force(self) -> PolicyDeployment | None:
-        if not self._put:
+        if not self.puts:
             return None
-        latest = self._put[-1]
-        return self._held[(latest.repository, latest.commit)]
-
-    def held(self, repository: str, commit: str) -> PolicyDeployment | None:
-        return self._held.get((repository, commit))
+        latest = self.puts[-1]
+        return self.kept[(latest.repository, latest.commit)]
 
     def last_put_in_force(self) -> PutInForce | None:
-        return self._put[-1] if self._put else None
-
-    def history(self) -> list[PutInForce]:
-        return list(reversed(self._put))
+        return self.puts[-1] if self.puts else None
