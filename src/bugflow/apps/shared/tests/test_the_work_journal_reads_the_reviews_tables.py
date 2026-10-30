@@ -27,13 +27,11 @@ from bugflow.review.infrastructure.sqlalchemy_stocktake_facts import (
 )
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.services.recording import RecordingService
-from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.infrastructure.sqlalchemy_journal import SqlAlchemyJournal
 from bugflow.work.domain.facts import AGENT_DISPATCHED, PR_OBSERVED
 from bugflow.work.domain.models.journal import DispatchedRun
-from bugflow.work.domain.services.dispatch_record import DispatchRecordService
 from bugflow.work.domain.services.journal import JournalService
 from bugflow.work.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
@@ -41,8 +39,8 @@ from bugflow.work.infrastructure.sqlalchemy_journal_queries import (
 from bugflow.work.tests.journal import QueryableJournal
 
 
-class Queries(JournalService, DispatchRecordService, Protocol):
-    """Both of the context's reading interfaces."""
+class Queries(JournalService, Protocol):
+    """The context's reading interface."""
 
 
 #: Given the kinds of fact to search for dispatches, each with its
@@ -231,33 +229,3 @@ def test_the_ingress_matches_a_completion_to_a_stocktakes_dispatch(
 
     assert found is not None
     assert found.correlation.workflow_id == written.workflow_id
-
-
-def test_every_dispatch_that_started_a_run_comes_back_oldest_first(
-    make: Make,
-) -> None:
-    recording, queries = make(BOTH)
-    runner, repo = unique("hosted"), f"orchard/{unique('pear-tree')}"
-    recording.append(
-        [
-            entry(AGENT_DISPATCHED, dispatch(runner, "s-2"), repo=repo, day=4),
-            entry(AGENT_DISPATCHED, dispatch(runner, "s-1"), repo=repo, day=2),
-            entry(AGENT_DISPATCHED, dispatch(runner, ""), repo=repo, day=5),
-            entry(
-                AGENT_DISPATCHED,
-                dispatch(runner, "s-3", step="reused"),
-                repo=repo,
-            ),
-            entry("stocktake.dispatched", dispatch(runner, "s-4"), repo=repo),
-        ]
-    )
-
-    mine = [w for w in queries.dispatched_work() if w.repo == repo]
-
-    assert [w.handle.remote_id for w in mine] == ["s-1", "s-2", ""]
-    first = mine[0]
-    assert first.occurred_at == datetime(2030, 5, 2, tzinfo=UTC)
-    assert first.agent_id == "security"
-    assert first.corpus_version == "v1"
-    assert first.handle.runner == runner
-    assert first.handle.budget == Budget(usd=2.0)
