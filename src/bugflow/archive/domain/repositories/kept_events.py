@@ -20,6 +20,11 @@ class KeptEventRepository(BaseRepository[KeptEvent], Protocol):
         """The ledger's events in order. Empty if it has none."""
         ...
 
+    def numbered(self, ledger_id: str, number: int) -> KeptEvent | None:
+        """The ledger's event of that number, or None if it has none.
+        One event is read, and not the ledger."""
+        ...
+
     def add(self, event: KeptEvent) -> None:
         """Store the event. Raises ``EventTakenError`` if the ledger already
         has an event with that number. A stored event is never replaced.
