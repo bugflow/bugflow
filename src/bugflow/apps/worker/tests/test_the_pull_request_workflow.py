@@ -7,6 +7,7 @@ last two tests replay recorded histories.
 import asyncio
 import os
 import re
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
@@ -145,8 +146,16 @@ async def deliver(
     )
 
 
+#: How long, in real time, a test waits for the evaluations it expects.
+#: Time-skipping moves the workflow's clock and not the worker's, which
+#: on a loaded machine takes seconds to run the evaluation it scheduled.
+#: The wait ends as soon as they arrive, so a generous one costs nothing.
+EVALUATION_WAIT = timedelta(seconds=60)
+
+
 async def evaluated(count: int) -> None:
-    for _ in range(400):
+    deadline = time.monotonic() + EVALUATION_WAIT.total_seconds()
+    while time.monotonic() < deadline:
         if len(evaluations) >= count:
             return
         await asyncio.sleep(0.025)
