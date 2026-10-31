@@ -175,6 +175,66 @@ def test_an_owner_counts_each_of_its_repositories(
     assert (round(found.usd, 4), found.facts) == (5.0, 2)
 
 
+def test_spend_can_be_grouped_for_a_repository(
+    engine: sa.Engine, database_url: str
+) -> None:
+    name = repo()
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
+        [
+            entry(
+                name,
+                "stocktake.reviewed",
+                {"layer": "weekly", "cost": {"usd": 2.0}},
+                agent="security",
+            ),
+            entry(
+                name,
+                "agent.dispatched",
+                {"step": "collected", "cost": {"usd": 5.0}},
+                agent="review",
+            ),
+        ]
+    )
+
+    rows = SqlAlchemySpendRecord(database_url).spent_by_scope(
+        *WINDOW, repo=name
+    )
+
+    assert [(row.repo, row.layer, row.agent_id, row.usd) for row in rows] == [
+        (name, "", "review", 5.0),
+        (name, "weekly", "security", 2.0),
+    ]
+
+
+def test_an_owner_counts_each_grouped_repository(
+    engine: sa.Engine, database_url: str
+) -> None:
+    owner = str(uuid.uuid4())
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
+        [
+            entry(
+                f"{owner}/one",
+                "agent.dispatched",
+                {"step": "collected", "cost": {"usd": 2.0}},
+            ),
+            entry(
+                f"{owner}/two",
+                "agent.dispatched",
+                {"step": "collected", "cost": {"usd": 3.0}},
+            ),
+        ]
+    )
+
+    rows = SqlAlchemySpendRecord(database_url).spent_by_scope(
+        *WINDOW, owner=owner
+    )
+
+    assert [(row.repo, row.usd) for row in rows] == [
+        (f"{owner}/one", 2.0),
+        (f"{owner}/two", 3.0),
+    ]
+
+
 def test_a_cost_outside_the_window_is_not_counted(
     engine: sa.Engine, database_url: str
 ) -> None:
