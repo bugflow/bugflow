@@ -8,6 +8,7 @@ One reader, because a dispatcher refusing a run and a page showing the
 month have to agree.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -15,6 +16,23 @@ from bugflow.review.domain.models.spend import RunSpend, Spent
 
 
 class SpendRecordService(Protocol):
+    def spent_by_scope(
+        self,
+        since: datetime,
+        until: datetime,
+        forge: str = "",
+        repo: str = "",
+        layer: str = "",
+        agent_id: str = "",
+        owner: str = "",
+    ) -> Sequence[Spent]:
+        """Return spend grouped by layer and agent in the window.
+
+        The optional scope narrows the rows before grouping. Empty parts
+        match anything, as they do for :meth:`spent`.
+        """
+        ...
+
     def spent(
         self,
         since: datetime,

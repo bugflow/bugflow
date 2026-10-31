@@ -1,5 +1,6 @@
 """What this deployment spent, kept in memory, for tests."""
 
+from collections import defaultdict
 from datetime import datetime
 
 from bugflow.review.domain.models.spend import RunSpend, Spent
@@ -46,6 +47,54 @@ class InMemorySpendRecord:
             until=until,
             usd=sum(found),
             facts=len(found),
+        )
+
+    def spent_by_scope(
+        self,
+        since: datetime,
+        until: datetime,
+        forge: str = "",
+        repo: str = "",
+        layer: str = "",
+        agent_id: str = "",
+        owner: str = "",
+    ) -> tuple[Spent, ...]:
+        found: defaultdict[tuple[str, str, str, str], list[float]] = (
+            defaultdict(list)
+        )
+        for (
+            one_forge,
+            one_repo,
+            one_layer,
+            one_agent,
+            when,
+            usd,
+        ) in self.costs:
+            if not (
+                since <= when < until
+                and forge in ("", one_forge)
+                and owner in ("", owner_of(one_repo))
+                and repo in ("", one_repo)
+                and layer in ("", one_layer)
+                and agent_id in ("", one_agent)
+            ):
+                continue
+            found[(one_forge, one_repo, one_layer, one_agent)].append(usd)
+        return tuple(
+            Spent(
+                forge=one_forge,
+                owner=owner or owner_of(one_repo),
+                repo=one_repo,
+                layer=one_layer,
+                agent_id=one_agent,
+                since=since,
+                until=until,
+                usd=sum(costs),
+                facts=len(costs),
+            )
+            for (one_forge, one_repo, one_layer, one_agent), costs in sorted(
+                found.items()
+            )
         )
 
     def spent_in_run(self, run_id: str) -> RunSpend:
