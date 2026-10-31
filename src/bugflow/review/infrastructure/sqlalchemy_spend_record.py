@@ -63,6 +63,23 @@ where occurred_at >= :since and occurred_at < :until
   and (:repo = '' or repo = :repo)
   and (:layer = '' or layer = :layer)
   and (:agent = '' or agent_id = :agent)
+    """
+
+
+def _grouped_query(relation: str) -> str:
+    return f"""
+select forge, repo, coalesce(layer, '') as layer,
+       coalesce(agent_id, '') as agent_id,
+       coalesce(sum(usd), 0) as usd, count(*) as facts
+from ({_costs(relation)}) costs
+where occurred_at >= :since and occurred_at < :until
+  and (:forge = '' or forge = :forge)
+  and (:owner = '' or split_part(repo, '/', 1) = :owner)
+  and (:repo = '' or repo = :repo)
+  and (:layer = '' or layer = :layer)
+  and (:agent = '' or agent_id = :agent)
+group by forge, repo, layer, agent_id
+order by forge, repo, layer, agent_id
 """
 
 
@@ -80,6 +97,7 @@ class SqlAlchemySpendRecord:
         """``relation`` is the table or view the journal is read
         through. It has the journal's columns."""
         self._engine = sa.create_engine(engine_url(database_url))
+        self._grouped = sa.text(_grouped_query(relation))
         self._window = sa.text(_window_query(relation))
         self._run = sa.text(_run_query(relation))
 
@@ -118,6 +136,45 @@ class SqlAlchemySpendRecord:
             usd=float(row.usd),
             facts=int(row.facts),
         )
+
+    def spent_by_scope(
+        self,
+        since: datetime,
+        until: datetime,
+        forge: str = "",
+        repo: str = "",
+        layer: str = "",
+        agent_id: str = "",
+        owner: str = "",
+    ) -> tuple[Spent, ...]:
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                self._grouped,
+                {
+                    "nano": _NANODOLLARS,
+                    "since": since,
+                    "until": until,
+                    "forge": forge,
+                    "owner": owner,
+                    "repo": repo,
+                    "layer": layer,
+                    "agent": agent_id,
+                },
+            )
+            return tuple(
+                Spent(
+                    forge=row.forge,
+                    owner=owner,
+                    repo=row.repo,
+                    layer=row.layer,
+                    agent_id=row.agent_id,
+                    since=since,
+                    until=until,
+                    usd=float(row.usd),
+                    facts=int(row.facts),
+                )
+                for row in rows
+            )
 
     def spent_in_run(self, run_id: str) -> RunSpend:
         with self._engine.connect() as connection:
