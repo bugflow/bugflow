@@ -341,9 +341,16 @@ class FakeHandle:
 class FakeServer:
     """A scheduler server that already holds what it was given."""
 
-    def __init__(self, schedules: dict[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        schedules: dict[str, object] | None = None,
+        retried: bool = False,
+    ) -> None:
         self.schedules: dict[str, object] = dict(schedules or {})
         self.updated: list[str] = []
+        #: Whether a create of a schedule already there comes back as a
+        #: retry's bare ALREADY_EXISTS rather than the SDK's error.
+        self.retried = retried
         #: Ids the listing still names after they were deleted, as the
         #: server's listing lags it.
         self.lagging: list[str] = []
@@ -358,6 +365,12 @@ class FakeServer:
     async def create_schedule(
         self, schedule_id: str, schedule: object
     ) -> None:
+        if schedule_id in self.schedules and self.retried:
+            raise RPCError(
+                "Workflow execution is already running",
+                RPCStatusCode.ALREADY_EXISTS,
+                b"",
+            )
         if schedule_id in self.schedules:
             raise ScheduleAlreadyRunningError()
         self.schedules[schedule_id] = schedule
@@ -414,6 +427,37 @@ def test_a_schedule_already_firing_on_its_boundary_is_left_alone() -> None:
     ask(scheduling(server), wanted)
 
     assert server.updated == []
+
+
+def test_a_retry_that_finds_the_schedule_made_reads_it_as_there() -> None:
+    """While Temporal starts, a create the server carried out can come
+    back as an error, and the client's retry is then answered with a
+    bare ALREADY_EXISTS. The schedule is there, which is what was
+    wanted, and the worker starting does not stop on it."""
+    wanted = spec_for(CADENCES["weekly"], "SUN 23:30", NOW, ZONE)
+    later = spec_for(CADENCES["weekly"], "MON 00:00", NOW, ZONE)
+    server = FakeServer(
+        {"stocktake/github/example-org/widgets/weekly": held_on(later)},
+        retried=True,
+    )
+
+    ask(scheduling(server), wanted)
+
+    assert server.updated == ["stocktake/github/example-org/widgets/weekly"]
+
+
+def test_another_refusal_to_create_a_schedule_is_raised() -> None:
+    class Refusing(FakeServer):
+        async def create_schedule(
+            self, schedule_id: str, schedule: object
+        ) -> None:
+            raise RPCError("denied", RPCStatusCode.PERMISSION_DENIED, b"")
+
+    with pytest.raises(RPCError, match="denied"):
+        ask(
+            scheduling(Refusing()),
+            spec_for(CADENCES["weekly"], "SUN 23:30", NOW, ZONE),
+        )
 
 
 def test_a_schedule_firing_on_something_else_is_moved_onto_it() -> None:

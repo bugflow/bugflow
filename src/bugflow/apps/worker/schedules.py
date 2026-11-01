@@ -298,6 +298,13 @@ class TemporalScheduler:
     ordinary case: every worker start reconciles. The existing schedule
     is kept, because its next firing belongs to the server and making
     it again would move it.
+
+    It raises in one of two ways. Asked once, the server answers that
+    the schedule is already running, which the SDK raises as its own
+    error. Asked again by the client's retry, after a first attempt the
+    server carried out but answered with an error, such as having too
+    few hosts while it starts, it answers the retry with a bare
+    ``ALREADY_EXISTS``. Both say the schedule is there.
     """
 
     def __init__(self, client: Client, workflow: str) -> None:
@@ -326,6 +333,10 @@ class TemporalScheduler:
                 ),
             )
         except ScheduleAlreadyRunningError:
+            await self._retime(schedule_id, spec)
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.ALREADY_EXISTS:
+                raise
             await self._retime(schedule_id, spec)
 
     async def stocktake_schedules(self, task_queue: str) -> list[str]:
