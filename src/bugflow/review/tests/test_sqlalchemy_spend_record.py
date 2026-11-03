@@ -338,3 +338,114 @@ def test_spend_is_read_through_the_relation_named(
     through_table = SqlAlchemySpendRecord(database_url)
     assert through_view.spent(*WINDOW, repo=name).facts == 0
     assert through_table.spent(*WINDOW, repo=name).facts == 1
+
+
+def _four_kinds(name: str, run: str, other: str) -> list[JournalEntry]:
+    """Two runs on one repository, between them recording every kind of
+    costed fact, on two layers and three agents."""
+    return [
+        entry(
+            name,
+            "llm.called",
+            {"cost_nanodollars": 250_000_000},
+            agent=None,
+            run_id=run,
+        ),
+        entry(
+            name,
+            "agent.dispatched",
+            {"step": "collected", "cost": {"usd": 0.5}},
+            run_id=run,
+        ),
+        entry(
+            name,
+            "policy.checked",
+            {"policy_id": "P-01", "cost": {"usd": 0.125}},
+            agent="style",
+            run_id=run,
+        ),
+        entry(
+            name,
+            "stocktake.reviewed",
+            {"layer": "weekly", "cost": {"usd": 2.0}},
+            run_id=other,
+        ),
+        entry(
+            name,
+            "stocktake.reviewed",
+            {"layer": "monthly", "cost": {"usd": 3.0}},
+            agent="security",
+            run_id=other,
+            at=AT + timedelta(minutes=5),
+        ),
+    ]
+
+
+def test_each_run_names_the_kinds_of_fact_it_spent_on(
+    engine: sa.Engine, database_url: str
+) -> None:
+    name, run, other = repo(), str(uuid.uuid4()), str(uuid.uuid4())
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
+        _four_kinds(name, run, other)
+    )
+    rows = SqlAlchemySpendRecord(database_url).spent_by_run(*WINDOW, repo=name)
+    assert {
+        (row.run_id == run, row.kind, row.layer, row.agent_id) for row in rows
+    } == {
+        (True, "model_call", "", ""),
+        (True, "agent_dispatch", "", "safety"),
+        (True, "policy_check", "", "style"),
+        (False, "stocktake_review", "weekly", "safety"),
+        (False, "stocktake_review", "monthly", "security"),
+    }
+    # The run whose fact was recorded last is listed first.
+    assert rows[0].run_id == other
+
+
+def test_a_scopes_total_is_the_sum_of_its_runs(
+    engine: sa.Engine, database_url: str
+) -> None:
+    """Whatever the scope, the rows by run add up to the scope's figure,
+    in dollars and in facts, so a total can be followed to its runs."""
+    name, run, other = repo(), str(uuid.uuid4()), str(uuid.uuid4())
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
+        _four_kinds(name, run, other)
+    )
+    record = SqlAlchemySpendRecord(database_url)
+    owner = name.partition("/")[0]
+    for scope in (
+        {"repo": name},
+        {"repo": name, "forge": "github"},
+        {"repo": name, "layer": "weekly"},
+        {"repo": name, "agent_id": "safety"},
+        {"repo": name, "agent_id": "style"},
+        {"repo": name, "layer": "monthly", "agent_id": "security"},
+        {"owner": owner, "agent_id": "security", "layer": "monthly"},
+    ):
+        since, until = WINDOW
+        total = record.spent(since, until, **scope)
+        rows = record.spent_by_run(since, until, **scope)
+        assert (
+            round(sum(row.usd for row in rows), 6),
+            sum(row.facts for row in rows),
+        ) == (round(total.usd, 6), total.facts), scope
+
+
+def test_a_run_outside_the_window_is_not_listed(
+    engine: sa.Engine, database_url: str
+) -> None:
+    name = repo()
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(
+        [
+            entry(
+                name,
+                "stocktake.reviewed",
+                {"layer": "weekly", "cost": {"usd": 4.0}},
+                at=AT - timedelta(days=2),
+            ),
+        ]
+    )
+    assert (
+        SqlAlchemySpendRecord(database_url).spent_by_run(*WINDOW, repo=name)
+        == ()
+    )

@@ -12,10 +12,29 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
-from bugflow.review.domain.models.spend import RunSpend, Spent
+from bugflow.review.domain.models.spend import RunCost, RunSpend, Spent
 
 
 class SpendRecordService(Protocol):
+    def spent_by_run(
+        self,
+        since: datetime,
+        until: datetime,
+        forge: str = "",
+        repo: str = "",
+        layer: str = "",
+        agent_id: str = "",
+        owner: str = "",
+    ) -> Sequence[RunCost]:
+        """Return what each run spent in the window, split by layer,
+        agent and kind of fact, latest first.
+
+        The scope narrows the facts as it does for :meth:`spent`, so the
+        rows for a scope sum to what :meth:`spent` answers for it: that
+        is what lets a total be followed down to its runs.
+        """
+        ...
+
     def spent_by_scope(
         self,
         since: datetime,
