@@ -179,6 +179,17 @@ def test_the_page_and_where_it_signs_in_need_no_token() -> None:
     }
 
 
+def test_the_settings_page_signs_in_with_the_shared_script() -> None:
+    server = Server()
+    page = server.client.get("/settings")
+    assert '<script src="sign-in.js"></script>' in page.text
+    assert "async function signIn()" not in page.text
+    script = server.client.get("/sign-in.js")
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert "async function signIn()" in script.text
+
+
 def test_a_repository_this_server_does_not_read_is_refused() -> None:
     server = Server()
     for path in (
