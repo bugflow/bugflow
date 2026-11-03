@@ -21,6 +21,7 @@ import sqlalchemy as sa
 
 from bugflow.review.domain.models.spend import (
     SPEND_KINDS,
+    CostFact,
     RunCost,
     RunSpend,
     SpendKind,
@@ -38,25 +39,26 @@ def _costs(relation: str) -> str:
     agent it names, the layer it belongs to, its cost in dollars, and the
     kind of fact it is."""
     return f"""
-select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
-       j.agent_id, null::text as layer, m.cost_nanodollars / :nano as usd,
+select j.event_id, j.occurred_at, j.forge, j.repo, j.workflow_id,
+       j.run_id, j.agent_id, null::text as layer,
+       m.cost_nanodollars / :nano as usd,
        'model_call' as kind
   from {relation} j join model_call m on m.event_id = j.event_id
  where m.cost_nanodollars is not null
 union all
-select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
-       coalesce(j.agent_id, d.agent_id), null::text, d.cost_usd,
+select j.event_id, j.occurred_at, j.forge, j.repo, j.workflow_id,
+       j.run_id, coalesce(j.agent_id, d.agent_id), null::text, d.cost_usd,
        'agent_dispatch'
   from {relation} j join agent_dispatch d on d.event_id = j.event_id
  where d.cost_usd is not null
 union all
-select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
-       j.agent_id, null::text, p.cost_usd, 'policy_check'
+select j.event_id, j.occurred_at, j.forge, j.repo, j.workflow_id,
+       j.run_id, j.agent_id, null::text, p.cost_usd, 'policy_check'
   from {relation} j join policy_check p on p.event_id = j.event_id
  where p.cost_usd is not null
 union all
-select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
-       coalesce(j.agent_id, s.agent_id), s.layer, s.cost_usd,
+select j.event_id, j.occurred_at, j.forge, j.repo, j.workflow_id,
+       j.run_id, coalesce(j.agent_id, s.agent_id), s.layer, s.cost_usd,
        'stocktake_review'
   from {relation} j join stocktake_review s on s.event_id = j.event_id
  where s.cost_usd is not null
@@ -112,6 +114,17 @@ order by max(occurred_at) desc, workflow_id, run_id, layer, agent_id,
 """
 
 
+def _facts_query(relation: str) -> str:
+    return f"""
+select event_id::text as event_id, occurred_at, kind,
+       coalesce(layer, '') as layer, coalesce(agent_id, '') as agent_id,
+       usd
+from ({_costs(relation)}) costs
+where workflow_id = :workflow and run_id = :run
+order by occurred_at, event_id
+"""
+
+
 def _run_query(relation: str) -> str:
     # No time bound: a run is bounded by itself.
     return f"""
@@ -139,6 +152,7 @@ class SqlAlchemySpendRecord:
         self._by_run = sa.text(_by_run_query(relation))
         self._window = sa.text(_window_query(relation))
         self._run = sa.text(_run_query(relation))
+        self._facts = sa.text(_facts_query(relation))
 
     def spent(
         self,
@@ -254,6 +268,26 @@ class SqlAlchemySpendRecord:
                     until=until,
                     usd=float(row.usd),
                     facts=int(row.facts),
+                )
+                for row in rows
+            )
+
+    def costs_in_run(
+        self, workflow_id: str, run_id: str
+    ) -> tuple[CostFact, ...]:
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                self._facts,
+                {"nano": _NANODOLLARS, "workflow": workflow_id, "run": run_id},
+            )
+            return tuple(
+                CostFact(
+                    event_id=row.event_id,
+                    occurred_at=row.occurred_at,
+                    kind=_kind(row.kind),
+                    layer=row.layer,
+                    agent_id=row.agent_id,
+                    usd=float(row.usd),
                 )
                 for row in rows
             )
