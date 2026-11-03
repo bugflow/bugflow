@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 
 from bugflow.apps.api.api import PolicyDeploying, create_api
+from bugflow.apps.api.operations import OperationsReading
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
 )
@@ -18,15 +19,29 @@ from bugflow.method.infrastructure.in_memory_policy_deployments import (
     InMemoryPolicyDeployments,
 )
 from bugflow.method.usecases.deploy_policies import DeployPoliciesUseCase
+from bugflow.review.domain.models.review_entry import (
+    ReviewEntry,
+    from_payload,
+)
 from bugflow.review.infrastructure.in_memory_gnome_settings import (
     InMemoryGnomeSettings,
 )
 from bugflow.review.infrastructure.in_memory_layer_boundaries import (
     InMemoryLayerBoundaries,
 )
+from bugflow.review.infrastructure.in_memory_spend_bindings import (
+    InMemorySpendBindings,
+)
+from bugflow.review.infrastructure.in_memory_spend_record import (
+    InMemorySpendRecord,
+)
+from bugflow.review.usecases.read_run_operations import (
+    ReadRunOperationsUseCase,
+)
 from bugflow.review.usecases.set_gnome import SetGnomeUseCase
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.values.caller import Caller
+from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.infrastructure.in_memory_journal import InMemoryJournal
 
 #: The role the server is told may deploy.
@@ -62,6 +77,23 @@ class Tokens:
         )
 
 
+class RunEntries:
+    """A run's entries, read from the in-memory journal."""
+
+    def __init__(self, journal: InMemoryJournal) -> None:
+        self._journal = journal
+
+    def entries_for_run(self, correlation: Correlation) -> list[ReviewEntry]:
+        return [
+            from_payload(one)
+            for one in sorted(
+                self._journal.entries, key=lambda one: one.occurred_at
+            )
+            if (one.workflow_id, one.run_id)
+            == (correlation.workflow_id, correlation.run_id)
+        ]
+
+
 class Server:
     """The API over in-memory stores, each store readable by a test."""
 
@@ -79,6 +111,8 @@ class Server:
         )
         self.repositories = InMemoryKnownRepositories()
         self.boundaries = InMemoryLayerBoundaries()
+        self.spend = InMemorySpendRecord()
+        self.ceilings = InMemorySpendBindings()
         self.client = TestClient(
             create_api(
                 Tokens(),
@@ -101,6 +135,16 @@ class Server:
                         issuer="https://issuer.example",
                         client_id="settings-page",
                     ),
+                ),
+                operations=OperationsReading(
+                    role=ADMINISTRATOR,
+                    run=lambda: ReadRunOperationsUseCase(
+                        RunEntries(self.journal),
+                        self.spend,
+                        self.ceilings,
+                        lambda binding, now: None,
+                    ),
+                    clock=Clock(),
                 ),
             )
         )
