@@ -11,12 +11,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from bugflow.apps.worker.reviewers import (
+from bugflow.apps.shared.boundaries import (
     DEFAULT_PERIODS_TIMEZONE,
     Boundaries,
+    periods_timezone,
+)
+from bugflow.apps.worker.reviewers import (
     ReviewerSettings,
     out_of_room,
-    periods_timezone,
     refused_by,
 )
 from bugflow.method.domain.models.pace_layer import (

@@ -203,6 +203,7 @@ from bugflow.apps.poller.poller import (
     poller_from_settings,
     run_poller,
 )
+from bugflow.apps.shared.boundaries import periods_timezone
 from bugflow.apps.shared.deploying import (
     checks_from,
     deploying_over,
@@ -217,7 +218,6 @@ from bugflow.apps.shared.journals import build_sha, stamped_journal
 from bugflow.apps.shared.telemetry import configure_telemetry
 from bugflow.apps.shared.temporal import TemporalUnavailableError
 from bugflow.apps.worker import worker
-from bugflow.apps.worker.reviewers import periods_timezone
 from bugflow.forge.infrastructure.github import GitHubForge
 from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
     SqlAlchemyJournalQueries,
