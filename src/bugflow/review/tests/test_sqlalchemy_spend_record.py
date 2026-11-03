@@ -451,3 +451,26 @@ def test_a_run_outside_the_window_is_not_listed(
         SqlAlchemySpendRecord(database_url).spent_by_run(*WINDOW, repo=name)
         == ()
     )
+
+
+def test_a_runs_facts_are_its_spend_one_by_one(
+    engine: sa.Engine, database_url: str
+) -> None:
+    """The facts a run recorded, oldest first, each naming the journal
+    entry it was recorded on, sum to what the run spent."""
+    name, run, other = repo(), str(uuid.uuid4()), str(uuid.uuid4())
+    written = _four_kinds(name, run, other)
+    SqlAlchemyJournal(database_url, unpackers=UNPACKERS).append(written)
+    record = SqlAlchemySpendRecord(database_url)
+    facts = record.costs_in_run("test/spend", other)
+    assert [(fact.kind, fact.layer, fact.usd) for fact in facts] == [
+        ("stocktake_review", "weekly", 2.0),
+        ("stocktake_review", "monthly", 3.0),
+    ]
+    assert {fact.event_id for fact in facts} == {
+        str(one.event_id) for one in written if one.run_id == other
+    }
+    assert round(
+        sum(fact.usd for fact in record.costs_in_run("test/spend", run)), 6
+    ) == round(record.spent_in_run(run).usd, 6)
+    assert record.costs_in_run("another/workflow", run) == ()

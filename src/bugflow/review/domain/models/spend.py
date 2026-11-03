@@ -95,3 +95,22 @@ class RunCost:
     last: datetime
     usd: float
     facts: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class CostFact:
+    """One costed fact a run recorded: what a total on a page comes
+    down to.
+
+    The event id names the journal entry the cost was recorded on, so
+    the figure can be checked against the fact itself.
+    """
+
+    event_id: str
+    occurred_at: datetime
+    kind: SpendKind
+    #: The pace layer the fact names, or empty where it names none.
+    layer: str
+    #: The agent the fact names, or empty where it names none.
+    agent_id: str
+    usd: float

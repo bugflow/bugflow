@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from bugflow.review.domain.models.spend import (
+    CostFact,
     RunCost,
     RunSpend,
     SpendKind,
@@ -17,6 +18,7 @@ from bugflow.review.domain.models.spend_binding import owner_of
 class RecordedCost:
     """One costed fact, with the run that recorded it and its kind."""
 
+    event_id: str = ""
     workflow_id: str = "test/workflow"
     run_id: str
     forge: str
@@ -199,6 +201,24 @@ class InMemorySpendRecord:
             for (one_forge, one_repo, one_layer, one_agent), costs in sorted(
                 found.items()
             )
+        )
+
+    def costs_in_run(
+        self, workflow_id: str, run_id: str
+    ) -> tuple[CostFact, ...]:
+        return tuple(
+            CostFact(
+                event_id=one.event_id,
+                occurred_at=one.at,
+                kind=one.kind,
+                layer=one.layer,
+                agent_id=one.agent_id,
+                usd=one.usd,
+            )
+            for one in sorted(
+                self.recorded, key=lambda one: (one.at, one.event_id)
+            )
+            if (one.workflow_id, one.run_id) == (workflow_id, run_id)
         )
 
     def spent_in_run(self, run_id: str) -> RunSpend:

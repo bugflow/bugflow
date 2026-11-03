@@ -12,7 +12,12 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
-from bugflow.review.domain.models.spend import RunCost, RunSpend, Spent
+from bugflow.review.domain.models.spend import (
+    CostFact,
+    RunCost,
+    RunSpend,
+    Spent,
+)
 
 
 class SpendRecordService(Protocol):
@@ -69,6 +74,16 @@ class SpendRecordService(Protocol):
         does. An owner matches each of that owner's repositories. A
         window nothing ran in answers zero over no facts, which is not
         the same as a window nobody asked about.
+        """
+        ...
+
+    def costs_in_run(
+        self, workflow_id: str, run_id: str
+    ) -> Sequence[CostFact]:
+        """Return every costed fact the run recorded, oldest first.
+
+        Over the run's whole life, as :meth:`spent_in_run` is, so the
+        facts sum to what it answers for the run.
         """
         ...
 
