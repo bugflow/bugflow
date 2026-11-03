@@ -160,11 +160,11 @@ before the first deployment, even if two roles share one.
 | `bugflow_policy_deployer_role` | `api` | The role that may deploy policies |
 | `project_oidc_issuer` | `api` | The identity provider's address. Default empty |
 | `project_oidc_audience` | `api` | The audience a token must be addressed to. Default empty |
-| `project_oidc_clients` | `api` | The clients registered at the provider, by name. The API accepts tokens issued to the one named `policies-pipeline`, by its `client_id`. Not written until that client exists |
+| `project_oidc_clients` | `api` | The clients registered at the provider, by name. The API accepts tokens issued to the one named `policies-pipeline`, by its `client_id`, and to the one named `settings-page`, where there is one. Not written until `policies-pipeline` exists |
 | `project_build_sha` | `worker`, `ingress`, `api`, `migrate` | The full git sha of the commit the image was built from, recorded with every journal entry. Not written if not defined |
 
 | `bugflow_settings_role` | `api` | The role that may read and change what each gnome does on each repository. Not written if not defined, and then neither the settings routes nor their page is served |
-| `bugflow_settings_client_id` | `api` | The public client the settings page signs a person in as, with authorisation code and PKCE, its redirect address the API's `/settings`. It must be one of `bugflow_api_clients` |
+| `bugflow_settings_client_id` | `api` | The public client the settings page signs a person in as, with authorisation code and PKCE, its redirect address the API's `/settings`. Default the client registered as `settings-page`, and not written if there is neither. Added to the clients the API accepts, unless `bugflow_api_clients` is given, and then it must be one of them |
 | `bugflow_settings_scope` | `api` | The scopes the page asks for. Default `openid profile`. They must give a token for the audience that carries the person's roles: at Zitadel, add `urn:zitadel:iam:org:project:id:{project}:aud` and `urn:zitadel:iam:org:projects:roles` |
 
 The API does not start until its settings hold an issuer, an audience,
