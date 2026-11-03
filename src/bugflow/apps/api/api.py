@@ -22,6 +22,7 @@ from bugflow.apps.api.settings import (
     settings_routes,
     sign_in_from,
 )
+from bugflow.apps.api.sign_in import sign_in_route
 from bugflow.apps.shared.deploying import (
     Deploying,
     checks_from,
@@ -118,6 +119,7 @@ def create_api(
     policy_deployment_routes(app, caller, deploying)
     if reading is not None:
         evaluation_routes(app, caller, reading)
+    sign_in_route(app)
     if administration is not None:
         settings_routes(app, caller, administration)
     return app
