@@ -35,6 +35,9 @@ from bugflow.review.infrastructure.in_memory_spend_bindings import (
 from bugflow.review.infrastructure.in_memory_spend_record import (
     InMemorySpendRecord,
 )
+from bugflow.review.usecases.read_repository_operations import (
+    ReadRepositoryOperationsUseCase,
+)
 from bugflow.review.usecases.read_run_operations import (
     ReadRunOperationsUseCase,
 )
@@ -140,6 +143,12 @@ class Server:
                     role=ADMINISTRATOR,
                     run=lambda: ReadRunOperationsUseCase(
                         RunEntries(self.journal),
+                        self.spend,
+                        self.ceilings,
+                        lambda binding, now: None,
+                    ),
+                    repository=lambda: ReadRepositoryOperationsUseCase(
+                        self.settings,
                         self.spend,
                         self.ceilings,
                         lambda binding, now: None,

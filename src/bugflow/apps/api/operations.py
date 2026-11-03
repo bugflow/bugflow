@@ -6,14 +6,22 @@ the allowance measures, and every entry it recorded. It needs the role
 ``SETTINGS_ROLE`` names, as the settings do: whoever may change what a
 gnome does may see what it spent.
 
-``GET /operations/run`` is the page that shows one run. It signs a
-person in through the settings page's client, and holds no data until
-the route gives it some, so it needs no token.
+``GET /api/operations/repositories/{forge}/{owner}/{name}`` reads one
+repository: what each gnome is set to do there, each allowance that
+covers it over its current period, what it spent by layer and agent
+over ``since`` to ``until``, by default the thirty days to now, and the
+runs that spent it. ``layer`` and ``agent_id`` list only the runs of
+that spend row, where an empty value names the facts that name none.
+
+``GET /operations/run`` and ``GET /operations/repository`` are the
+pages that show them. Each signs a person in through the settings
+page's client, and holds no data until a route gives it some, so it
+needs no token.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from typing import Annotated, Protocol
 
@@ -22,9 +30,15 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
 from bugflow.review.domain.errors import RunNotFoundError
+from bugflow.review.dtos.read_repository_operations import (
+    ReadRepositoryOperationsRequest,
+)
 from bugflow.review.dtos.read_run_operations import (
     AllowanceCheck,
     ReadRunOperationsRequest,
+)
+from bugflow.review.usecases.read_repository_operations import (
+    ReadRepositoryOperationsUseCase,
 )
 from bugflow.review.usecases.read_run_operations import (
     ReadRunOperationsUseCase,
@@ -33,6 +47,9 @@ from bugflow.shared.domain.values.caller import Caller
 
 #: The pages, kept beside this module.
 RUN_PAGE = "operations_run_page.html"
+REPOSITORY_PAGE = "operations_repository_page.html"
+#: The period a repository's spend is read over when none is named.
+DEFAULT_PERIOD = timedelta(days=30)
 
 
 class Clock(Protocol):
@@ -46,6 +63,7 @@ class OperationsReading:
     #: The role a caller needs to read them.
     role: str
     run: Callable[[], ReadRunOperationsUseCase]
+    repository: Callable[[], ReadRepositoryOperationsUseCase]
     clock: Clock
 
 
@@ -113,6 +131,61 @@ class RunOperations(BaseModel):
     costs: list[Cost]
     allowances: list[Allowance]
     activity: list[Activity]
+
+
+class Setting(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    gnome: str
+    behaviour: str
+    profile: str
+    set_by: str
+    set_at: datetime | None
+
+
+class SpendRow(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    layer: str
+    agent_id: str
+    usd: float
+    facts: int
+    runs: int
+
+
+class RunRow(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    workflow_id: str
+    run_id: str
+    first: datetime
+    last: datetime
+    usd: float
+    facts: int
+
+
+class RepositoryOperations(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    forge: str
+    repo: str
+    since: datetime
+    until: datetime
+    spent_usd: float
+    settings: list[Setting]
+    allowances: list[Allowance]
+    spend: list[SpendRow]
+    #: The spend row the runs are listed for, or None for every run.
+    layer: str | None
+    agent_id: str | None
+    runs: list[RunRow]
+
+
+def _aware(at: datetime | None) -> datetime | None:
+    """A moment named with no timezone, taken as UTC."""
+    if at is None or at.tzinfo is not None:
+        return at
+    return at.replace(tzinfo=UTC)
 
 
 def _allowance(check: AllowanceCheck) -> Allowance:
@@ -197,6 +270,59 @@ def operations_routes(
             ],
         )
 
+    @app.get("/api/operations/repositories/{forge}/{owner}/{name}")
+    def read_repository(
+        forge: str,
+        owner: str,
+        name: str,
+        who: Annotated[Caller, Depends(operator)],
+        since: datetime | None = None,
+        until: datetime | None = None,
+        layer: str | None = None,
+        agent_id: str | None = None,
+    ) -> RepositoryOperations:
+        now = reading.clock.now()
+        since, until = _aware(since), _aware(until) or now
+        try:
+            asked = ReadRepositoryOperationsRequest(
+                forge=forge,
+                repo=f"{owner}/{name}",
+                since=since or until - DEFAULT_PERIOD,
+                until=until,
+                now=now,
+                layer=layer,
+                agent_id=agent_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        read = reading.repository().execute(asked)
+        return RepositoryOperations(
+            forge=read.forge,
+            repo=read.repo,
+            since=read.since,
+            until=read.until,
+            spent_usd=read.spent_usd,
+            settings=[
+                Setting(
+                    gnome=one.gnome,
+                    behaviour=one.behaviour,
+                    profile=one.profile,
+                    set_by=one.set_by,
+                    set_at=one.set_at,
+                )
+                for one in read.settings
+            ],
+            allowances=[_allowance(one) for one in read.allowances],
+            spend=[SpendRow(**one.model_dump()) for one in read.spend],
+            layer=read.layer,
+            agent_id=read.agent_id,
+            runs=[RunRow(**one.model_dump()) for one in read.runs],
+        )
+
     @app.get("/operations/run", response_class=HTMLResponse)
     def run_page() -> str:
         return files("bugflow.apps.api").joinpath(RUN_PAGE).read_text()
+
+    @app.get("/operations/repository", response_class=HTMLResponse)
+    def repository_page() -> str:
+        return files("bugflow.apps.api").joinpath(REPOSITORY_PAGE).read_text()
