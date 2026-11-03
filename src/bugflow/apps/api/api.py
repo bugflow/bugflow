@@ -14,6 +14,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 
 from bugflow.apps.api.evaluation_access import access_from_configuration
 from bugflow.apps.api.evaluations import EvaluationReading, evaluation_routes
+from bugflow.apps.api.operations import (
+    OperationsReading,
+    operations_routes,
+)
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
 )
@@ -23,6 +27,10 @@ from bugflow.apps.api.settings import (
     sign_in_from,
 )
 from bugflow.apps.api.sign_in import sign_in_route
+from bugflow.apps.shared.boundaries import (
+    Boundaries,
+    boundaries_from_environment,
+)
 from bugflow.apps.shared.deploying import (
     Deploying,
     checks_from,
@@ -66,9 +74,18 @@ from bugflow.review.infrastructure.sqlalchemy_judge_archive import (
 from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
 )
+from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
+    SqlAlchemySpendBindings,
+)
+from bugflow.review.infrastructure.sqlalchemy_spend_record import (
+    SqlAlchemySpendRecord,
+)
 from bugflow.review.usecases.read_review_record import (
     ReadReviewHistoryUseCase,
     ReadReviewRecordUseCase,
+)
+from bugflow.review.usecases.read_run_operations import (
+    ReadRunOperationsUseCase,
 )
 from bugflow.review.usecases.set_gnome import SetGnomeUseCase
 from bugflow.shared.domain.errors import TokenRefusedError
@@ -95,6 +112,7 @@ def create_api(
     deploying: PolicyDeploying,
     reading: EvaluationReading | None = None,
     administration: SettingsAdministration | None = None,
+    operations: OperationsReading | None = None,
 ) -> FastAPI:
     """Build the API over the token check and what deploys."""
     app = FastAPI(title="bugflow API")
@@ -122,6 +140,8 @@ def create_api(
     sign_in_route(app)
     if administration is not None:
         settings_routes(app, caller, administration)
+    if operations is not None:
+        operations_routes(app, caller, operations)
     return app
 
 
@@ -235,7 +255,10 @@ def api_from_environment(
       a person in as, at ``API_ISSUER``, and ``SETTINGS_SCOPE``, the
       scopes it asks for, ``openid profile`` if unset. The client must
       be one of ``API_CLIENTS``, and the scopes must give a token
-      ``API_AUDIENCE`` accepts with the caller's roles.
+      ``API_AUDIENCE`` accepts with the caller's roles. The same role and
+      client serve the operations routes under ``/api/operations`` and
+      their pages under ``/operations``, and ``PERIODS_TIMEZONE`` says
+      where their periods begin, as it does for the worker.
     - ``BUILD_SHA``: the full git sha of the build, recorded with every
       journal entry.
     - ``POLICY_CHECKS``: the checks this server performs, comma-separated.
@@ -298,6 +321,7 @@ def api_from_environment(
         ),
         reading=reading,
         administration=administration_from(environ, issuer),
+        operations=operations_from(environ, history),
     )
     instrument_app(app, environ)
     return app
@@ -331,3 +355,35 @@ def administration_from(
         boundaries=SqlAlchemyLayerBoundaries(database_url),
         sign_in=sign_in_from(environ, issuer),
     )
+
+
+def operations_from(
+    environ: Mapping[str, str], journal: SqlAlchemyJournalQueries
+) -> OperationsReading | None:
+    """The operations routes' composition, or None where
+    ``SETTINGS_ROLE`` is not set.
+
+    The periods an allowance is counted over are found as the worker
+    finds them, from the deployment in force when the page asks.
+    """
+    role = environ.get("SETTINGS_ROLE", "")
+    if not role:
+        return None
+    database_url = environ["DATABASE_URL"]
+    spend = SqlAlchemySpendRecord(database_url)
+    ceilings = SqlAlchemySpendBindings(database_url)
+    deployments = SqlAlchemyPolicyDeployments(database_url)
+    checks = checks_from(environ)
+
+    def boundaries() -> Boundaries:
+        reviewers = reviewers_in_force(deployments, checks)
+        if reviewers is None:
+            return Boundaries(layers={})
+        return boundaries_from_environment(environ, reviewers)
+
+    def run() -> ReadRunOperationsUseCase:
+        return ReadRunOperationsUseCase(
+            journal, spend, ceilings, boundaries().window
+        )
+
+    return OperationsReading(role=role, run=run, clock=SystemClock())

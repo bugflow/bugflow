@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run spend</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1f23; --muted: #5d6470; --line: #d9dde3;
+    --row: #f6f7f9; --accent: #2f5bd3; --ok: #1f7a43; --bad: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b; --fg: #e6e8eb; --muted: #9aa3ae; --line: #2c3038;
+      --row: #1c1f24; --accent: #7fa2ff; --ok: #6fd39b; --bad: #ff8a80;
+    }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2 { font-size: 16px; margin: 20px 0 6px; }
+  p.lede { color: var(--muted); margin: 0 0 16px; }
+  button { padding: 6px 12px; border: 1px solid var(--accent);
+           background: var(--accent); color: var(--bg); border-radius: 6px;
+           cursor: pointer; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 8px;
+           border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; white-space: nowrap; }
+  tr:nth-child(even) td { background: var(--row); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums;
+                   white-space: nowrap; }
+  td.mono { font-family: ui-monospace, monospace; white-space: nowrap; }
+  tr.costed td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  tr.target td { outline: 2px solid var(--accent); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .muted { color: var(--muted); }
+  dl.facts { display: grid; grid-template-columns: max-content 1fr;
+             gap: 2px 12px; margin: 0 0 8px; }
+  dl.facts dt { color: var(--muted); }
+  dl.facts dd { margin: 0; font-family: ui-monospace, monospace;
+                overflow-wrap: anywhere; }
+  #message { color: var(--bad); margin: 8px 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Run spend</h1>
+  <div id="signedout" hidden>
+    <p class="lede">Sign in to see what a run spent and did.</p>
+    <button id="signin">Sign in</button>
+  </div>
+  <div id="message" role="alert"></div>
+  <div id="signedin" hidden>
+    <dl class="facts" id="run"></dl>
+    <h2>Allowances</h2>
+    <p class="lede">Each allowance that covers this run, beside what it
+      measures. An allowance per run measures the run's own costs in its
+      scope; a period allowance measures everything its scope spent in
+      the period shown.</p>
+    <div class="wrap"><table id="allowances"></table></div>
+    <h2>Costs</h2>
+    <p class="lede">Each costed fact the run recorded. Together they are
+      the run's total.</p>
+    <div class="wrap"><table id="costs"></table></div>
+    <h2>Activity</h2>
+    <p class="lede">Every entry the run recorded, oldest first. Entries
+      that carry a cost are marked at the left.</p>
+    <div class="wrap"><table id="activity"></table></div>
+  </div>
+</main>
+<script src="../sign-in.js"></script>
+<script>
+"use strict";
+
+function say(text) { document.getElementById("message").textContent = text; }
+
+function showSignIn() {
+  document.getElementById("signedin").hidden = true;
+  document.getElementById("signedout").hidden = false;
+}
+
+function element(tag, className, text) {
+  const made = document.createElement(tag);
+  if (className) made.className = className;
+  if (text !== undefined) made.textContent = text;
+  return made;
+}
+
+function dollars(usd) {
+  if (usd === null || usd === undefined) return "";
+  return "$" + usd.toFixed(usd !== 0 && Math.abs(usd) < 0.01 ? 6 : 2);
+}
+
+function when(at) {
+  return at ? new Date(at).toISOString().replace("T", " ").slice(0, 19) + "Z"
+            : "";
+}
+
+function heading(table, names) {
+  const row = table.insertRow();
+  names.forEach(([name, className]) => {
+    row.append(element("th", className || "", name));
+  });
+}
+
+function cells(row, values) {
+  values.forEach(([value, className]) => {
+    row.append(element("td", className || "", value));
+  });
+}
+
+function scopeName(scope) {
+  const parts = [];
+  if (scope.repo) parts.push(scope.forge + ":" + scope.repo);
+  else if (scope.owner) parts.push(scope.forge + ":" + scope.owner + "/*");
+  else if (scope.forge) parts.push(scope.forge);
+  if (scope.layer) parts.push("layer " + scope.layer);
+  if (scope.agent_id) parts.push("agent " + scope.agent_id);
+  return parts.join(", ") || "everything";
+}
+
+function renderRun(held) {
+  const facts = document.getElementById("run");
+  facts.replaceChildren();
+  [["Repository", held.forge + ":" + held.repo],
+   ["Workflow", held.workflow_id],
+   ["Run", held.run_id],
+   ["Spent", dollars(held.spent_usd) + " over " + held.costs.length +
+             " costed facts"]].forEach(([name, value]) => {
+    facts.append(element("dt", "", name), element("dd", "", value));
+  });
+}
+
+function renderAllowances(held) {
+  const table = document.getElementById("allowances");
+  table.replaceChildren();
+  if (!held.allowances.length) {
+    table.insertRow().append(element("td", "muted",
+      "No allowance covers this run, so it could spend nothing."));
+    return;
+  }
+  heading(table, [["Scope"], ["Per"], ["Period measured"],
+                  ["Allowed", "num"], ["Spent", "num"], ["Left", "num"],
+                  ["Room"]]);
+  held.allowances.forEach(one => {
+    const row = table.insertRow();
+    const period = one.since
+      ? when(one.since) + " to " + when(one.until)
+      : one.unmeasured;
+    const room = one.has_room === null ? element("td", "muted", "unmeasured")
+      : one.has_room ? element("td", "ok", "has room")
+      : element("td", "bad", one.over_usd > 0
+          ? "over by " + dollars(one.over_usd) : "spent");
+    cells(row, [[scopeName(one.scope)], [one.per], [period],
+                [one.allowed_usd === null ? "no limit"
+                                          : dollars(one.allowed_usd), "num"],
+                [dollars(one.spent_usd), "num"],
+                [dollars(one.left_usd), "num"]]);
+    row.append(room);
+  });
+}
+
+function renderCosts(held) {
+  const table = document.getElementById("costs");
+  table.replaceChildren();
+  if (!held.costs.length) {
+    table.insertRow().append(element("td", "muted",
+      "The run recorded no cost."));
+    return;
+  }
+  heading(table, [["When"], ["Kind"], ["Layer"], ["Agent"],
+                  ["Cost", "num"], ["Entry"]]);
+  held.costs.forEach(one => {
+    const row = table.insertRow();
+    cells(row, [[when(one.occurred_at), "mono"], [one.kind], [one.layer],
+                [one.agent_id], [dollars(one.usd), "num"]]);
+    const link = element("a", "", one.event_id.slice(0, 8));
+    link.href = "#entry-" + one.event_id;
+    const cell = element("td", "mono");
+    cell.append(link);
+    row.append(cell);
+  });
+}
+
+function renderActivity(held) {
+  const table = document.getElementById("activity");
+  table.replaceChildren();
+  const costed = new Set(held.costs.map(one => one.event_id));
+  heading(table, [["When"], ["Entry"], ["Agent"], ["Pull request"],
+                  ["Id"]]);
+  held.activity.forEach(one => {
+    const row = table.insertRow();
+    row.id = "entry-" + one.event_id;
+    if (costed.has(one.event_id)) row.className = "costed";
+    cells(row, [[when(one.occurred_at), "mono"], [one.event_type],
+                [one.agent_id],
+                [one.pr_number === null ? "" : "#" + one.pr_number],
+                [one.event_id, "mono"]]);
+  });
+}
+
+async function start() {
+  document.getElementById("signin").addEventListener("click", () =>
+    signIn().catch(error => say(error.message)));
+  const params = new URLSearchParams(location.search);
+  const run = params.get("run"), workflow = params.get("workflow");
+  try {
+    if (!run || !workflow) {
+      say("Name a run: this page is opened with ?workflow=…&run=….");
+      return;
+    }
+    if (!fetched(TOKEN)) {
+      showSignIn();
+      return;
+    }
+    const held = await api("GET", "api/operations/runs/" +
+      encodeURIComponent(run) + "?" + new URLSearchParams({
+        workflow_id: workflow }));
+    document.getElementById("signedout").hidden = true;
+    document.getElementById("signedin").hidden = false;
+    renderRun(held);
+    renderAllowances(held);
+    renderCosts(held);
+    renderActivity(held);
+  } catch (error) {
+    say(error.message);
+  }
+}
+start();
+</script>
+</body>
+</html>
