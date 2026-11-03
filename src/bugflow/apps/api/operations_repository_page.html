@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repository spend</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1f23; --muted: #5d6470; --line: #d9dde3;
+    --row: #f6f7f9; --accent: #2f5bd3; --ok: #1f7a43; --bad: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b; --fg: #e6e8eb; --muted: #9aa3ae; --line: #2c3038;
+      --row: #1c1f24; --accent: #7fa2ff; --ok: #6fd39b; --bad: #ff8a80;
+    }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2 { font-size: 16px; margin: 20px 0 6px; }
+  p.lede { color: var(--muted); margin: 0 0 16px; }
+  button { padding: 6px 12px; border: 1px solid var(--accent);
+           background: var(--accent); color: var(--bg); border-radius: 6px;
+           cursor: pointer; }
+  form.period { display: flex; flex-wrap: wrap; gap: 8px; align-items: end;
+                margin: 0 0 8px; }
+  form.period label { display: grid; gap: 2px; color: var(--muted); }
+  input { font: inherit; padding: 4px 6px; border: 1px solid var(--line);
+          border-radius: 6px; background: var(--bg); color: var(--fg); }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 8px;
+           border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; white-space: nowrap; }
+  tr:nth-child(even) td { background: var(--row); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums;
+                   white-space: nowrap; }
+  td.mono { font-family: ui-monospace, monospace; white-space: nowrap; }
+  tr.chosen td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .muted { color: var(--muted); }
+  dl.facts { display: grid; grid-template-columns: max-content 1fr;
+             gap: 2px 12px; margin: 0 0 8px; }
+  dl.facts dt { color: var(--muted); }
+  dl.facts dd { margin: 0; font-family: ui-monospace, monospace;
+                overflow-wrap: anywhere; }
+  #message { color: var(--bad); margin: 8px 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Repository spend</h1>
+  <div id="signedout" hidden>
+    <p class="lede">Sign in to see what a repository is set to do, what it
+      may spend and what it spent.</p>
+    <button id="signin">Sign in</button>
+  </div>
+  <div id="message" role="alert"></div>
+  <div id="signedin" hidden>
+    <dl class="facts" id="repository"></dl>
+    <h2>Configuration</h2>
+    <p class="lede">What each gnome is set to do on this repository. A
+      gnome with no setting is off. The settings page changes them.</p>
+    <div class="wrap"><table id="settings"></table></div>
+    <h2>Allowances</h2>
+    <p class="lede">Each allowance that covers some run on this
+      repository, beside what its scope spent in its current period. An
+      allowance per run is measured on each run's own page.</p>
+    <div class="wrap"><table id="allowances"></table></div>
+    <h2>Spend</h2>
+    <form class="period" id="period">
+      <label>From <input type="date" id="since" required></label>
+      <label>Through <input type="date" id="until" required></label>
+      <button type="submit">Read the period</button>
+    </form>
+    <p class="lede" id="spendlede"></p>
+    <div class="wrap"><table id="spend"></table></div>
+    <h2 id="runs">Runs</h2>
+    <p class="lede" id="runslede"></p>
+    <div class="wrap"><table id="runlist"></table></div>
+  </div>
+</main>
+<script src="../sign-in.js"></script>
+<script>
+"use strict";
+
+function say(text) { document.getElementById("message").textContent = text; }
+
+function showSignIn() {
+  document.getElementById("signedin").hidden = true;
+  document.getElementById("signedout").hidden = false;
+}
+
+function element(tag, className, text) {
+  const made = document.createElement(tag);
+  if (className) made.className = className;
+  if (text !== undefined) made.textContent = text;
+  return made;
+}
+
+function link(text, href) {
+  const made = element("a", "", text);
+  made.href = href;
+  return made;
+}
+
+function dollars(usd) {
+  if (usd === null || usd === undefined) return "";
+  return "$" + usd.toFixed(usd !== 0 && Math.abs(usd) < 0.01 ? 6 : 2);
+}
+
+function when(at) {
+  return at ? new Date(at).toISOString().replace("T", " ").slice(0, 19) + "Z"
+            : "";
+}
+
+function day(at) { return new Date(at).toISOString().slice(0, 10); }
+
+function heading(table, names) {
+  const row = table.insertRow();
+  names.forEach(([name, className]) => {
+    row.append(element("th", className || "", name));
+  });
+}
+
+function cells(row, values) {
+  values.forEach(([value, className]) => {
+    const cell = element("td", className || "");
+    if (value instanceof Node) cell.append(value);
+    else cell.textContent = value;
+    row.append(cell);
+  });
+}
+
+function empty(table, text) {
+  table.insertRow().append(element("td", "muted", text));
+}
+
+function scopeName(scope) {
+  const parts = [];
+  if (scope.repo) parts.push(scope.forge + ":" + scope.repo);
+  else if (scope.owner) parts.push(scope.forge + ":" + scope.owner + "/*");
+  else if (scope.forge) parts.push(scope.forge);
+  if (scope.layer) parts.push("layer " + scope.layer);
+  if (scope.agent_id) parts.push("agent " + scope.agent_id);
+  return parts.join(", ") || "everything";
+}
+
+function rowName(layer, agent) {
+  if (!layer && !agent) return "facts naming no layer or agent";
+  return [layer ? "layer " + layer : "no layer",
+          agent ? "agent " + agent : "no agent"].join(", ");
+}
+
+// This page's address with some parameters changed; null removes one.
+function here(changes, anchor) {
+  const params = new URLSearchParams(location.search);
+  Object.entries(changes).forEach(([key, value]) => {
+    value === null ? params.delete(key) : params.set(key, value);
+  });
+  return "?" + params + (anchor ? "#" + anchor : "");
+}
+
+function renderRepository(held) {
+  const facts = document.getElementById("repository");
+  facts.replaceChildren();
+  [["Repository", held.forge + ":" + held.repo],
+   ["Period", when(held.since) + " to " + when(held.until)],
+   ["Spent", dollars(held.spent_usd) + " in the period"]
+  ].forEach(([name, value]) => {
+    facts.append(element("dt", "", name), element("dd", "", value));
+  });
+}
+
+function renderSettings(held) {
+  const table = document.getElementById("settings");
+  table.replaceChildren();
+  if (!held.settings.length) {
+    empty(table, "No gnome is set on this repository, so every gnome is off.");
+    return;
+  }
+  heading(table, [["Gnome"], ["Behaviour"], ["Profile"], ["Set by"],
+                  ["Set at"]]);
+  held.settings.forEach(one => {
+    cells(table.insertRow(), [[one.gnome], [one.behaviour], [one.profile],
+                              [one.set_by], [when(one.set_at), "mono"]]);
+  });
+}
+
+function renderAllowances(held) {
+  const table = document.getElementById("allowances");
+  table.replaceChildren();
+  if (!held.allowances.length) {
+    empty(table, "No allowance covers this repository, so it can spend " +
+                 "nothing.");
+    return;
+  }
+  heading(table, [["Scope"], ["Per"], ["Period measured"],
+                  ["Allowed", "num"], ["Spent", "num"], ["Left", "num"],
+                  ["Room"]]);
+  held.allowances.forEach(one => {
+    const row = table.insertRow();
+    const period = one.since
+      ? when(one.since) + " to " + when(one.until)
+      : one.unmeasured;
+    const room = one.has_room === null ? element("td", "muted", "unmeasured")
+      : one.has_room ? element("td", "ok", "has room")
+      : element("td", "bad", one.over_usd > 0
+          ? "over by " + dollars(one.over_usd) : "spent");
+    cells(row, [[scopeName(one.scope)], [one.per], [period],
+                [one.allowed_usd === null ? "no limit"
+                                          : dollars(one.allowed_usd), "num"],
+                [dollars(one.spent_usd), "num"],
+                [dollars(one.left_usd), "num"]]);
+    row.append(room);
+  });
+}
+
+function renderSpend(held) {
+  document.getElementById("spendlede").textContent =
+    "What " + held.forge + ":" + held.repo + " spent from " +
+    when(held.since) + " to " + when(held.until) + ", by layer and agent. " +
+    "Each figure opens the runs it is made of.";
+  const table = document.getElementById("spend");
+  table.replaceChildren();
+  if (!held.spend.length) {
+    empty(table, "The repository spent nothing in the period.");
+    return;
+  }
+  heading(table, [["Layer"], ["Agent"], ["Spent", "num"], ["Facts", "num"],
+                  ["Runs", "num"]]);
+  held.spend.forEach(one => {
+    const row = table.insertRow();
+    if (held.layer === one.layer && held.agent_id === one.agent_id) {
+      row.className = "chosen";
+    }
+    cells(row, [[one.layer || "none", one.layer ? "" : "muted"],
+                [one.agent_id || "none", one.agent_id ? "" : "muted"],
+                [link(dollars(one.usd),
+                      here({ layer: one.layer, agent: one.agent_id }, "runs")),
+                 "num"],
+                [String(one.facts), "num"], [String(one.runs), "num"]]);
+  });
+  const total = table.insertRow();
+  cells(total, [["Total"], [""],
+                [link(dollars(held.spent_usd),
+                      here({ layer: null, agent: null }, "runs")), "num"],
+                [String(held.spend.reduce((sum, one) => sum + one.facts, 0)),
+                 "num"], [""]]);
+}
+
+function renderRuns(held) {
+  const chosen = held.layer !== null || held.agent_id !== null;
+  const lede = document.getElementById("runslede");
+  lede.replaceChildren(
+    (chosen ? "The runs whose " + rowName(held.layer, held.agent_id) +
+              " spent " + dollars(held.runs.reduce((s, one) => s + one.usd, 0))
+            : "Every run that spent on the repository") +
+    " from " + when(held.since) + " to " + when(held.until) +
+    ", latest first. Each opens its facts and activity. ");
+  if (chosen) {
+    lede.append(link("List every run.", here({ layer: null, agent: null },
+                                              "runs")));
+  }
+  const table = document.getElementById("runlist");
+  table.replaceChildren();
+  if (!held.runs.length) {
+    empty(table, "No run spent here in the period.");
+    return;
+  }
+  heading(table, [["Last fact"], ["Workflow"], ["Run"], ["Spent", "num"],
+                  ["Facts", "num"]]);
+  held.runs.forEach(one => {
+    cells(table.insertRow(), [
+      [when(one.last), "mono"], [one.workflow_id, "mono"],
+      [link(one.run_id, "run?" + new URLSearchParams({
+         workflow: one.workflow_id, run: one.run_id })), "mono"],
+      [dollars(one.usd), "num"], [String(one.facts), "num"]]);
+  });
+}
+
+function choosePeriod(held) {
+  document.getElementById("since").value = day(held.since);
+  // The period ends at the midnight after the last day it holds.
+  document.getElementById("until").value = day(new Date(held.until) - 1);
+  document.getElementById("period").addEventListener("submit", event => {
+    event.preventDefault();
+    const since = document.getElementById("since").value;
+    const through = new Date(document.getElementById("until").value +
+                             "T00:00:00Z");
+    through.setUTCDate(through.getUTCDate() + 1);
+    location.assign(here({ since: since + "T00:00:00Z",
+                           until: through.toISOString() }));
+  });
+}
+
+async function start() {
+  document.getElementById("signin").addEventListener("click", () =>
+    signIn().catch(error => say(error.message)));
+  const params = new URLSearchParams(location.search);
+  const forge = params.get("forge"), repo = params.get("repo");
+  try {
+    if (!forge || !repo || !repo.includes("/")) {
+      say("Name a repository: this page is opened with " +
+          "?forge=…&repo=owner/name.");
+      return;
+    }
+    if (!fetched(TOKEN)) {
+      showSignIn();
+      return;
+    }
+    const query = new URLSearchParams();
+    [["since", "since"], ["until", "until"], ["layer", "layer"],
+     ["agent", "agent_id"]].forEach(([from, to]) => {
+      if (params.has(from)) query.set(to, params.get(from));
+    });
+    const [owner, name] = repo.split("/", 2);
+    const held = await api("GET", "api/operations/repositories/" +
+      [forge, owner, name].map(encodeURIComponent).join("/") + "?" + query);
+    document.getElementById("signedout").hidden = true;
+    document.getElementById("signedin").hidden = false;
+    renderRepository(held);
+    renderSettings(held);
+    renderAllowances(held);
+    renderSpend(held);
+    renderRuns(held);
+    choosePeriod(held);
+    if (location.hash) {
+      document.getElementById(location.hash.slice(1))?.scrollIntoView();
+    }
+  } catch (error) {
+    say(error.message);
+  }
+}
+start();
+</script>
+</body>
+</html>
