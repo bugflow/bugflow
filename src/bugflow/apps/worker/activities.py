@@ -20,6 +20,7 @@ from uuid import uuid4
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from bugflow.apps.shared.boundaries import Boundaries
 from bugflow.apps.shared.submission_source import ForgeSubmissionSource
 from bugflow.apps.worker.backfill import (
     LIST_BACKFILL_PAGE_ACTIVITY,
@@ -53,7 +54,6 @@ from bugflow.apps.worker.pull_request import (
 )
 from bugflow.apps.worker.review_scope import DeclaredReviewScope
 from bugflow.apps.worker.reviewers import (
-    Boundaries,
     ReviewerSettings,
     allowance_for,
     judging_over_ceiling,
@@ -61,7 +61,9 @@ from bugflow.apps.worker.reviewers import (
     refused_by,
     reviewers_for,
 )
-from bugflow.apps.worker.reviewers import out_of_room as what_is_left
+from bugflow.apps.worker.reviewers import (
+    out_of_room as what_is_left,
+)
 from bugflow.apps.worker.stocktake import (
     STOCKTAKE_COLLECT_ACTIVITY,
     STOCKTAKE_DISPATCH_ACTIVITY,

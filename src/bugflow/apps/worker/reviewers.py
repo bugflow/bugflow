@@ -1,6 +1,5 @@
 """What a worker settles about its reviewers before it runs one: which
-it dispatches and where, what a run may spend, and the periods an
-allowance is counted over.
+it dispatches and where, and what a run may spend.
 
 A reviewer is its prose, and the prose is what a run is asked. The
 reviewers come from the policy deployment in force, and the functions
@@ -12,27 +11,17 @@ import hashlib
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from bugflow.apps.shared.boundaries import Boundaries, where_named
 from bugflow.apps.worker.corpus import checking_fingerprint
-from bugflow.method.domain.models.boundary import BoundaryError, phase
+from bugflow.method.domain.models.boundary import BoundaryError
 from bugflow.method.domain.models.corpus import AgentCorpus
-from bugflow.method.domain.models.pace_layer import CADENCES, EVENT, PaceLayer
+from bugflow.method.domain.models.pace_layer import EVENT, PaceLayer
 from bugflow.method.domain.models.policy_text import PolicyText
 from bugflow.method.infrastructure.reviewer_packages import (
     DomainSpecificReviewAgent,
 )
 from bugflow.review.domain.models.remaining import Remaining
-from bugflow.review.domain.models.spend_binding import (
-    SpendBinding,
-    SpendScope,
-)
-from bugflow.review.domain.services.cadence_boundaries import (
-    CadenceBoundariesService,
-)
-from bugflow.review.domain.services.layer_boundaries import (
-    LayerBoundariesService,
-)
 from bugflow.review.domain.services.review_declaration import (
     DispatchedProcessesService,
     JudgedPoliciesService,
@@ -43,7 +32,7 @@ from bugflow.review.domain.services.spend_bindings import (
 from bugflow.review.domain.services.spend_record import (
     SpendRecordService,
 )
-from bugflow.shared.domain.values.budget import Budget, allowance, period
+from bugflow.shared.domain.values.budget import Budget, allowance
 
 
 @dataclass(frozen=True)
@@ -212,98 +201,6 @@ def allowance_for(
     )
 
 
-#: The timezone a calendar period starts and ends in when the
-#: ``PERIODS_TIMEZONE`` setting is not given.
-DEFAULT_PERIODS_TIMEZONE = "UTC"
-
-
-def periods_timezone(environ: Mapping[str, str]) -> str:
-    """Read the timezone a calendar period starts and ends in.
-
-    Setting: ``PERIODS_TIMEZONE``, an IANA name such as
-    ``Europe/Lisbon``. It defaults to ``UTC``. A server has one, so that
-    a day's allowance and a weekly run are counted on the same clock.
-
-    Raises ``ValueError`` if the name is not a timezone.
-    """
-    name = environ.get("PERIODS_TIMEZONE") or DEFAULT_PERIODS_TIMEZONE
-    try:
-        ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError) as exc:
-        raise ValueError(
-            f"PERIODS_TIMEZONE is {name!r}, which is not a timezone"
-        ) from exc
-    return name
-
-
-@dataclass(frozen=True)
-class Boundaries:
-    """Where the periods an allowance is counted over begin.
-
-    A boundary belongs to the repository whose period it bounds, and an
-    allowance may be scoped wider than any repository. So two
-    declarations answer, and this is where they meet: the repository's
-    if the allowance names one repository and one layer riding the
-    cadence it is counted per, and the deployment's otherwise.
-
-    The layers are here because a boundary is declared per layer and an
-    allowance is counted per cadence, and only the topology says which
-    layer rides which.
-    """
-
-    layers: Mapping[str, PaceLayer]
-    repositories: LayerBoundariesService | None = None
-    deployment: CadenceBoundariesService | None = None
-    #: The timezone a calendar period starts and ends in, as
-    #: ``periods_timezone`` reads it.
-    zone: str = DEFAULT_PERIODS_TIMEZONE
-
-    def bounding(self, binding: SpendBinding) -> str | None:
-        """Return where this allowance's periods begin, or None if
-        nothing has said."""
-        scope = binding.scope
-        layer = self.layers.get(scope.layer)
-        if (
-            self.repositories is not None
-            and scope.forge
-            and scope.repo
-            and layer is not None
-            and layer.cadence.name == binding.per
-        ):
-            declared = self.repositories.boundary(
-                scope.forge, scope.repo, scope.layer
-            )
-            if declared is not None:
-                return declared
-        if self.deployment is None:
-            return None
-        return self.deployment.boundary(binding.per)
-
-    def window(
-        self, binding: SpendBinding, now: datetime
-    ) -> tuple[datetime, datetime] | None:
-        """Return the period of this allowance that contains ``now``.
-
-        None if the cadence has no span, which is the cadence no clock
-        fires: a per-event allowance is the ceiling handed to the run
-        and not a question about what was already spent.
-
-        Raises ``BoundaryError`` if nothing says where the period
-        begins.
-        """
-        cadence = CADENCES.get(binding.per)
-        if cadence is None or not cadence.span:
-            return None
-        declared = self.bounding(binding)
-        if declared is None:
-            raise BoundaryError(
-                f"nothing says where a {binding.per} period begins for "
-                f"{where_named(binding.scope) or 'everything'}"
-            )
-        begins = phase(declared, cadence.span, now, self.zone)
-        return period(cadence.span, begins.at, now)
-
-
 def refused_by(
     ceilings: SpendBindingsService | None,
     spend: SpendRecordService | None,
@@ -438,21 +335,6 @@ def judging_over_ceiling(
         return None
     return (
         f"this run is allowed ${ceiling:.2f} and has spent ${already.usd:.2f}"
-    )
-
-
-def where_named(scope: SpendScope) -> str:
-    """Name the scope as a person does, for a refusal that has to be
-    read."""
-    return " ".join(
-        part
-        for part in (
-            f"{scope.forge}:{scope.repo}" if scope.repo else "",
-            f"{scope.forge}:{scope.owner}/*" if scope.owner else "",
-            scope.layer,
-            scope.agent_id,
-        )
-        if part
     )
 
 

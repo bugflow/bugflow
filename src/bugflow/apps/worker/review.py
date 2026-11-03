@@ -37,6 +37,8 @@ from temporalio.client import Client
 
 from bugflow.apps.shared.boundaries import (
     Defaulted,
+    boundaries_from_environment,
+    periods_timezone,
     refuse_without_a_boundary,
     without_a_boundary,
 )
@@ -81,12 +83,10 @@ from bugflow.apps.worker.reviewer_judges import (
     judges_from_environment,
 )
 from bugflow.apps.worker.reviewers import (
-    Boundaries,
     ReviewerSettings,
     clause_sites,
     corpus_of,
     dispatchable,
-    periods_timezone,
     policy_summaries,
     processes_on,
     reviewers_anywhere,
@@ -125,9 +125,6 @@ from bugflow.review.infrastructure.settled_review import (
     SettledEnforcement,
     SettledPolicies,
     SettledProcesses,
-)
-from bugflow.review.infrastructure.sqlalchemy_cadence_boundaries import (
-    SqlAlchemyCadenceBoundaries,
 )
 from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
     SqlAlchemyGnomeSettings,
@@ -324,23 +321,6 @@ def reviewing_from_environment(
     raise ValueError(
         f"REVIEW_RUNNER is {runner!r}, and the only runner this worker "
         f"has is {MANAGED_RUNNER!r}"
-    )
-
-
-def boundaries_from_environment(
-    environ: Mapping[str, str], reviewers: ReviewersInForce
-) -> Boundaries:
-    """Build where the periods an allowance is counted over begin: each
-    repository's declaration, this server's own, the layers that join
-    them, and the timezone ``PERIODS_TIMEZONE`` names."""
-    database_url = environ["DATABASE_URL"]
-    return Boundaries(
-        layers=reviewers.layers,
-        repositories=Defaulted(
-            SqlAlchemyLayerBoundaries(database_url), reviewers.layers
-        ),
-        deployment=SqlAlchemyCadenceBoundaries(database_url),
-        zone=periods_timezone(environ),
     )
 
 
