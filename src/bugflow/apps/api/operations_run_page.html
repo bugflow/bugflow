@@ -126,12 +126,17 @@ function scopeName(scope) {
 function renderRun(held) {
   const facts = document.getElementById("run");
   facts.replaceChildren();
-  [["Repository", held.forge + ":" + held.repo],
+  const repository = element("a", "", held.forge + ":" + held.repo);
+  repository.href = "repository?" + new URLSearchParams({
+    forge: held.forge, repo: held.repo });
+  [["Repository", repository],
    ["Workflow", held.workflow_id],
    ["Run", held.run_id],
    ["Spent", dollars(held.spent_usd) + " over " + held.costs.length +
              " costed facts"]].forEach(([name, value]) => {
-    facts.append(element("dt", "", name), element("dd", "", value));
+    const cell = element("dd");
+    cell.append(value);
+    facts.append(element("dt", "", name), cell);
   });
 }
 
