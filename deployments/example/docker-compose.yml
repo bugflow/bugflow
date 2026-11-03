@@ -143,6 +143,34 @@ services:
       timeout: 5s
       retries: 20
 
+  archive:
+    # The archive host, which keeps the archives scopes seal to it. Each
+    # kept archive is served at a host name of its own beneath the
+    # alias, and the host takes the ledger from the name. It checks
+    # every caller's token itself, so the host's proxy routes to it with
+    # no login in front. It does not start until its settings name an
+    # identity provider, a client and a bucket. Opt in with --profile
+    # archive.
+    build: ../..
+    command: ["uvicorn", "bugflow.apps.archive_host.host:from_environment", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    profiles: ["archive"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: ../../env/archive.env
+    networks:
+      default: {}
+      edge:
+        aliases: ["${SOLUTION}-archive"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   mcp:
     # Reads evaluation evidence through the API. Opt in with --profile mcp.
     build: ../..
