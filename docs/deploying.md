@@ -16,6 +16,7 @@ brought up together by Docker Compose.
 | `worker` | `bugflow worker`, which reviews pull requests | `temporal`, `postgres` and `litellm` healthy, `migrate` finished |
 | `ingress` | The server that receives a forge's webhooks | `temporal` and `postgres` healthy, `migrate` finished |
 | `api` | The API for policy deployment and authorised evaluation reads | `postgres` healthy, `migrate` finished, an identity provider in its settings |
+| `archive` | The archive host, which keeps the archives scopes seal to it. Started only when asked for | `postgres` healthy, `migrate` finished, an identity provider, a client and a bucket in its settings |
 | `poller` | `bugflow poll`, which stands in for webhooks. Started only when asked for | `ingress` healthy |
 | `webhooks` | `bugflow webhooks`, which registers webhooks and exits. Run only when asked for | `migrate` finished |
 
@@ -93,9 +94,9 @@ hold only letters, digits, `-`, `.`, `_` and `~`.
 | `bugflow_postgres_user` | `postgres`, `temporal`, and every program in its database address | The Postgres user |
 | `vault_bugflow_postgres_password` | The same | That user's password. Postgres reads it only when it creates its data volume |
 | `bugflow_database` | `postgres` and every program | The name of the database the programs keep their records in |
-| `bugflow_database_scripts` | `migrate` | The directories of this deployment's own database scripts, a branch of the package's, separated by whitespace: paths in the image, or package resources such as `their_package.migrations:versions`. Not written if empty, and then the package's scripts alone are run |
-| `bugflow_temporal_namespace` | `worker`, `ingress` | The Temporal namespace. Default `default` |
-| `bugflow_temporal_task_queue` | `worker`, `ingress` | The task queue the worker listens on. Default `bugflow` |
+| `bugflow_database_scripts` | `migrate`, `archive` | The directories of this deployment's own database scripts, a branch of the package's, separated by whitespace: paths in the image, or package resources such as `their_package.migrations:versions`. Not written if empty, and then the package's scripts alone are run |
+| `bugflow_temporal_namespace` | `worker`, `ingress`, `archive` | The Temporal namespace. Default `default` |
+| `bugflow_temporal_task_queue` | `worker`, `ingress`, `archive` | The task queue the worker listens on. Default `bugflow` |
 | `bugflow_temporal_ui_url` | `ingress` | The address people reach the workflow console at. Not written if empty |
 
 ### The forge
@@ -156,12 +157,12 @@ before the first deployment, even if two roles share one.
 
 | Variable | Read by | Is |
 |---|---|---|
-| `bugflow_roles_claim` | `api` | The claim of a token that lists a caller's roles |
+| `bugflow_roles_claim` | `api`, `archive` | The claim of a token that lists a caller's roles |
 | `bugflow_policy_deployer_role` | `api` | The role that may deploy policies |
-| `project_oidc_issuer` | `api` | The identity provider's address. Default empty |
-| `project_oidc_audience` | `api` | The audience a token must be addressed to. Default empty |
-| `project_oidc_clients` | `api` | The clients registered at the provider, by name. The API accepts tokens issued to the one named `policies-pipeline`, by its `client_id`, and to the one named `settings-page`, where there is one. Not written until `policies-pipeline` exists |
-| `project_build_sha` | `worker`, `ingress`, `api`, `migrate` | The full git sha of the commit the image was built from, recorded with every journal entry. Not written if not defined |
+| `project_oidc_issuer` | `api`, `archive` | The identity provider's address. Default empty |
+| `project_oidc_audience` | `api`, `archive` | The audience a token must be addressed to. Default empty |
+| `project_oidc_clients` | `api`, `archive` | The clients registered at the provider, by name. The API accepts tokens issued to the one named `policies-pipeline`, by its `client_id`, and to the one named `settings-page`, where there is one. Not written until `policies-pipeline` exists. The archive host accepts tokens issued to the one named `coding-agent`, unless `bugflow_archive_clients` is given |
+| `project_build_sha` | `worker`, `ingress`, `api`, `migrate`, `archive` | The full git sha of the commit the image was built from, recorded with every journal entry. Not written if not defined |
 
 | `bugflow_settings_role` | `api` | The role that may read and change what each gnome does on each repository. Not written if not defined, and then neither the settings routes nor their page is served |
 | `bugflow_settings_client_id` | `api` | The public client the settings page signs a person in as, with authorisation code and PKCE, its redirect address the API's `/settings`. Default the client registered as `settings-page`, and not written if there is neither. Added to the clients the API accepts, unless `bugflow_api_clients` is given, and then it must be one of them |
@@ -190,16 +191,24 @@ covers it, as step 3 of "Before the first review" says.
 
 | Variable | Read by | Is |
 |---|---|---|
-| `bugflow_archive_s3_bucket` | `worker` | The bucket the archive host keeps what is sealed to it in. Not written if empty, and then the next four are not read and the worker indexes no archive |
-| `bugflow_archive_s3_endpoint` | `worker` | That bucket's S3 endpoint |
-| `bugflow_archive_s3_region` | `worker` | Its region. Default `us-east-1` |
+| `bugflow_archive_clients` | `archive` | The clients a token may come from, comma-separated. The first is the one sealing tools are told to sign in as. Default the client registered as `coding-agent`, and not written if there is neither |
+| `bugflow_archive_reader_role` | `archive` | The role that may read every ledger kept here. Default `bugflow-archive-reader` |
+| `bugflow_archive_writer_role` | `archive` | The role that may also append. Default `bugflow-archive-writer` |
+| `bugflow_archive_scopes` | `archive` | The scopes sealing tools are told to ask for, separated by spaces. Not written if empty, and then they ask for `openid` alone |
+| `bugflow_archive_s3_bucket` | `archive`, `worker` | The bucket the archive host keeps what is sealed to it in. Not written if empty, and then the next six are not read, the host does not start and the worker indexes no archive |
+| `bugflow_archive_s3_endpoint` | `archive`, `worker` | That bucket's S3 endpoint |
+| `bugflow_archive_s3_region` | `archive`, `worker` | Its region. Default `us-east-1` |
+| `vault_bugflow_archive_s3_access_key`, `vault_bugflow_archive_s3_secret_key` | `archive` | A key that reads and writes that bucket alone |
 | `vault_bugflow_archive_reader_s3_access_key`, `vault_bugflow_archive_reader_s3_secret_key` | `worker` | A key that only reads that bucket |
+| `bugflow_archive_max_upload_bytes` | `archive` | The largest append the host takes, in bytes. Not written if empty, and then it is 64 MiB |
+| `bugflow_archive_protocols` | `archive` | The versions of the remote archive protocol the host serves, such as `1,2`. Not written if empty, and then every version it has |
+| `bugflow_archive_retiring` | `archive` | The date after which a version stops being served, as `1=2027-01-31`. Not written if empty |
 
 ### Telemetry
 
 | Variable | Read by | Is |
 |---|---|---|
-| `bugflow_otel_endpoint` | `worker`, `ingress`, `api`, `poller`, `migrate` | The OTLP endpoint traces are sent to, such as `http://otel-collector:4317`. Given, the programs also write their log lines to stdout as JSON, with `level`, `msg`, `logger` and `timestamp`, and `trace_id` and `span_id` inside a trace. Not written if empty, and then nothing is exported and log lines are plain text |
+| `bugflow_otel_endpoint` | `worker`, `ingress`, `api`, `poller`, `migrate`, `archive` | The OTLP endpoint traces are sent to, such as `http://otel-collector:4317`. Given, the programs also write their log lines to stdout as JSON, with `level`, `msg`, `logger` and `timestamp`, and `trace_id` and `span_id` inside a trace. Not written if empty, and then nothing is exported and log lines are plain text |
 
 A trace follows a delivery from the ingress into the workflow it
 starts, and on through the worker's calls to the database, the forge
