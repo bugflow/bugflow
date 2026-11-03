@@ -5,7 +5,7 @@ It writes nothing and calls no model. Who may read it is not decided
 here: the program that offers it checks that first.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -24,12 +24,8 @@ from bugflow.review.dtos.read_run_operations import (
     ReadRunOperationsResponse,
     RunActivity,
 )
+from bugflow.review.usecases.allowance_checks import Window, in_period
 from bugflow.shared.domain.values.correlation import Correlation
-
-#: The period of an allowance that contains a moment, None for an
-#: allowance per run, or ``ValueError`` where nothing says where its
-#: periods begin.
-Window = Callable[[SpendBinding, datetime], tuple[datetime, datetime] | None]
 
 
 class RunEntries(Protocol):
@@ -121,24 +117,10 @@ class ReadRunOperationsUseCase:
         costs: Sequence[CostFact],
         now: datetime,
     ) -> AllowanceCheck:
-        try:
-            window = self._window(binding, now)
-        except ValueError as unbounded:
-            return AllowanceCheck(binding=binding, unmeasured=str(unbounded))
+        measured = in_period(binding, now, self._window, self._spend)
+        if measured is not None:
+            return measured
         scope = binding.scope
-        if window is not None:
-            spent = self._spend.spent(
-                *window,
-                forge=scope.forge,
-                repo=scope.repo,
-                layer=scope.layer,
-                agent_id=scope.agent_id,
-                owner=scope.owner,
-            )
-            return AllowanceCheck(
-                binding=binding,
-                remaining=Remaining(binding=binding, spent=spent),
-            )
         # An allowance per run holds this run: what it counts is what
         # the run's own facts in its scope cost, over the run.
         covered = [
