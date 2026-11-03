@@ -62,6 +62,16 @@ class SpendScope:
             if one
         )
 
+    def reaches(self, forge: str, repo: str) -> bool:
+        """Whether the scope covers some run on that repository: its
+        forge, owner and repository are open or name it. A scope that
+        also names a layer or an agent covers only those runs there."""
+        return (
+            self.forge in ("", forge)
+            and self.owner in ("", owner_of(repo))
+            and self.repo in ("", repo)
+        )
+
 
 def owner_of(repo: str) -> str:
     """The owner of a repository the journal names ``owner/name``."""
