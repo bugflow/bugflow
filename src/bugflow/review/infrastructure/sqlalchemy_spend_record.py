@@ -38,24 +38,24 @@ def _costs(relation: str) -> str:
     agent it names, the layer it belongs to, its cost in dollars, and the
     kind of fact it is."""
     return f"""
-select j.occurred_at, j.forge, j.repo, j.run_id, j.agent_id,
-       null::text as layer, m.cost_nanodollars / :nano as usd,
+select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
+       j.agent_id, null::text as layer, m.cost_nanodollars / :nano as usd,
        'model_call' as kind
   from {relation} j join model_call m on m.event_id = j.event_id
  where m.cost_nanodollars is not null
 union all
-select j.occurred_at, j.forge, j.repo, j.run_id,
+select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
        coalesce(j.agent_id, d.agent_id), null::text, d.cost_usd,
        'agent_dispatch'
   from {relation} j join agent_dispatch d on d.event_id = j.event_id
  where d.cost_usd is not null
 union all
-select j.occurred_at, j.forge, j.repo, j.run_id, j.agent_id,
-       null::text, p.cost_usd, 'policy_check'
+select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
+       j.agent_id, null::text, p.cost_usd, 'policy_check'
   from {relation} j join policy_check p on p.event_id = j.event_id
  where p.cost_usd is not null
 union all
-select j.occurred_at, j.forge, j.repo, j.run_id,
+select j.occurred_at, j.forge, j.repo, j.workflow_id, j.run_id,
        coalesce(j.agent_id, s.agent_id), s.layer, s.cost_usd,
        'stocktake_review'
   from {relation} j join stocktake_review s on s.event_id = j.event_id
@@ -95,7 +95,7 @@ order by forge, repo, layer, agent_id
 
 def _by_run_query(relation: str) -> str:
     return f"""
-select run_id, forge, repo, coalesce(layer, '') as layer,
+select workflow_id, run_id, forge, repo, coalesce(layer, '') as layer,
        coalesce(agent_id, '') as agent_id, kind,
        min(occurred_at) as first, max(occurred_at) as last,
        coalesce(sum(usd), 0) as usd, count(*) as facts
@@ -106,8 +106,9 @@ where occurred_at >= :since and occurred_at < :until
   and (:repo = '' or repo = :repo)
   and (:layer = '' or layer = :layer)
   and (:agent = '' or agent_id = :agent)
-group by run_id, forge, repo, layer, agent_id, kind
-order by max(occurred_at) desc, run_id, layer, agent_id, kind
+group by workflow_id, run_id, forge, repo, layer, agent_id, kind
+order by max(occurred_at) desc, workflow_id, run_id, layer, agent_id,
+         kind
 """
 
 
@@ -201,6 +202,7 @@ class SqlAlchemySpendRecord:
             )
             return tuple(
                 RunCost(
+                    workflow_id=row.workflow_id,
                     run_id=row.run_id,
                     forge=row.forge,
                     repo=row.repo,

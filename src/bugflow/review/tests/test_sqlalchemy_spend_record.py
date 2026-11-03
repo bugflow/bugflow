@@ -400,6 +400,8 @@ def test_each_run_names_the_kinds_of_fact_it_spent_on(
     }
     # The run whose fact was recorded last is listed first.
     assert rows[0].run_id == other
+    # Each row names its workflow, which with the run finds its facts.
+    assert {row.workflow_id for row in rows} == {"test/spend"}
 
 
 def test_a_scopes_total_is_the_sum_of_its_runs(

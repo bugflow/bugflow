@@ -77,6 +77,8 @@ class RunCost:
     agent.
     """
 
+    #: The workflow and the run, which together find the run's facts.
+    workflow_id: str
     run_id: str
     forge: str
     repo: str

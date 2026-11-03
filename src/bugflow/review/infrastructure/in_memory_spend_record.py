@@ -17,6 +17,7 @@ from bugflow.review.domain.models.spend_binding import owner_of
 class RecordedCost:
     """One costed fact, with the run that recorded it and its kind."""
 
+    workflow_id: str = "test/workflow"
     run_id: str
     forge: str
     repo: str
@@ -58,7 +59,8 @@ class InMemorySpendRecord:
         owner: str = "",
     ) -> tuple[RunCost, ...]:
         found: defaultdict[
-            tuple[str, str, str, str, str, SpendKind], list[RecordedCost]
+            tuple[str, str, str, str, str, str, SpendKind],
+            list[RecordedCost],
         ] = defaultdict(list)
         for one in self.recorded:
             if (
@@ -70,6 +72,7 @@ class InMemorySpendRecord:
                 and agent_id in ("", one.agent_id)
             ):
                 key = (
+                    one.workflow_id,
                     one.run_id,
                     one.forge,
                     one.repo,
@@ -80,6 +83,7 @@ class InMemorySpendRecord:
                 found[key].append(one)
         rows = [
             RunCost(
+                workflow_id=workflow_id,
                 run_id=run_id,
                 forge=one_forge,
                 repo=one_repo,
@@ -94,6 +98,7 @@ class InMemorySpendRecord:
                 facts=len(facts),
             )
             for (
+                workflow_id,
                 run_id,
                 one_forge,
                 one_repo,
@@ -103,7 +108,13 @@ class InMemorySpendRecord:
             ), facts in found.items()
         ]
         rows.sort(
-            key=lambda row: (row.run_id, row.layer, row.agent_id, row.kind)
+            key=lambda row: (
+                row.workflow_id,
+                row.run_id,
+                row.layer,
+                row.agent_id,
+                row.kind,
+            )
         )
         rows.sort(key=lambda row: row.last, reverse=True)
         return tuple(rows)
