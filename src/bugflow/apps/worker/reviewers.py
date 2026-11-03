@@ -22,6 +22,7 @@ from bugflow.method.domain.models.policy_text import PolicyText
 from bugflow.method.infrastructure.reviewer_packages import (
     DomainSpecificReviewAgent,
 )
+from bugflow.review.domain.models.remaining import Remaining
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
     SpendScope,
@@ -368,19 +369,22 @@ def out_of_room(
         if window is None:
             continue
         scope = binding.scope
-        already = spend.spent(
-            *window,
-            forge=scope.forge,
-            repo=scope.repo,
-            layer=scope.layer,
-            agent_id=scope.agent_id,
-            owner=scope.owner,
+        left = Remaining(
+            binding=binding,
+            spent=spend.spent(
+                *window,
+                forge=scope.forge,
+                repo=scope.repo,
+                layer=scope.layer,
+                agent_id=scope.agent_id,
+                owner=scope.owner,
+            ),
         )
-        if already.usd >= binding.budget.usd:
+        if not left.has_room:
             where = where_named(scope) or "everything"
             return (
                 f"{where} is allowed ${binding.budget.usd:.2f} per "
-                f"{binding.per} and has spent ${already.usd:.2f}"
+                f"{binding.per} and has spent ${left.spent.usd:.2f}"
             )
     return None
 
