@@ -112,3 +112,7 @@ class PublicationRejectedError(Exception):
     """The forge refused a write, and the same write would be refused
     again: for example the token may not set commit statuses, or the
     pull request no longer exists."""
+
+
+class RunNotFoundError(Exception):
+    """The journal holds nothing for that workflow run."""
