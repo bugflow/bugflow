@@ -390,6 +390,26 @@ def test_the_managed_agent_is_set_only_where_a_runner_is_named(
     assert "REVIEW_AGENT_MODEL=example-model" in worker
 
 
+def test_the_worker_indexes_archives_only_where_a_bucket_is_named(
+    tmp_path: Path,
+) -> None:
+    without = rendered((ROOT / ".env.example").read_text(), tmp_path)
+    assert without.returncode == 0, without.stderr
+    assert "ARCHIVE_" not in (tmp_path / "env" / "worker.env").read_text()
+
+    values = (ROOT / ".env.example").read_text() + (
+        "bugflow_archive_s3_bucket=kept\n"
+        "bugflow_archive_s3_endpoint=https://s3.example\n"
+        "vault_bugflow_archive_reader_s3_access_key=reader\n"
+        "vault_bugflow_archive_reader_s3_secret_key=secret\n"
+    )
+    named = rendered(values, tmp_path)
+    assert named.returncode == 0, named.stderr
+    worker = (tmp_path / "env" / "worker.env").read_text().splitlines()
+    assert "ARCHIVE_S3_BUCKET=kept" in worker
+    assert "WORKER_ARCHIVE_S3_ACCESS_KEY=reader" in worker
+
+
 def test_the_worker_is_given_no_doctrine_path() -> None:
     """Doctrine reaches a server in a policy deployment, not on a path
     in the image."""
