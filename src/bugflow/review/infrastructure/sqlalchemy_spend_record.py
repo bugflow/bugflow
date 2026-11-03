@@ -19,7 +19,13 @@ from datetime import datetime
 
 import sqlalchemy as sa
 
-from bugflow.review.domain.models.spend import RunSpend, Spent
+from bugflow.review.domain.models.spend import (
+    SPEND_KINDS,
+    RunCost,
+    RunSpend,
+    SpendKind,
+    Spent,
+)
 from bugflow.shared.infrastructure.database import engine_url
 
 #: A nanodollar is a billionth, which is what the proxy's figures are
@@ -29,25 +35,29 @@ _NANODOLLARS = 1_000_000_000.0
 
 def _costs(relation: str) -> str:
     """Every costed fact as one row: when and where it was recorded, the
-    agent it names, the layer it belongs to, and its cost in dollars."""
+    agent it names, the layer it belongs to, its cost in dollars, and the
+    kind of fact it is."""
     return f"""
 select j.occurred_at, j.forge, j.repo, j.run_id, j.agent_id,
-       null::text as layer, m.cost_nanodollars / :nano as usd
+       null::text as layer, m.cost_nanodollars / :nano as usd,
+       'model_call' as kind
   from {relation} j join model_call m on m.event_id = j.event_id
  where m.cost_nanodollars is not null
 union all
 select j.occurred_at, j.forge, j.repo, j.run_id,
-       coalesce(j.agent_id, d.agent_id), null::text, d.cost_usd
+       coalesce(j.agent_id, d.agent_id), null::text, d.cost_usd,
+       'agent_dispatch'
   from {relation} j join agent_dispatch d on d.event_id = j.event_id
  where d.cost_usd is not null
 union all
 select j.occurred_at, j.forge, j.repo, j.run_id, j.agent_id,
-       null::text, p.cost_usd
+       null::text, p.cost_usd, 'policy_check'
   from {relation} j join policy_check p on p.event_id = j.event_id
  where p.cost_usd is not null
 union all
 select j.occurred_at, j.forge, j.repo, j.run_id,
-       coalesce(j.agent_id, s.agent_id), s.layer, s.cost_usd
+       coalesce(j.agent_id, s.agent_id), s.layer, s.cost_usd,
+       'stocktake_review'
   from {relation} j join stocktake_review s on s.event_id = j.event_id
  where s.cost_usd is not null
 """
@@ -83,6 +93,24 @@ order by forge, repo, layer, agent_id
 """
 
 
+def _by_run_query(relation: str) -> str:
+    return f"""
+select run_id, forge, repo, coalesce(layer, '') as layer,
+       coalesce(agent_id, '') as agent_id, kind,
+       min(occurred_at) as first, max(occurred_at) as last,
+       coalesce(sum(usd), 0) as usd, count(*) as facts
+from ({_costs(relation)}) costs
+where occurred_at >= :since and occurred_at < :until
+  and (:forge = '' or forge = :forge)
+  and (:owner = '' or split_part(repo, '/', 1) = :owner)
+  and (:repo = '' or repo = :repo)
+  and (:layer = '' or layer = :layer)
+  and (:agent = '' or agent_id = :agent)
+group by run_id, forge, repo, layer, agent_id, kind
+order by max(occurred_at) desc, run_id, layer, agent_id, kind
+"""
+
+
 def _run_query(relation: str) -> str:
     # No time bound: a run is bounded by itself.
     return f"""
@@ -92,12 +120,22 @@ where run_id = :run
 """
 
 
+def _kind(name: str) -> SpendKind:
+    """The kind a row names, which the query writes as one of
+    :data:`SPEND_KINDS`."""
+    for kind in SPEND_KINDS:
+        if kind == name:
+            return kind
+    raise ValueError(f"{name!r} is no kind of costed fact")
+
+
 class SqlAlchemySpendRecord:
     def __init__(self, database_url: str, relation: str = "journal") -> None:
         """``relation`` is the table or view the journal is read
         through. It has the journal's columns."""
         self._engine = sa.create_engine(engine_url(database_url))
         self._grouped = sa.text(_grouped_query(relation))
+        self._by_run = sa.text(_by_run_query(relation))
         self._window = sa.text(_window_query(relation))
         self._run = sa.text(_run_query(relation))
 
@@ -136,6 +174,48 @@ class SqlAlchemySpendRecord:
             usd=float(row.usd),
             facts=int(row.facts),
         )
+
+    def spent_by_run(
+        self,
+        since: datetime,
+        until: datetime,
+        forge: str = "",
+        repo: str = "",
+        layer: str = "",
+        agent_id: str = "",
+        owner: str = "",
+    ) -> tuple[RunCost, ...]:
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                self._by_run,
+                {
+                    "nano": _NANODOLLARS,
+                    "since": since,
+                    "until": until,
+                    "forge": forge,
+                    "owner": owner,
+                    "repo": repo,
+                    "layer": layer,
+                    "agent": agent_id,
+                },
+            )
+            return tuple(
+                RunCost(
+                    run_id=row.run_id,
+                    forge=row.forge,
+                    repo=row.repo,
+                    layer=row.layer,
+                    agent_id=row.agent_id,
+                    kind=_kind(row.kind),
+                    since=since,
+                    until=until,
+                    first=row.first,
+                    last=row.last,
+                    usd=float(row.usd),
+                    facts=int(row.facts),
+                )
+                for row in rows
+            )
 
     def spent_by_scope(
         self,
