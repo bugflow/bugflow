@@ -186,6 +186,15 @@ or by the layer's default, is refused. Setting a gnome there allows
 nothing to spend: the repository is judged only once an allowance
 covers it, as step 3 of "Before the first review" says.
 
+### Archives
+
+| Variable | Read by | Is |
+|---|---|---|
+| `bugflow_archive_s3_bucket` | `worker` | The bucket the archive host keeps what is sealed to it in. Not written if empty, and then the next four are not read and the worker indexes no archive |
+| `bugflow_archive_s3_endpoint` | `worker` | That bucket's S3 endpoint |
+| `bugflow_archive_s3_region` | `worker` | Its region. Default `us-east-1` |
+| `vault_bugflow_archive_reader_s3_access_key`, `vault_bugflow_archive_reader_s3_secret_key` | `worker` | A key that only reads that bucket |
+
 ### Telemetry
 
 | Variable | Read by | Is |
