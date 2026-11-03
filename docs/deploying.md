@@ -208,13 +208,14 @@ covers it, as step 3 of "Before the first review" says.
 
 | Variable | Read by | Is |
 |---|---|---|
-| `bugflow_otel_endpoint` | `worker`, `ingress`, `api`, `poller`, `migrate`, `archive` | The OTLP endpoint traces are sent to, such as `http://otel-collector:4317`. Given, the programs also write their log lines to stdout as JSON, with `level`, `msg`, `logger` and `timestamp`, and `trace_id` and `span_id` inside a trace. Not written if empty, and then nothing is exported and log lines are plain text |
+| `bugflow_otel_endpoint` | `worker`, `ingress`, `api`, `poller`, `migrate`, `archive`, `litellm` | The OTLP endpoint traces are sent to, such as `http://otel-collector:4317`. Given, the programs also write their log lines to stdout as JSON, with `level`, `msg`, `logger` and `timestamp`, and `trace_id` and `span_id` inside a trace. Not written if empty, and then nothing is exported and log lines are plain text |
 
 A trace follows a delivery from the ingress into the workflow it
 starts, and on through the worker's calls to the database, the forge
 and the model proxy. Healthchecks are not traced. The model proxy
 exports traces of its own only if `litellm/config.yaml` names the
-`otel` callback, which the example's does not.
+`otel` callback, which the example's does not, and then to the same
+endpoint, with each call's tokens and cost and never its content.
 
 ## The order
 

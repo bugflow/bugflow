@@ -446,19 +446,39 @@ def test_the_worker_s_settings_run_the_webhooks_command() -> None:
 
 def test_the_proxy_publishes_the_roles_the_classes_ask_for() -> None:
     """Each role reads its model and its key from the environment, and
-    the proxy's template supplies each of those names."""
+    the proxy's template supplies each of those names, and besides them
+    only the settings of its telemetry."""
     config = yaml.safe_load((ROOT / "litellm" / "config.yaml").read_text())
     roles = {entry["model_name"]: entry for entry in config["model_list"]}
     assert set(roles) == set(MODEL_CLASS_DEFAULTS.values())
 
     template = (TEMPLATES / "litellm.env.j2").read_text()
     supplied = set(re.findall(r"^([A-Z_]+)=", template, re.MULTILINE))
+    supplied -= {name for name in supplied if "OTEL" in name}
     read = {config["general_settings"]["master_key"]}
     for name, entry in roles.items():
         assert set(entry["litellm_params"]) == {"model", "api_key"}, name
         read |= set(entry["litellm_params"].values())
     assert all(value.startswith("os.environ/") for value in read)
     assert {value.removeprefix("os.environ/") for value in read} == supplied
+
+
+def test_the_proxy_is_told_where_traces_go_only_with_an_endpoint(
+    tmp_path: Path,
+) -> None:
+    without = rendered((ROOT / ".env.example").read_text(), tmp_path)
+    assert without.returncode == 0, without.stderr
+    assert "OTEL" not in (tmp_path / "env" / "litellm.env").read_text()
+
+    values = (ROOT / ".env.example").read_text() + (
+        "bugflow_otel_endpoint=http://otel-collector:4317\n"
+    )
+    named = rendered(values, tmp_path)
+    assert named.returncode == 0, named.stderr
+    proxy = (tmp_path / "env" / "litellm.env").read_text().splitlines()
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317" in proxy
+    content = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+    assert f"{content}=NO_CONTENT" in proxy
 
 
 def test_git_is_installed_before_a_git_dependency_is_fetched() -> None:
