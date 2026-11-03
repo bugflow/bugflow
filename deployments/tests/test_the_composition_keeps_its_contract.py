@@ -37,7 +37,7 @@ ENVIRONMENTS = sorted(
 )
 
 #: The services a host's proxy routes to. Each joins the edge network.
-FRONTED = {"ingress", "api", "mcp", "temporal-ui"}
+FRONTED = {"ingress", "api", "archive", "mcp", "temporal-ui"}
 
 #: The services told one address in the composition, with no file of
 #: settings.
@@ -354,6 +354,24 @@ def test_the_settings_page_s_client_is_one_the_api_accepts(
     assert "SETTINGS_CLIENT_ID=page-1" in api
 
 
+def test_the_archive_host_accepts_the_client_a_platform_registers(
+    tmp_path: Path,
+) -> None:
+    before = rendered((ROOT / ".env.example").read_text(), tmp_path)
+    assert before.returncode == 0, before.stderr
+    assert (
+        "ARCHIVE_CLIENTS" not in (tmp_path / "env" / "archive.env").read_text()
+    )
+
+    values = (ROOT / ".env.example").read_text() + (
+        "project_oidc_clients.coding-agent.client_id=agent-1\n"
+    )
+    done = rendered(values, tmp_path)
+    assert done.returncode == 0, done.stderr
+    archive = (tmp_path / "env" / "archive.env").read_text().splitlines()
+    assert "ARCHIVE_CLIENTS=agent-1" in archive
+
+
 def test_a_missing_value_is_named_and_nothing_is_written(
     tmp_path: Path,
 ) -> None:
@@ -400,6 +418,8 @@ def test_the_worker_indexes_archives_only_where_a_bucket_is_named(
     values = (ROOT / ".env.example").read_text() + (
         "bugflow_archive_s3_bucket=kept\n"
         "bugflow_archive_s3_endpoint=https://s3.example\n"
+        "vault_bugflow_archive_s3_access_key=writer\n"
+        "vault_bugflow_archive_s3_secret_key=secret\n"
         "vault_bugflow_archive_reader_s3_access_key=reader\n"
         "vault_bugflow_archive_reader_s3_secret_key=secret\n"
     )
