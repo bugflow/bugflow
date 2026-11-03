@@ -337,6 +337,23 @@ def test_the_templates_render_what_a_platform_supplies(
         assert "BUILD_SHA=" + "a" * 40 in lines, name
 
 
+def test_the_settings_page_s_client_is_one_the_api_accepts(
+    tmp_path: Path,
+) -> None:
+    values = (ROOT / ".env.example").read_text() + (
+        "bugflow_settings_role=settings-admin\n"
+        "project_oidc_clients.policies-pipeline.client_id=pipeline-1\n"
+        "project_oidc_clients.settings-page.client_id=page-1\n"
+    )
+
+    done = rendered(values, tmp_path)
+
+    assert done.returncode == 0, done.stderr
+    api = (tmp_path / "env" / "api.env").read_text().splitlines()
+    assert "API_CLIENTS=pipeline-1,page-1" in api
+    assert "SETTINGS_CLIENT_ID=page-1" in api
+
+
 def test_a_missing_value_is_named_and_nothing_is_written(
     tmp_path: Path,
 ) -> None:
