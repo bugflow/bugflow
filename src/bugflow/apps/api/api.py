@@ -80,6 +80,9 @@ from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
 from bugflow.review.infrastructure.sqlalchemy_spend_record import (
     SqlAlchemySpendRecord,
 )
+from bugflow.review.usecases.read_repository_operations import (
+    ReadRepositoryOperationsUseCase,
+)
 from bugflow.review.usecases.read_review_record import (
     ReadReviewHistoryUseCase,
     ReadReviewRecordUseCase,
@@ -386,4 +389,14 @@ def operations_from(
             journal, spend, ceilings, boundaries().window
         )
 
-    return OperationsReading(role=role, run=run, clock=SystemClock())
+    def repository() -> ReadRepositoryOperationsUseCase:
+        return ReadRepositoryOperationsUseCase(
+            SqlAlchemyGnomeSettings(database_url),
+            spend,
+            ceilings,
+            boundaries().window,
+        )
+
+    return OperationsReading(
+        role=role, run=run, repository=repository, clock=SystemClock()
+    )
