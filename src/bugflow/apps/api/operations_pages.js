@@ -166,15 +166,14 @@ function rowName(layer, agent) {
           agent ? "agent " + agent : "no agent"].join(", ");
 }
 
-// List runs, latest first, each opening its own page. Runs that name
-// their repository show it.
-function renderRunList(table, runs, none) {
+// List runs, latest first, each opening its own page, and with their
+// repositories where the runs are of more than one.
+function renderRunList(table, runs, none, repositories) {
   table.replaceChildren();
   if (!runs.length) {
     empty(table, none);
     return;
   }
-  const repositories = runs[0].repo !== undefined;
   heading(table, [["Last fact"]].concat(
     repositories ? [["Repository"]] : [],
     [["Workflow"], ["Run"], ["Spent", "num"], ["Facts", "num"]]));
