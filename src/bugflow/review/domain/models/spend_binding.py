@@ -62,6 +62,19 @@ class SpendScope:
             if one
         )
 
+    def covers(self, other: "SpendScope") -> bool:
+        """Whether every run in ``other`` is in this scope: each part
+        this scope names, ``other`` names too, and an owner covers each
+        of its repositories. A scope covers itself."""
+        owner = other.owner or (owner_of(other.repo) if other.repo else "")
+        return (
+            self.forge in ("", other.forge)
+            and self.owner in ("", owner)
+            and self.repo in ("", other.repo)
+            and self.layer in ("", other.layer)
+            and self.agent_id in ("", other.agent_id)
+        )
+
     def reaches(self, forge: str, repo: str) -> bool:
         """Whether the scope covers some run on that repository: its
         forge, owner and repository are open or name it. A scope that
