@@ -25,8 +25,8 @@ from bugflow.review.infrastructure.in_memory_spend_record import (
     InMemorySpendRecord,
     RecordedCost,
 )
+from bugflow.review.usecases.allowance_checks import PER_RUN
 from bugflow.review.usecases.read_repository_operations import (
-    PER_RUN,
     ReadRepositoryOperationsUseCase,
 )
 from bugflow.shared.domain.values.budget import Budget

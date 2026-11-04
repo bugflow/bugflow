@@ -50,13 +50,15 @@ class SpendRow(BaseModel):
 
 
 class RunRow(BaseModel):
-    """What one run spent on the repository in the period, within the
-    spend row it is listed for."""
+    """What one run spent in the period, within the spend row it is
+    listed for."""
 
     model_config = ConfigDict(frozen=True)
 
     workflow_id: str
     run_id: str
+    forge: str
+    repo: str
     #: When the earliest and the latest of its facts were recorded.
     first: datetime
     last: datetime
