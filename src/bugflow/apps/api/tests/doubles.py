@@ -41,6 +41,9 @@ from bugflow.review.usecases.read_repository_operations import (
 from bugflow.review.usecases.read_run_operations import (
     ReadRunOperationsUseCase,
 )
+from bugflow.review.usecases.read_spend_operations import (
+    ReadSpendOperationsUseCase,
+)
 from bugflow.review.usecases.set_gnome import SetGnomeUseCase
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.values.caller import Caller
@@ -152,6 +155,9 @@ class Server:
                         self.spend,
                         self.ceilings,
                         lambda binding, now: None,
+                    ),
+                    spend=lambda: ReadSpendOperationsUseCase(
+                        self.spend, self.ceilings, lambda binding, now: None
                     ),
                     clock=Clock(),
                 ),

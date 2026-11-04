@@ -90,6 +90,9 @@ from bugflow.review.usecases.read_review_record import (
 from bugflow.review.usecases.read_run_operations import (
     ReadRunOperationsUseCase,
 )
+from bugflow.review.usecases.read_spend_operations import (
+    ReadSpendOperationsUseCase,
+)
 from bugflow.review.usecases.set_gnome import SetGnomeUseCase
 from bugflow.shared.domain.errors import TokenRefusedError
 from bugflow.shared.domain.services.bearer_token import BearerTokenService
@@ -397,6 +400,13 @@ def operations_from(
             boundaries().window,
         )
 
+    def by_dimension() -> ReadSpendOperationsUseCase:
+        return ReadSpendOperationsUseCase(spend, ceilings, boundaries().window)
+
     return OperationsReading(
-        role=role, run=run, repository=repository, clock=SystemClock()
+        role=role,
+        run=run,
+        repository=repository,
+        spend=by_dimension,
+        clock=SystemClock(),
     )
