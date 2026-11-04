@@ -456,6 +456,27 @@ def test_a_secret_is_written_only_where_it_is_used(secret: str) -> None:
     assert holders == {HELD_BY[secret]}
 
 
+def test_the_archive_host_takes_the_largest_append_only_where_named(
+    tmp_path: Path,
+) -> None:
+    """An append is held whole while it is verified, so how large one
+    may be is set against the host's memory. An empty value would not
+    parse, and the host's own default answers for a deployer who names
+    none."""
+    without = rendered((ROOT / ".env.example").read_text(), tmp_path)
+    assert without.returncode == 0, without.stderr
+    archive = (tmp_path / "env" / "archive.env").read_text()
+    assert "ARCHIVE_MAX_UPLOAD_BYTES" not in archive
+
+    values = (ROOT / ".env.example").read_text() + (
+        "bugflow_archive_max_upload_bytes=8388608\n"
+    )
+    named = rendered(values, tmp_path)
+    assert named.returncode == 0, named.stderr
+    archive = (tmp_path / "env" / "archive.env").read_text().splitlines()
+    assert "ARCHIVE_MAX_UPLOAD_BYTES=8388608" in archive
+
+
 def test_the_worker_is_given_no_doctrine_path() -> None:
     """Doctrine reaches a server in a policy deployment, not on a path
     in the image."""
