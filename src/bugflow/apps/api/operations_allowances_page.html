@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allowances</title>
+<link rel="stylesheet" href="pages.css">
+</head>
+<body>
+<main>
+  <nav><a href="layers">Layers</a><a href="agents">Agents</a></nav>
+  <h1>Allowances</h1>
+  <div id="signedout" hidden>
+    <p class="lede">Sign in to see and change what a scope may spend.</p>
+    <button id="signin">Sign in</button>
+  </div>
+  <div id="message" role="alert"></div>
+  <div id="signedin" hidden>
+    <form class="period" id="scope">
+      <label>Forge <input id="forge" placeholder="github"></label>
+      <label>Repository <input id="repository"
+        placeholder="owner/name or owner/*"></label>
+      <label>Layer <input id="layer" placeholder="any"></label>
+      <label>Agent <input id="agent" placeholder="any"></label>
+      <button type="submit">Read the scope</button>
+    </form>
+    <p class="lede">A part left empty means any. A scope inherits every
+      allowance of a wider scope that covers it, and a run in it must keep
+      within all of them.</p>
+    <dl class="facts" id="facts"></dl>
+    <h2>Each run is handed</h2>
+    <p class="lede">On each resource, the lowest limit of the allowances
+      per run that cover this scope, and the allowance it comes from.</p>
+    <dl class="facts" id="ceiling"></dl>
+    <h2>Allowances that apply</h2>
+    <p class="lede">Most specific first. An allowance per period is
+      measured over its own scope's spend in its current period.</p>
+    <div class="wrap"><table id="applied"></table></div>
+    <h2>Declare an allowance for this scope</h2>
+    <p class="lede">Sets this scope's own allowance for the cadence,
+      replacing what it holds for it. An empty limit is no limit; zero
+      allows nothing. Revoking an allowance is not allowing zero: it
+      leaves the scope to the wider allowances that cover it.</p>
+    <form class="period" id="declare">
+      <label>Per <select id="per"></select></label>
+      <label>Money, dollars <input id="usd" type="number" min="0"
+        step="0.01" placeholder="no limit"></label>
+      <label>Turns <input id="turns" type="number" min="0" step="1"
+        placeholder="no limit"></label>
+      <button type="submit">Declare</button>
+    </form>
+  </div>
+</main>
+<script src="../sign-in.js"></script>
+<script src="pages.js"></script>
+<script>
+"use strict";
+
+let shown = null;
+
+function limit(value, unit) {
+  if (value === null) return "no limit";
+  return unit === "usd" ? dollars(value) : String(value) + " turns";
+}
+
+// The query a route names this page's scope by.
+function scopeQuery(scope) {
+  const query = new URLSearchParams();
+  Object.entries(scope).forEach(([key, value]) => {
+    if (value) query.set(key, value);
+  });
+  return query;
+}
+
+function renderFacts(held) {
+  const facts = document.getElementById("facts");
+  facts.replaceChildren(element("dt", "", "Scope"),
+                        element("dd", "", scopeName(held.scope)));
+  const scope = held.scope;
+  document.getElementById("forge").value = scope.forge;
+  document.getElementById("repository").value =
+    scope.repo || (scope.owner ? scope.owner + "/*" : "");
+  document.getElementById("layer").value = scope.layer;
+  document.getElementById("agent").value = scope.agent_id;
+}
+
+function renderCeiling(held) {
+  const facts = document.getElementById("ceiling");
+  facts.replaceChildren();
+  if (held.ceiling === null) {
+    facts.append(element("dt", "", "Nothing"), element("dd", "",
+      "no allowance per run covers this scope, so a run here may spend " +
+      "nothing"));
+    return;
+  }
+  [["Money", held.ceiling.usd, held.ceiling.usd_from, "usd"],
+   ["Turns", held.ceiling.turns, held.ceiling.turns_from, "turns"]
+  ].forEach(([name, value, from, unit]) => {
+    const cell = element("dd", "", limit(value, unit));
+    if (from) {
+      cell.append(", from ");
+      cell.append(link(scopeName(from.scope), allowancesPage(from.scope)));
+    } else {
+      cell.append(", as no allowance limits it");
+    }
+    facts.append(element("dt", "", name), cell);
+  });
+}
+
+function renderApplied(held) {
+  const table = document.getElementById("applied");
+  table.replaceChildren();
+  if (!held.applied.length) {
+    empty(table, "No allowance covers this scope, so it may spend nothing.");
+    return;
+  }
+  heading(table, [["Scope"], ["Per"], ["Money", "num"], ["Turns", "num"],
+                  ["Period measured"], ["Spent", "num"], ["Left", "num"],
+                  ["Declared"], [""]]);
+  held.applied.forEach(one => {
+    const row = table.insertRow();
+    const period = one.since
+      ? when(one.since) + " to " + when(one.until)
+      : one.unmeasured;
+    cells(row, [
+      [one.own ? scopeName(one.scope)
+               : link(scopeName(one.scope), allowancesPage(one.scope))],
+      [one.per],
+      [limit(one.allowed_usd, "usd"), "num"],
+      [limit(one.allowed_turns, "turns"), "num"],
+      [period], [dollars(one.spent_usd), "num"],
+      [dollars(one.left_usd), "num"],
+      [one.own ? "here" : "inherited", one.own ? "" : "muted"]]);
+    const actions = element("td");
+    if (one.own) {
+      const change = element("button", "", "Change");
+      change.type = "button";
+      change.addEventListener("click", () => {
+        document.getElementById("per").value = one.per;
+        document.getElementById("usd").value =
+          one.allowed_usd === null ? "" : one.allowed_usd;
+        document.getElementById("turns").value =
+          one.allowed_turns === null ? "" : one.allowed_turns;
+        document.getElementById("declare").scrollIntoView();
+      });
+      const revoke = element("button", "", "Revoke");
+      revoke.type = "button";
+      revoke.addEventListener("click", () => revokeOne(one.per));
+      actions.append(change, " ", revoke);
+    }
+    row.append(actions);
+  });
+}
+
+function render(held) {
+  shown = held;
+  renderFacts(held);
+  renderCeiling(held);
+  renderApplied(held);
+  const per = document.getElementById("per");
+  if (!per.options.length) {
+    held.cadences.forEach(name => per.append(new Option(name, name)));
+  }
+}
+
+function figure(id) {
+  const value = document.getElementById(id).value;
+  return value === "" ? null : Number(value);
+}
+
+async function declareOne(event) {
+  event.preventDefault();
+  try {
+    say("");
+    render(await api("PUT", "api/operations/allowances", {
+      scope: shown.scope,
+      per: document.getElementById("per").value,
+      usd: figure("usd"),
+      turns: figure("turns"),
+    }));
+  } catch (error) {
+    say(error.message);
+  }
+}
+
+async function revokeOne(per) {
+  if (!confirm("Revoke " + scopeName(shown.scope) + "'s allowance per " +
+               per + "? It is left to the wider allowances that cover it.")) {
+    return;
+  }
+  try {
+    say("");
+    const query = scopeQuery(shown.scope);
+    query.set("per", per);
+    render(await api("DELETE", "api/operations/allowances?" + query));
+  } catch (error) {
+    say(error.message);
+  }
+}
+
+function readScope(event) {
+  event.preventDefault();
+  const forge = document.getElementById("forge").value.trim();
+  const repository = document.getElementById("repository").value.trim();
+  const params = new URLSearchParams();
+  if (forge) params.set("forge", forge);
+  if (repository.endsWith("/*")) params.set("owner", repository.slice(0, -2));
+  else if (repository) params.set("repo", repository);
+  [["layer", "layer"], ["agent", "agent_id"]].forEach(([id, key]) => {
+    const value = document.getElementById(id).value.trim();
+    if (value) params.set(key, value);
+  });
+  location.assign("?" + params);
+}
+
+document.getElementById("scope").addEventListener("submit", readScope);
+document.getElementById("declare").addEventListener("submit", declareOne);
+openPage("api/operations/allowances?" + scopeQuery(Object.fromEntries(
+  new URLSearchParams(location.search))), render);
+</script>
+</body>
+</html>

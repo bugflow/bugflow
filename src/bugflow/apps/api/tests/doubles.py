@@ -35,6 +35,10 @@ from bugflow.review.infrastructure.in_memory_spend_bindings import (
 from bugflow.review.infrastructure.in_memory_spend_record import (
     InMemorySpendRecord,
 )
+from bugflow.review.usecases.declare_allowance import (
+    DeclareAllowanceUseCase,
+)
+from bugflow.review.usecases.read_allowances import ReadAllowancesUseCase
 from bugflow.review.usecases.read_repository_operations import (
     ReadRepositoryOperationsUseCase,
 )
@@ -159,6 +163,13 @@ class Server:
                     spend=lambda: ReadSpendOperationsUseCase(
                         self.spend, self.ceilings, lambda binding, now: None
                     ),
+                    allowances=lambda: ReadAllowancesUseCase(
+                        self.ceilings, self.spend, lambda binding, now: None
+                    ),
+                    declare=lambda: DeclareAllowanceUseCase(
+                        self.ceilings, self.journal, Clock(), "run-1"
+                    ),
+                    cadences=("event", "week"),
                     clock=Clock(),
                 ),
             )
