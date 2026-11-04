@@ -1,0 +1,47 @@
+:root {
+  --bg: #ffffff; --fg: #1d1f23; --muted: #5d6470; --line: #d9dde3;
+  --row: #f6f7f9; --accent: #2f5bd3; --ok: #1f7a43; --bad: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171b; --fg: #e6e8eb; --muted: #9aa3ae; --line: #2c3038;
+    --row: #1c1f24; --accent: #7fa2ff; --ok: #6fd39b; --bad: #ff8a80;
+  }
+}
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 14px/1.45 system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+nav { margin: 0 0 8px; color: var(--muted); }
+nav a { margin-right: 12px; }
+h1 { font-size: 20px; margin: 8px 0 4px; }
+h2 { font-size: 16px; margin: 20px 0 6px; }
+p.lede { color: var(--muted); margin: 0 0 16px; }
+button { padding: 6px 12px; border: 1px solid var(--accent);
+         background: var(--accent); color: var(--bg); border-radius: 6px;
+         cursor: pointer; }
+form.period { display: flex; flex-wrap: wrap; gap: 8px; align-items: end;
+              margin: 0 0 8px; }
+form.period label { display: grid; gap: 2px; color: var(--muted); }
+input { font: inherit; padding: 4px 6px; border: 1px solid var(--line);
+        border-radius: 6px; background: var(--bg); color: var(--fg); }
+.wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px;
+         border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; white-space: nowrap; }
+tr:nth-child(even) td { background: var(--row); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums;
+                 white-space: nowrap; }
+td.mono { font-family: ui-monospace, monospace; white-space: nowrap; }
+tr.costed td:first-child, tr.chosen td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent); }
+tr.target td { outline: 2px solid var(--accent); }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.muted { color: var(--muted); }
+dl.facts { display: grid; grid-template-columns: max-content 1fr;
+           gap: 2px 12px; margin: 0 0 8px; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; font-family: ui-monospace, monospace;
+              overflow-wrap: anywhere; }
+#message { color: var(--bad); margin: 8px 0; }
+a { color: var(--accent); }
