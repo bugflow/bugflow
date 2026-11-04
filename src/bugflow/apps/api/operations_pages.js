@@ -86,6 +86,16 @@ function repositoryPage(forge, repo, more) {
     Object.assign({ forge, repo }, more || {}));
 }
 
+// The allowances page's address for one scope, where each allowance
+// that covers it is read and its own are changed.
+function allowancesPage(scope) {
+  const query = new URLSearchParams();
+  Object.entries(scope).forEach(([key, value]) => {
+    if (value) query.set(key, value);
+  });
+  return "allowances?" + query;
+}
+
 function renderAllowances(table, allowances, none) {
   table.replaceChildren();
   if (!allowances.length) {
@@ -104,7 +114,8 @@ function renderAllowances(table, allowances, none) {
       : one.has_room ? element("td", "ok", "has room")
       : element("td", "bad", one.over_usd > 0
           ? "over by " + dollars(one.over_usd) : "spent");
-    cells(row, [[scopeName(one.scope)], [one.per], [period],
+    cells(row, [[link(scopeName(one.scope), allowancesPage(one.scope))],
+                [one.per], [period],
                 [one.allowed_usd === null ? "no limit"
                                           : dollars(one.allowed_usd), "num"],
                 [dollars(one.spent_usd), "num"],

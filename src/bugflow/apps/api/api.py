@@ -50,6 +50,7 @@ from bugflow.method.domain.errors import (
     PolicyDeploymentConflictError,
     PolicyDeploymentError,
 )
+from bugflow.method.domain.models.pace_layer import CADENCES
 from bugflow.method.domain.services.policy_deployment_access import (
     PolicyDeploymentAccessService,
 )
@@ -80,6 +81,10 @@ from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
 from bugflow.review.infrastructure.sqlalchemy_spend_record import (
     SqlAlchemySpendRecord,
 )
+from bugflow.review.usecases.declare_allowance import (
+    DeclareAllowanceUseCase,
+)
+from bugflow.review.usecases.read_allowances import ReadAllowancesUseCase
 from bugflow.review.usecases.read_repository_operations import (
     ReadRepositoryOperationsUseCase,
 )
@@ -403,10 +408,24 @@ def operations_from(
     def by_dimension() -> ReadSpendOperationsUseCase:
         return ReadSpendOperationsUseCase(spend, ceilings, boundaries().window)
 
+    def allowances() -> ReadAllowancesUseCase:
+        return ReadAllowancesUseCase(ceilings, spend, boundaries().window)
+
+    def declare() -> DeclareAllowanceUseCase:
+        return DeclareAllowanceUseCase(
+            ceilings,
+            stamped_journal(database_url, build_sha(environ)),
+            SystemClock(),
+            uuid.uuid4().hex,
+        )
+
     return OperationsReading(
         role=role,
         run=run,
         repository=repository,
         spend=by_dimension,
+        allowances=allowances,
+        declare=declare,
+        cadences=tuple(CADENCES),
         clock=SystemClock(),
     )

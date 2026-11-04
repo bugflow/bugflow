@@ -19,9 +19,20 @@ by repository. ``layer`` or ``agent_id`` reads one, with the runs its
 figures are made of. Each lists the allowances that name a layer or an
 agent, or the one read.
 
+``GET /api/operations/allowances`` reads what one scope is allowed,
+named by ``forge``, ``repo`` or ``owner``, ``layer`` and ``agent_id``,
+each of which may be left out to mean any: the allowances it declares,
+those it inherits from each wider scope that covers it, and the ceiling
+each run in it is handed, with the allowance each limit comes from.
+``PUT`` with a scope, a cadence and both limits declares the scope's
+allowance for that cadence, where a limit of null is no limit, and
+``DELETE`` with ``per`` revokes it. Each answers with what the scope is
+then allowed, and journals the change with the caller as who made it.
+
 ``GET /operations/run``, ``/operations/repository``,
-``/operations/layers``, ``/operations/layer``, ``/operations/agents``
-and ``/operations/agent`` are the pages that show them. Each signs a
+``/operations/layers``, ``/operations/layer``, ``/operations/agents``,
+``/operations/agent`` and ``/operations/allowances`` are the pages that
+show them. Each signs a
 person in through the settings page's client, and holds no data until
 a route gives it some, so it needs no token.
 """
@@ -37,6 +48,12 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict
 
 from bugflow.review.domain.errors import RunNotFoundError
+from bugflow.review.domain.models.spend_binding import (
+    SpendBinding,
+    SpendScope,
+)
+from bugflow.review.dtos.declare_allowance import DeclareAllowanceRequest
+from bugflow.review.dtos.read_allowances import ReadAllowancesRequest
 from bugflow.review.dtos.read_repository_operations import (
     ReadRepositoryOperationsRequest,
 )
@@ -48,6 +65,10 @@ from bugflow.review.dtos.read_spend_operations import (
     Dimension,
     ReadSpendOperationsRequest,
 )
+from bugflow.review.usecases.declare_allowance import (
+    DeclareAllowanceUseCase,
+)
+from bugflow.review.usecases.read_allowances import ReadAllowancesUseCase
 from bugflow.review.usecases.read_repository_operations import (
     ReadRepositoryOperationsUseCase,
 )
@@ -57,11 +78,13 @@ from bugflow.review.usecases.read_run_operations import (
 from bugflow.review.usecases.read_spend_operations import (
     ReadSpendOperationsUseCase,
 )
+from bugflow.shared.domain.values.budget import Budget
 from bugflow.shared.domain.values.caller import Caller
 
 #: The pages, kept beside this module.
 RUN_PAGE = "operations_run_page.html"
 REPOSITORY_PAGE = "operations_repository_page.html"
+ALLOWANCES_PAGE = "operations_allowances_page.html"
 #: The pages of every layer or agent and of one, each served for both:
 #: ``__BY__`` and ``__EVERY__`` in them name which.
 SPEND_LIST_PAGE = "operations_spend_list_page.html"
@@ -88,6 +111,13 @@ class OperationsReading:
     run: Callable[[], ReadRunOperationsUseCase]
     repository: Callable[[], ReadRepositoryOperationsUseCase]
     spend: Callable[[], ReadSpendOperationsUseCase]
+    allowances: Callable[[], ReadAllowancesUseCase]
+    #: Each call declares through a use case of its own, a run of its
+    #: own in the journal.
+    declare: Callable[[], DeclareAllowanceUseCase]
+    #: The cadences an allowance may be counted per, as the method
+    #: names them.
+    cadences: tuple[str, ...]
     clock: Clock
 
 
@@ -111,6 +141,7 @@ class Allowance(BaseModel):
     scope: Scope
     per: str
     allowed_usd: float | None
+    allowed_turns: float | None = None
     spent_usd: float | None = None
     left_usd: float | None = None
     over_usd: float | None = None
@@ -234,6 +265,59 @@ class SpendOperations(BaseModel):
     runs: list[RunRow]
 
 
+class AppliedAllowance(Allowance):
+    #: Declared on the scope read, and changed there; otherwise
+    #: inherited from the wider scope it names.
+    own: bool
+
+
+class Source(BaseModel):
+    """The allowance a limit comes from."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scope: Scope
+    per: str
+
+
+class Ceiling(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    usd: float | None
+    usd_from: Source | None
+    turns: float | None
+    turns_from: Source | None
+
+
+class Allowances(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    scope: Scope
+    #: The cadences an allowance may be declared per.
+    cadences: list[str]
+    applied: list[AppliedAllowance]
+    #: What each run in the scope is handed, or None for nothing.
+    ceiling: Ceiling | None
+
+
+class Declaration(BaseModel):
+    """A scope's allowance for one cadence, as a person sets it: both
+    limits, where null is no limit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scope: Scope
+    per: str
+    usd: float | None
+    turns: float | None
+
+
+def _source(binding: SpendBinding | None) -> Source | None:
+    if binding is None:
+        return None
+    return Source(scope=_scope(binding.scope), per=binding.per)
+
+
 def _page(name: str) -> str:
     """One of the files the pages are made of, kept beside this module."""
     return files("bugflow.apps.api").joinpath(name).read_text()
@@ -254,19 +338,23 @@ def _aware(at: datetime | None) -> datetime | None:
     return at.replace(tzinfo=UTC)
 
 
+def _scope(scope: SpendScope) -> Scope:
+    return Scope(
+        forge=scope.forge,
+        owner=scope.owner,
+        repo=scope.repo,
+        layer=scope.layer,
+        agent_id=scope.agent_id,
+    )
+
+
 def _allowance(check: AllowanceCheck) -> Allowance:
-    scope = check.binding.scope
     held = check.remaining
     return Allowance(
-        scope=Scope(
-            forge=scope.forge,
-            owner=scope.owner,
-            repo=scope.repo,
-            layer=scope.layer,
-            agent_id=scope.agent_id,
-        ),
+        scope=_scope(check.binding.scope),
         per=check.binding.per,
         allowed_usd=check.binding.budget.usd,
+        allowed_turns=check.binding.budget.turns,
         spent_usd=None if held is None else held.spent.usd,
         left_usd=None if held is None else held.left_usd,
         over_usd=None if held is None else held.over_usd,
@@ -443,6 +531,115 @@ def operations_routes(
         agent_id: str | None = None,
     ) -> SpendOperations:
         return read_spend("agent", agent_id, since, until)
+
+    def scope_of(
+        forge: str, repo: str, owner: str, layer: str, agent_id: str
+    ) -> SpendScope:
+        if (repo or owner) and not forge:
+            raise HTTPException(
+                422,
+                "a scope that names a repository or an owner names its forge",
+            )
+        try:
+            return SpendScope(
+                forge=forge,
+                repo=repo,
+                owner=owner,
+                layer=layer,
+                agent_id=agent_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    def allowed(scope: SpendScope) -> Allowances:
+        read = reading.allowances().execute(
+            ReadAllowancesRequest(scope=scope, now=reading.clock.now())
+        )
+        ceiling = read.ceiling
+        return Allowances(
+            scope=_scope(read.scope),
+            cadences=list(reading.cadences),
+            applied=[
+                AppliedAllowance(
+                    **_allowance(one.check).model_dump(), own=one.own
+                )
+                for one in read.applied
+            ],
+            ceiling=None
+            if ceiling is None
+            else Ceiling(
+                usd=ceiling.usd,
+                usd_from=_source(ceiling.usd_from),
+                turns=ceiling.turns,
+                turns_from=_source(ceiling.turns_from),
+            ),
+        )
+
+    def declared(
+        scope: SpendScope, per: str, budget: Budget | None, who: Caller
+    ) -> Allowances:
+        if per not in reading.cadences:
+            raise HTTPException(
+                422,
+                f"{per!r} is not a cadence; an allowance is per one of "
+                f"{', '.join(reading.cadences)}",
+            )
+        reading.declare().execute(
+            DeclareAllowanceRequest(
+                scope=scope, per=per, budget=budget, declared_by=who.subject
+            )
+        )
+        return allowed(scope)
+
+    @app.get("/api/operations/allowances")
+    def read_allowances(
+        who: Annotated[Caller, Depends(operator)],
+        forge: str = "",
+        repo: str = "",
+        owner: str = "",
+        layer: str = "",
+        agent_id: str = "",
+    ) -> Allowances:
+        return allowed(scope_of(forge, repo, owner, layer, agent_id))
+
+    @app.put("/api/operations/allowances")
+    def declare_allowance(
+        body: Declaration, who: Annotated[Caller, Depends(operator)]
+    ) -> Allowances:
+        limits = (body.usd, body.turns)
+        if any(one is not None and one < 0 for one in limits):
+            raise HTTPException(422, "a limit is not below zero")
+        scope = body.scope
+        return declared(
+            scope_of(
+                scope.forge,
+                scope.repo,
+                scope.owner,
+                scope.layer,
+                scope.agent_id,
+            ),
+            body.per,
+            Budget(usd=body.usd, turns=body.turns),
+            who,
+        )
+
+    @app.delete("/api/operations/allowances")
+    def revoke_allowance(
+        per: str,
+        who: Annotated[Caller, Depends(operator)],
+        forge: str = "",
+        repo: str = "",
+        owner: str = "",
+        layer: str = "",
+        agent_id: str = "",
+    ) -> Allowances:
+        return declared(
+            scope_of(forge, repo, owner, layer, agent_id), per, None, who
+        )
+
+    @app.get("/operations/allowances", response_class=HTMLResponse)
+    def allowances_page() -> str:
+        return _page(ALLOWANCES_PAGE)
 
     for by, every in DIMENSIONS.items():
         _spend_pages(app, by, every)
