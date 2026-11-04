@@ -39,6 +39,9 @@ from bugflow.review.usecases.declare_allowance import (
     DeclareAllowanceUseCase,
 )
 from bugflow.review.usecases.read_allowances import ReadAllowancesUseCase
+from bugflow.review.usecases.read_operations_overview import (
+    ReadOperationsOverviewUseCase,
+)
 from bugflow.review.usecases.read_repository_operations import (
     ReadRepositoryOperationsUseCase,
 )
@@ -165,6 +168,9 @@ class Server:
                     ),
                     allowances=lambda: ReadAllowancesUseCase(
                         self.ceilings, self.spend, lambda binding, now: None
+                    ),
+                    overview=lambda: ReadOperationsOverviewUseCase(
+                        self.spend, self.ceilings, lambda binding, now: None
                     ),
                     declare=lambda: DeclareAllowanceUseCase(
                         self.ceilings, self.journal, Clock(), "run-1"

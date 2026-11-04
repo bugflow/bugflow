@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations</title>
+<link rel="stylesheet" href="pages.css">
+</head>
+<body>
+<main>
+  <nav><a href="./">Overview</a><a href="layers">Layers</a><a
+    href="agents">Agents</a><a href="allowances">Allowances</a></nav>
+  <h1>Operations</h1>
+  <div id="signedout" hidden>
+    <p class="lede">Sign in to see what this server spent, what its
+      allowances have left and what it did lately.</p>
+    <button id="signin">Sign in</button>
+  </div>
+  <div id="message" role="alert"></div>
+  <div id="signedin" hidden>
+    <form class="period" id="period">
+      <label>From <input type="date" id="since" required></label>
+      <label>Through <input type="date" id="until" required></label>
+      <button type="submit">Read the period</button>
+    </form>
+    <dl class="facts" id="facts"></dl>
+    <h2>Remaining</h2>
+    <p class="lede">Every allowance, beside what its scope spent in its
+      own current period, which need not be the period above. Those with
+      no room, and those whose period cannot be found, come first. An
+      allowance per run is measured on each run's own page.</p>
+    <div class="wrap"><table id="allowances"></table></div>
+    <h2>Spend by repository</h2>
+    <p class="lede" id="spendlede"></p>
+    <div class="wrap"><table id="spend"></table></div>
+    <h2>Recent activity</h2>
+    <p class="lede" id="recentlede"></p>
+    <div class="wrap"><table id="recent"></table></div>
+  </div>
+</main>
+<script src="../sign-in.js"></script>
+<script src="pages.js"></script>
+<script>
+"use strict";
+
+function renderFacts(held) {
+  const facts = document.getElementById("facts");
+  facts.replaceChildren();
+  [["Period", when(held.since) + " to " + when(held.until)],
+   ["Spent", dollars(held.spent_usd) + " by " + held.runs + " runs on " +
+             held.repositories.length + " repositories"]
+  ].forEach(([name, value]) => {
+    facts.append(element("dt", "", name), element("dd", "", value));
+  });
+}
+
+function renderSpend(held) {
+  const period = Object.fromEntries(
+    periodQuery(new URLSearchParams(location.search)));
+  document.getElementById("spendlede").textContent =
+    "What each repository spent from " + when(held.since) + " to " +
+    when(held.until) + ", most first. Each figure opens the repository's " +
+    "spend by layer and agent, and its runs.";
+  const table = document.getElementById("spend");
+  table.replaceChildren();
+  if (!held.repositories.length) {
+    empty(table, "Nothing was spent in the period.");
+    return;
+  }
+  heading(table, [["Repository"], ["Spent", "num"], ["Facts", "num"],
+                  ["Runs", "num"]]);
+  held.repositories.forEach(one => {
+    cells(table.insertRow(), [
+      [one.forge + ":" + one.repo],
+      [link(dollars(one.usd), repositoryPage(one.forge, one.repo, period)),
+       "num"],
+      [String(one.facts), "num"], [String(one.runs), "num"]]);
+  });
+  cells(table.insertRow(), [
+    ["Total"], [dollars(held.spent_usd), "num"],
+    [String(held.repositories.reduce((sum, one) => sum + one.facts, 0)),
+     "num"],
+    [String(held.runs), "num"]]);
+}
+
+function renderRecent(held) {
+  document.getElementById("recentlede").textContent =
+    "The latest " + held.recent.length + " of the " + held.runs +
+    " runs that spent from " + when(held.since) + " to " +
+    when(held.until) + ". Each opens its facts and activity.";
+  renderRunList(document.getElementById("recent"), held.recent,
+                "No run spent in the period.", true);
+}
+
+openPage("api/operations/overview?" +
+         periodQuery(new URLSearchParams(location.search)), held => {
+  renderFacts(held);
+  renderAllowances(document.getElementById("allowances"), held.allowances,
+                   "No allowance is declared, so nothing may spend.");
+  renderSpend(held);
+  renderRecent(held);
+  choosePeriod(held);
+});
+</script>
+</body>
+</html>
