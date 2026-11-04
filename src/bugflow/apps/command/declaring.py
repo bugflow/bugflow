@@ -46,7 +46,6 @@ from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
 from bugflow.review.domain.facts import (
-    ALLOWANCE_DECLARED,
     BOUNDARY_DECLARED,
     CADENCE_DECLARED,
     WITHHOLDING_DECLARED,
@@ -55,12 +54,15 @@ from bugflow.review.domain.facts import (
 from bugflow.review.domain.models.cadence_boundary import CadenceBoundary
 from bugflow.review.domain.models.layer_boundary import LayerBoundary
 from bugflow.review.domain.models.spend_binding import (
-    SpendBinding,
     SpendScope,
     owner_of,
 )
 from bugflow.review.domain.models.withholding import Withholding
+from bugflow.review.domain.services.spend_bindings import (
+    SpendBindingsService,
+)
 from bugflow.review.domain.values.checked_policy import CHECKS
+from bugflow.review.dtos.declare_allowance import DeclareAllowanceRequest
 from bugflow.review.infrastructure.sqlalchemy_cadence_boundaries import (
     SqlAlchemyCadenceBoundaries,
 )
@@ -75,6 +77,10 @@ from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
 )
 from bugflow.review.infrastructure.sqlalchemy_withholding import (
     SqlAlchemyWithholding,
+)
+from bugflow.review.usecases.declare_allowance import (
+    DeclareAllowanceUseCase,
+    held,
 )
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.budget import Budget
@@ -134,6 +140,18 @@ class Declarations:
         self._clock = SystemClock()
         self._run_id = uuid.uuid4().hex
         self._by = by or f"host:{getpass.getuser()}"
+
+    def allowances(
+        self, bindings: SpendBindingsService
+    ) -> tuple[DeclareAllowanceUseCase, str]:
+        """The use case allowances are declared through, journalled as
+        this command's other declarations are, and who declares them."""
+        return (
+            DeclareAllowanceUseCase(
+                bindings, self._journal, self._clock, self._run_id
+            ),
+            self._by,
+        )
 
     def record(
         self,
@@ -523,29 +541,25 @@ def run_allow(
         return console.refuse(found)
     scope, where = found
     bindings = SqlAlchemySpendBindings(database_url)
-    held = _held(bindings, scope, per)
-    if held is None and not (money and turning):
+    current = held(bindings, scope, per)
+    if current is None and not (money and turning):
         return console.refuse(
             "this scope has no allowance for that cadence, so there "
             "is nothing to leave alone: name both resources, with "
             "--usd or --no-money-limit and --turns or --no-turn-limit"
         )
-    was = held
-    held = held or Budget(usd=None, turns=None)
+    current = current or Budget(usd=None, turns=None)
     budget = Budget(
-        usd=held.usd if isinstance(usd, Unnamed) else usd,
-        turns=held.turns if isinstance(turns, Unnamed) else turns,
+        usd=current.usd if isinstance(usd, Unnamed) else usd,
+        turns=current.turns if isinstance(turns, Unnamed) else turns,
     )
-    if budget != was:
-        Declarations(database_url, build).record(
-            ALLOWANCE_DECLARED,
-            scope.forge,
-            scope.repo,
-            _allowance(scope, per, budget, was),
-            scope.agent_id,
+    declare, by = Declarations(database_url, build).allowances(bindings)
+    declared = declare.execute(
+        DeclareAllowanceRequest(
+            scope=scope, per=per, budget=budget, declared_by=by
         )
-    bindings.declare(SpendBinding(scope=scope, budget=budget, per=per))
-    console.say(_said(where, _held(bindings, scope, per), per))
+    )
+    console.say(_said(where, declared.held, per))
     if (
         CADENCES[per].on_a_clock
         and SqlAlchemyCadenceBoundaries(database_url).boundary(per) is None
@@ -557,42 +571,6 @@ def run_allow(
             f"`bugflow cadence {per} --boundary BOUNDARY`"
         )
     return 0
-
-
-def _allowance(
-    scope: SpendScope, per: str, budget: Budget | None, was: Budget | None
-) -> dict[str, object]:
-    """The payload of an allowance's fact: the scope beyond its
-    repository, the cadence, and what it holds after and held before.
-    None is an allowance not held, and a limit held and None is none."""
-    return {
-        "owner": scope.owner,
-        "layer": scope.layer,
-        "agent_id": scope.agent_id,
-        "per": per,
-        "held": budget is not None,
-        "usd": budget.usd if budget else None,
-        "turns": budget.turns if budget else None,
-        "was_held": was is not None,
-        "was_usd": was.usd if was else None,
-        "was_turns": was.turns if was else None,
-    }
-
-
-def _held(
-    bindings: SqlAlchemySpendBindings, scope: SpendScope, per: str
-) -> Budget | None:
-    """Return the allowance this scope holds for that cadence, matched
-    by its whole key: a scope holds one allowance per cadence, and
-    matching the scope alone finds whichever comes back first."""
-    return next(
-        (
-            one.budget
-            for one in bindings.bindings()
-            if one.scope == scope and one.per == per
-        ),
-        None,
-    )
 
 
 def run_revoke(
@@ -620,16 +598,12 @@ def run_revoke(
         return console.refuse(found)
     scope, where = found
     bindings = SqlAlchemySpendBindings(database_url)
-    was = _held(bindings, scope, per)
-    if was is not None:
-        Declarations(database_url, build).record(
-            ALLOWANCE_DECLARED,
-            scope.forge,
-            scope.repo,
-            _allowance(scope, per, None, was),
-            scope.agent_id,
+    declare, by = Declarations(database_url, build).allowances(bindings)
+    declare.execute(
+        DeclareAllowanceRequest(
+            scope=scope, per=per, budget=None, declared_by=by
         )
-    bindings.revoke(scope, per)
+    )
     left = [one for one in bindings.bindings() if one.scope == scope]
     console.say(f"{where} is no longer allowed anything per {per}")
     if not left:
