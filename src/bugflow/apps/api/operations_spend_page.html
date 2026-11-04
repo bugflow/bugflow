@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spend of one __BY__</title>
+<link rel="stylesheet" href="pages.css">
+</head>
+<body>
+<main>
+  <nav><a href="layers">Layers</a><a href="agents">Agents</a></nav>
+  <h1>Spend of one __BY__</h1>
+  <div id="signedout" hidden>
+    <p class="lede">Sign in to see what a __BY__ spent.</p>
+    <button id="signin">Sign in</button>
+  </div>
+  <div id="message" role="alert"></div>
+  <div id="signedin" hidden>
+    <dl class="facts" id="facts"></dl>
+    <form class="period" id="period">
+      <label>From <input type="date" id="since" required></label>
+      <label>Through <input type="date" id="until" required></label>
+      <button type="submit">Read the period</button>
+    </form>
+    <h2>Spend</h2>
+    <p class="lede" id="spendlede"></p>
+    <div class="wrap"><table id="spend"></table></div>
+    <h2>Allowances</h2>
+    <p class="lede">Each allowance whose scope names this __BY__, beside
+      what its scope spent in its current period. An allowance per run
+      is measured on each run's own page.</p>
+    <div class="wrap"><table id="allowances"></table></div>
+    <h2 id="runs">Runs</h2>
+    <p class="lede" id="runslede"></p>
+    <div class="wrap"><table id="runlist"></table></div>
+  </div>
+</main>
+<script src="../sign-in.js"></script>
+<script src="pages.js"></script>
+<script>
+"use strict";
+
+const BY = "__BY__", KEY = BY === "layer" ? "layer" : "agent_id";
+// The other dimension, which each repository's spend is split by.
+const OTHER = BY === "layer" ? "agent_id" : "layer";
+
+function title(name) {
+  return name ? BY + " " + name : "facts naming no " + BY;
+}
+
+function renderFacts(held) {
+  const facts = document.getElementById("facts");
+  facts.replaceChildren();
+  [[BY === "layer" ? "Layer" : "Agent", held.name || "none"],
+   ["Period", when(held.since) + " to " + when(held.until)],
+   ["Spent", dollars(held.spent_usd) + " in the period"]
+  ].forEach(([name, value]) => {
+    facts.append(element("dt", "", name), element("dd", "", value));
+  });
+}
+
+function renderSpend(held) {
+  document.getElementById("spendlede").textContent =
+    "What " + title(held.name) + " spent from " + when(held.since) +
+    " to " + when(held.until) + ", by repository and " +
+    (BY === "layer" ? "agent" : "layer") + ". Each figure opens the " +
+    "repository's runs it is made of.";
+  const table = document.getElementById("spend");
+  table.replaceChildren();
+  if (!held.cells.length) {
+    empty(table, "Nothing was spent in the period.");
+    return;
+  }
+  heading(table, [["Repository"], [BY === "layer" ? "Agent" : "Layer"],
+                  ["Spent", "num"], ["Facts", "num"], ["Runs", "num"]]);
+  held.cells.forEach(one => {
+    const runs = Object.assign(
+      { layer: one.layer, agent: one.agent_id },
+      Object.fromEntries(periodQuery(new URLSearchParams(location.search))));
+    cells(table.insertRow(), [
+      [link(one.forge + ":" + one.repo, repositoryPage(one.forge, one.repo))],
+      named(one[OTHER]),
+      [link(dollars(one.usd), repositoryPage(one.forge, one.repo, runs) +
+                              "#runs"), "num"],
+      [String(one.facts), "num"], [String(one.runs), "num"]]);
+  });
+  cells(table.insertRow(), [
+    ["Total"], [""],
+    [link(dollars(held.spent_usd), "#runs"), "num"],
+    [String(held.cells.reduce((sum, one) => sum + one.facts, 0)), "num"],
+    [String(held.runs.length), "num"]]);
+}
+
+function renderRuns(held) {
+  document.getElementById("runslede").textContent =
+    "The runs whose " + title(held.name) + " spent " +
+    dollars(held.runs.reduce((sum, one) => sum + one.usd, 0)) + " from " +
+    when(held.since) + " to " + when(held.until) + ", latest first, each " +
+    "with what this " + BY + " spent of it. Each opens its facts and " +
+    "activity.";
+  renderRunList(document.getElementById("runlist"), held.runs,
+                "No run spent here in the period.", true);
+}
+
+const params = new URLSearchParams(location.search);
+if (!params.has(BY)) {
+  say("Name a " + BY + ": this page is opened with ?" + BY + "=…, where " +
+      "an empty name is the facts that name none.");
+} else {
+  const query = periodQuery(params);
+  query.set(KEY, params.get(BY));
+  openPage("api/operations/__EVERY__?" + query, held => {
+    renderFacts(held);
+    renderSpend(held);
+    renderAllowances(document.getElementById("allowances"), held.allowances,
+                     "No allowance names this " + BY + ".");
+    renderRuns(held);
+    choosePeriod(held);
+  });
+}
+</script>
+</body>
+</html>
