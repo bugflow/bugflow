@@ -430,6 +430,32 @@ def test_the_worker_indexes_archives_only_where_a_bucket_is_named(
     assert "WORKER_ARCHIVE_S3_ACCESS_KEY=reader" in worker
 
 
+#: Each secret, by the one template that writes it: a credential a
+#: service cannot use is one a break-in there gets for free.
+HELD_BY = {
+    # The review key starts sessions that cost money, and the repository
+    # token acts on the mounted repository through the git proxy.
+    "vault_bugflow_review_runner_api_key": "worker",
+    "vault_bugflow_review_repository_token": "worker",
+    # What the judge said to a model is the worker's to keep, and what
+    # scopes seal is the archive host's: a break-in at the host that
+    # serves archives reads no model exchange, and the worker cannot
+    # rewrite an archive.
+    "vault_bugflow_tokenomic_s3_secret_key": "worker",
+    "vault_bugflow_archive_s3_secret_key": "archive",
+}
+
+
+@pytest.mark.parametrize("secret", sorted(HELD_BY))
+def test_a_secret_is_written_only_where_it_is_used(secret: str) -> None:
+    holders = {
+        path.name.removesuffix(".env.j2")
+        for path in TEMPLATES.glob("*.env.j2")
+        if secret in path.read_text()
+    }
+    assert holders == {HELD_BY[secret]}
+
+
 def test_the_worker_is_given_no_doctrine_path() -> None:
     """Doctrine reaches a server in a policy deployment, not on a path
     in the image."""
