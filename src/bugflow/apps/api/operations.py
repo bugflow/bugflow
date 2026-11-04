@@ -26,7 +26,7 @@ from importlib.resources import files
 from typing import Annotated, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict
 
 from bugflow.review.domain.errors import RunNotFoundError
@@ -48,6 +48,9 @@ from bugflow.shared.domain.values.caller import Caller
 #: The pages, kept beside this module.
 RUN_PAGE = "operations_run_page.html"
 REPOSITORY_PAGE = "operations_repository_page.html"
+#: What every page shares: its script and its style.
+PAGES_SCRIPT = "operations_pages.js"
+PAGES_STYLE = "operations_pages.css"
 #: The period a repository's spend is read over when none is named.
 DEFAULT_PERIOD = timedelta(days=30)
 
@@ -179,6 +182,11 @@ class RepositoryOperations(BaseModel):
     layer: str | None
     agent_id: str | None
     runs: list[RunRow]
+
+
+def _page(name: str) -> str:
+    """One of the files the pages are made of, kept beside this module."""
+    return files("bugflow.apps.api").joinpath(name).read_text()
 
 
 def _aware(at: datetime | None) -> datetime | None:
@@ -319,10 +327,18 @@ def operations_routes(
             runs=[RunRow(**one.model_dump()) for one in read.runs],
         )
 
+    @app.get("/operations/pages.js")
+    def pages_script() -> Response:
+        return Response(_page(PAGES_SCRIPT), media_type="text/javascript")
+
+    @app.get("/operations/pages.css")
+    def pages_style() -> Response:
+        return Response(_page(PAGES_STYLE), media_type="text/css")
+
     @app.get("/operations/run", response_class=HTMLResponse)
     def run_page() -> str:
-        return files("bugflow.apps.api").joinpath(RUN_PAGE).read_text()
+        return _page(RUN_PAGE)
 
     @app.get("/operations/repository", response_class=HTMLResponse)
     def repository_page() -> str:
-        return files("bugflow.apps.api").joinpath(REPOSITORY_PAGE).read_text()
+        return _page(REPOSITORY_PAGE)

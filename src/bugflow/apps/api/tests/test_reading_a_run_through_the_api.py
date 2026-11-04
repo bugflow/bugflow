@@ -115,3 +115,16 @@ def test_the_run_page_needs_no_token() -> None:
     assert page.status_code == 200
     assert "<title>Run spend</title>" in page.text
     assert '<script src="../sign-in.js"></script>' in page.text
+
+
+def test_every_page_loads_the_script_and_style_the_pages_share() -> None:
+    server = Server()
+    for page in ("/operations/run", "/operations/repository"):
+        text = server.client.get(page).text
+        assert '<script src="pages.js"></script>' in text
+        assert '<link rel="stylesheet" href="pages.css">' in text
+    script = server.client.get("/operations/pages.js")
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert "function renderAllowances(" in script.text
+    style = server.client.get("/operations/pages.css")
+    assert style.headers["content-type"].startswith("text/css")
