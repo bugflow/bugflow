@@ -29,12 +29,18 @@ allowance for that cadence, where a limit of null is no limit, and
 ``DELETE`` with ``per`` revokes it. Each answers with what the scope is
 then allowed, and journals the change with the caller as who made it.
 
-``GET /operations/run``, ``/operations/repository``,
+``GET /api/operations/overview`` reads the whole server over the same
+period: what each repository spent, every allowance measured over its
+current period with those out of room first, and the ``recent`` latest
+runs that spent, twenty unless said.
+
+``GET /operations/`` is the overview's page, and ``/operations``
+redirects to it. ``/operations/run``, ``/operations/repository``,
 ``/operations/layers``, ``/operations/layer``, ``/operations/agents``,
 ``/operations/agent`` and ``/operations/allowances`` are the pages that
-show them. Each signs a
-person in through the settings page's client, and holds no data until
-a route gives it some, so it needs no token.
+show the rest. Each signs a person in through the settings page's
+client, and holds no data until a route gives it some, so it needs no
+token.
 """
 
 from collections.abc import Callable
@@ -44,7 +50,7 @@ from importlib.resources import files
 from typing import Annotated, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict
 
 from bugflow.review.domain.errors import RunNotFoundError
@@ -54,6 +60,9 @@ from bugflow.review.domain.models.spend_binding import (
 )
 from bugflow.review.dtos.declare_allowance import DeclareAllowanceRequest
 from bugflow.review.dtos.read_allowances import ReadAllowancesRequest
+from bugflow.review.dtos.read_operations_overview import (
+    ReadOperationsOverviewRequest,
+)
 from bugflow.review.dtos.read_repository_operations import (
     ReadRepositoryOperationsRequest,
 )
@@ -69,6 +78,9 @@ from bugflow.review.usecases.declare_allowance import (
     DeclareAllowanceUseCase,
 )
 from bugflow.review.usecases.read_allowances import ReadAllowancesUseCase
+from bugflow.review.usecases.read_operations_overview import (
+    ReadOperationsOverviewUseCase,
+)
 from bugflow.review.usecases.read_repository_operations import (
     ReadRepositoryOperationsUseCase,
 )
@@ -85,6 +97,7 @@ from bugflow.shared.domain.values.caller import Caller
 RUN_PAGE = "operations_run_page.html"
 REPOSITORY_PAGE = "operations_repository_page.html"
 ALLOWANCES_PAGE = "operations_allowances_page.html"
+OVERVIEW_PAGE = "operations_overview_page.html"
 #: The pages of every layer or agent and of one, each served for both:
 #: ``__BY__`` and ``__EVERY__`` in them name which.
 SPEND_LIST_PAGE = "operations_spend_list_page.html"
@@ -112,6 +125,7 @@ class OperationsReading:
     repository: Callable[[], ReadRepositoryOperationsUseCase]
     spend: Callable[[], ReadSpendOperationsUseCase]
     allowances: Callable[[], ReadAllowancesUseCase]
+    overview: Callable[[], ReadOperationsOverviewUseCase]
     #: Each call declares through a use case of its own, a run of its
     #: own in the journal.
     declare: Callable[[], DeclareAllowanceUseCase]
@@ -310,6 +324,30 @@ class Declaration(BaseModel):
     per: str
     usd: float | None
     turns: float | None
+
+
+class RepositorySpend(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    forge: str
+    repo: str
+    usd: float
+    facts: int
+    runs: int
+
+
+class OperationsOverview(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    since: datetime
+    until: datetime
+    spent_usd: float
+    repositories: list[RepositorySpend]
+    allowances: list[Allowance]
+    #: The latest runs that spent in the period, latest first.
+    recent: list[RunRow]
+    #: How many runs spent in the period.
+    runs: int
 
 
 def _source(binding: SpendBinding | None) -> Source | None:
@@ -636,6 +674,44 @@ def operations_routes(
         return declared(
             scope_of(forge, repo, owner, layer, agent_id), per, None, who
         )
+
+    @app.get("/api/operations/overview")
+    def read_overview(
+        who: Annotated[Caller, Depends(operator)],
+        since: datetime | None = None,
+        until: datetime | None = None,
+        recent: int = 20,
+    ) -> OperationsOverview:
+        now = reading.clock.now()
+        begins, ends = _period(since, until, now)
+        try:
+            asked = ReadOperationsOverviewRequest(
+                since=begins, until=ends, now=now, recent=recent
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        read = reading.overview().execute(asked)
+        return OperationsOverview(
+            since=read.since,
+            until=read.until,
+            spent_usd=read.spent_usd,
+            repositories=[
+                RepositorySpend(**one.model_dump())
+                for one in read.repositories
+            ],
+            allowances=[_allowance(one) for one in read.allowances],
+            recent=[RunRow(**one.model_dump()) for one in read.recent],
+            runs=read.runs,
+        )
+
+    @app.get("/operations", include_in_schema=False)
+    def to_overview() -> RedirectResponse:
+        # The pages name each other relative to /operations/.
+        return RedirectResponse("/operations/")
+
+    @app.get("/operations/", response_class=HTMLResponse)
+    def overview_page() -> str:
+        return _page(OVERVIEW_PAGE)
 
     @app.get("/operations/allowances", response_class=HTMLResponse)
     def allowances_page() -> str:
