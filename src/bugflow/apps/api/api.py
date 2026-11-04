@@ -85,6 +85,9 @@ from bugflow.review.usecases.declare_allowance import (
     DeclareAllowanceUseCase,
 )
 from bugflow.review.usecases.read_allowances import ReadAllowancesUseCase
+from bugflow.review.usecases.read_operations_overview import (
+    ReadOperationsOverviewUseCase,
+)
 from bugflow.review.usecases.read_repository_operations import (
     ReadRepositoryOperationsUseCase,
 )
@@ -411,6 +414,11 @@ def operations_from(
     def allowances() -> ReadAllowancesUseCase:
         return ReadAllowancesUseCase(ceilings, spend, boundaries().window)
 
+    def overview() -> ReadOperationsOverviewUseCase:
+        return ReadOperationsOverviewUseCase(
+            spend, ceilings, boundaries().window
+        )
+
     def declare() -> DeclareAllowanceUseCase:
         return DeclareAllowanceUseCase(
             ceilings,
@@ -425,6 +433,7 @@ def operations_from(
         repository=repository,
         spend=by_dimension,
         allowances=allowances,
+        overview=overview,
         declare=declare,
         cadences=tuple(CADENCES),
         clock=SystemClock(),
