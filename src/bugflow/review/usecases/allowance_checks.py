@@ -42,3 +42,20 @@ def in_period(
     return AllowanceCheck(
         binding=binding, remaining=Remaining(binding=binding, spent=spent)
     )
+
+
+#: Why an allowance per run is not measured where many runs are read.
+PER_RUN = "an allowance per run is measured on each run"
+
+
+def measured(
+    binding: SpendBinding,
+    now: datetime,
+    window: Window,
+    spend: SpendRecordService,
+) -> AllowanceCheck:
+    """The allowance beside what its scope spent in its current period,
+    or, for an allowance per run, said to be measured on each run."""
+    return in_period(binding, now, window, spend) or AllowanceCheck(
+        binding=binding, unmeasured=PER_RUN
+    )
