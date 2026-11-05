@@ -349,7 +349,7 @@ def test_examples_with_no_editor_are_refused() -> None:
     }
     with pytest.raises(
         PolicyDeploymentError,
-        match=r"pr-comment-editor/examples/: editor\.md is missing",
+        match=r"pr-comment-editor/examples/: pr-comment-editor\.md is missing",
     ):
         parse_deployment(deployment(files))
 
