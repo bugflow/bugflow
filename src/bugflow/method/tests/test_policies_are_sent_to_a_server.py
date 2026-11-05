@@ -105,7 +105,10 @@ def test_the_glossary_files_are_sent(tmp_path: Path) -> None:
     "bugflow deploy-policies sends the editor's files.",
 )
 def test_the_editors_files_are_sent(tmp_path: Path) -> None:
-    beside = {"editor/README.md": "notes\n", "editor/cases/one.md": "x\n"}
+    beside = {
+        "pr-comment-editor/README.md": "notes\n",
+        "pr-comment-editor/cases/one.md": "x\n",
+    }
     for path, text in (EDITED | beside).items():
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text(text)

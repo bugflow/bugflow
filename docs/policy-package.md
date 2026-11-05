@@ -20,9 +20,9 @@ and the gnomes it pins.
     profiles.toml                     binding: named sets of each reviewer's policies
     glossary/**                       binding: the words documents it copies in,
                                       each a .md, .txt or .org file
-    editor.md                         binding: the instructions the editor of a
+    pr-comment-editor.md              binding: the instructions the editor of a
                                       review comment follows
-    editor/examples/*.md              binding: comments the editor is shown, each
+    pr-comment-editor/examples/*.md   binding: comments the editor is shown, each
                                       good or bad, with why
     <reviewer>/manifest.md            gnome: the reviewer's id, subjects, policies, checks
     <reviewer>/doctrine/*.md          gnome: the doctrine, read in filename order
@@ -272,7 +272,7 @@ matter, in plain words, with the passage quoted where the author needs
 to find it. One editor speaks for every reviewer on a server, so it is
 the binding's and not a gnome's. A binding without one posts the draft.
 
-`editor.md` is a header, a line of three dashes, and the instructions:
+`pr-comment-editor.md` is a header, a line of three dashes, and the instructions:
 
     model_class: medium
     ---
@@ -281,7 +281,7 @@ the binding's and not a gnome's. A binding without one posts the draft.
 - `model_class`: the class of model that follows the instructions,
   `small`, `medium` or `large`. Required.
 
-Each file under `editor/examples/` is one example: a header, a line of
+Each file under `pr-comment-editor/examples/` is one example: a header, a line of
 three dashes, and a comment. The file is named `good-NN-name.md` for a
 comment to write like and `bad-NN-name.md` for one not to, and its one
 header line says why:

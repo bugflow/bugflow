@@ -56,7 +56,7 @@ GLOSSARY = "glossary"
 GLOSSARY_SUFFIXES = (".md", ".txt", ".org")
 #: The directory the editor's examples are under, which is the editor's
 #: and no reviewer's.
-EDITORS = "editor"
+EDITORS = "pr-comment-editor"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -97,8 +97,9 @@ def _in_glossary(path: str) -> bool:
 
 
 def _editors(path: str) -> bool:
-    """Whether the path is the editor's: ``editor.md`` or anything under
-    ``editor/``, which no reviewer may be named."""
+    """Whether the path is the editor's: ``pr-comment-editor.md`` or
+    anything under ``pr-comment-editor/``, which no reviewer may be
+    named."""
     return path == EDITOR or PurePosixPath(path).parts[0] == EDITORS
 
 
