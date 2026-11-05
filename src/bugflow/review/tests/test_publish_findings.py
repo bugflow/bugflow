@@ -37,6 +37,7 @@ from bugflow.review.usecases.publish_findings import (
     PublishFindingsUseCase,
     cited_clauses,
     commit_status_for,
+    links_in,
     marker_for,
     resolved_since,
     review_label,
@@ -1878,3 +1879,95 @@ def test_the_draft_the_editor_sees_has_no_markers() -> None:
     assert unmarked_draft(draft) == (
         "**Prose review:** 1 failure.\n\n**Safety review:** nothing."
     )
+
+
+SITE = "https://example.org/pr-gnome/"
+GIT_4_PAGE = f"{SITE}doctrine/#RULE-103"
+
+
+def linking_publisher(
+    forge: RecordingForge, journal: QueryableJournal, editor: FakeEditor
+) -> PublishFindingsUseCase:
+    return PublishFindingsUseCase(
+        forge,
+        journal,
+        FixedClock(),
+        enforcement=BoundTo(gate()),
+        agents=AGENTS,
+        sites={"prose": SITE},
+        editor=editor,
+    )
+
+
+def linking(*findings: Finding) -> PublishFindingsRequest:
+    """A request whose findings' clause has a name, so the comment
+    links it."""
+    return request(*findings).model_copy(
+        update={"clauses": {"RULE-103": GIT_3}}
+    )
+
+
+def test_the_links_the_draft_holds_are_counted_with_those_kept() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    editor = FakeEditor(f"Split the retry out ([one reason]({GIT_4_PAGE})).")
+    linking_publisher(forge, journal, editor).execute(
+        linking(
+            finding("fail", "two changes"),
+            finding("warn", "long line", policy_id="P-01"),
+        )
+    )
+    (draft,) = editor.drafts
+    assert links_in(draft.text) == {GIT_4_PAGE}
+    (edit,) = edits(journal)
+    assert (edit.status, edit.links_in_draft, edit.links_kept) == (
+        "edited",
+        1,
+        1,
+    )
+    ((_, body),) = forge.comments
+    assert GIT_4_PAGE in body
+
+
+def test_a_link_dropped_by_the_editor_is_counted_as_not_kept() -> None:
+    journal = QueryableJournal()
+    linking_publisher(
+        RecordingForge(), journal, FakeEditor("Split the retry out.")
+    ).execute(linking(finding("fail", "two changes")))
+    (edit,) = edits(journal)
+    assert (edit.links_in_draft, edit.links_kept) == (1, 0)
+
+
+@pytest.mark.model(
+    "Editor",
+    "A link the draft does not hold is never posted.",
+)
+def test_a_link_the_editor_invented_leaves_the_draft_posted() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    invented = "https://example.org/nowhere/#RULE-1"
+    editor = FakeEditor(f"See [the rule]({invented}).")
+    linking_publisher(forge, journal, editor).execute(
+        linking(finding("fail", "two changes"))
+    )
+    ((marker, body),) = forge.comments
+    assert invented not in body
+    assert GIT_4_PAGE in body
+    assert body.startswith(f"{marker}\n\n{marker_for(RUN, PROSE)}")
+    (edit,) = edits(journal)
+    assert edit.status == (
+        f"refused: the editor added a link the draft does not hold: {invented}"
+    )
+    assert edit.posted == edit.draft
+
+
+def test_links_are_read_as_a_forge_ends_them() -> None:
+    text = (
+        f'<a href="{GIT_4_PAGE}">One reason</a> and [again]({GIT_4_PAGE}) '
+        "and plain https://example.org/x, then (https://example.org/y)."
+    )
+    assert links_in(text) == {
+        GIT_4_PAGE,
+        "https://example.org/x",
+        "https://example.org/y",
+    }

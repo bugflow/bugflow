@@ -132,6 +132,8 @@ comment_edit = sa.Table(
     sa.Column("draft", sa.Text, nullable=False),
     sa.Column("posted", sa.Text, nullable=False),
     sa.Column("model", sa.Text),
+    sa.Column("links_in_draft", sa.Integer, nullable=False),
+    sa.Column("links_kept", sa.Integer, nullable=False),
 )
 
 comment_edit_reviewer = sa.Table(
@@ -424,6 +426,8 @@ def unpack_edit(connection: sa.Connection, entry: JournalEntry) -> None:
         draft=p["draft"],
         posted=p["posted"],
         model=p.get("model"),
+        links_in_draft=p.get("links_in_draft") or 0,
+        links_kept=p.get("links_kept") or 0,
     )
     _many(
         connection,
@@ -775,7 +779,15 @@ def read_facts(
     )
     for row in _rows(connection, comment_edit, event_ids):
         facts[row["event_id"]] = CommentEdit(
-            **_columns(row, "status", "draft", "posted", "model"),
+            **_columns(
+                row,
+                "status",
+                "draft",
+                "posted",
+                "model",
+                "links_in_draft",
+                "links_kept",
+            ),
             reviewers=tuple(
                 child["agent_id"]
                 for child in edit_reviewers.get(row["event_id"], ())

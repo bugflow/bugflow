@@ -34,6 +34,8 @@ def upgrade() -> None:
         sa.Column("draft", sa.Text, nullable=False),
         sa.Column("posted", sa.Text, nullable=False),
         sa.Column("model", sa.Text),
+        sa.Column("links_in_draft", sa.Integer, nullable=False),
+        sa.Column("links_kept", sa.Integer, nullable=False),
     )
     op.create_table(
         "comment_edit_reviewer",
