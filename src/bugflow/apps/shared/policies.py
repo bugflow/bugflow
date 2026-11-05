@@ -3,7 +3,7 @@ force.
 
 A program needs the same things whichever deployment they come from: the
 reviewers, each reviewer's policies and doctrine, the pace layers, the
-glossary files, and the texts that feed a corpus version.
+glossary files, the editor, and the texts that feed a corpus version.
 ``ReviewersInForce`` holds them, and ``reviewers_in_force`` builds one
 from the deployment the database says is in force, parsed with the
 checks this server has.
@@ -13,6 +13,7 @@ from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from bugflow.method.domain.models.doctrine import Doctrine
+from bugflow.method.domain.models.editor import Editor
 from bugflow.method.domain.models.pace_layer import PaceLayer
 from bugflow.method.domain.models.policy_deployment import PolicyDeployment
 from bugflow.method.domain.models.policy_text import (
@@ -60,6 +61,9 @@ class ReviewersInForce:
     profiles: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
         default_factory=dict
     )
+    #: The binding's editor, which writes each review comment from the
+    #: server's draft; None for a binding without one.
+    editor: Editor | None = None
 
     def doctrine_of(self, agent_id: str) -> DoctrineRepository:
         """Return the doctrine that reviewer cites, or an empty one
@@ -101,6 +105,7 @@ def deployed_reviewers(
         layers=parsed.layers,
         glossary=parsed.glossary,
         profiles={agent_id: parsed.profiles[agent_id] for agent_id in agents},
+        editor=parsed.editor,
         deployed_from=DeployedFrom(
             repository=deployment.repository,
             commit=deployment.commit,
