@@ -105,6 +105,9 @@ from bugflow.review.domain.repositories.judge_archive import (
 from bugflow.review.domain.repositories.write_up_archive import (
     WriteUpArchiveRepository,
 )
+from bugflow.review.domain.services.comment_editor import (
+    CommentEditorService,
+)
 from bugflow.review.domain.services.enforcement import EnforcementService
 from bugflow.review.domain.services.grader import GraderService
 from bugflow.review.domain.services.journal import JournalService
@@ -338,6 +341,9 @@ class ReviewActivities:
         # Where each reviewer's gnome publishes its pages, by reviewer
         # id, which a comment links each clause it cites to.
         sites: Mapping[str, str] | None = None,
+        # What writes the review comment from the draft of the
+        # reviewers' parts. None, and the draft is the comment.
+        editor: CommentEditorService | None = None,
         reviewers: Mapping[str, ReviewerSettings] | None = None,
         worktrees: WorkWorktreeService | None = None,
         # The runner a review is dispatched to. None, and no review is
@@ -488,6 +494,7 @@ class ReviewActivities:
             summaries=summaries,
             submissions=submissions,
             sites=sites,
+            editor=editor,
         )
         # Asked directly and not through a use case: whether a pull
         # request is still open is one call to the forge with no

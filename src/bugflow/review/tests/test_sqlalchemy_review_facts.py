@@ -14,6 +14,8 @@ from bugflow.review.infrastructure.sqlalchemy_review_facts import (
     UNPACKERS,
     agent_dispatch,
     agent_dispatch_withheld_file,
+    comment_edit,
+    comment_edit_reviewer,
     judge_invocation,
     judge_invocation_unsupported,
     model_call,
@@ -130,6 +132,36 @@ def test_a_review_comment_is_an_action_with_its_counts(
         None,
         None,
     )
+
+
+def test_an_edited_comment_keeps_the_draft_and_what_was_posted(
+    database_url: str, engine: sa.Engine
+) -> None:
+    edited = entry(
+        "comment.edited",
+        "comment",
+        {
+            "status": "edited",
+            "draft": "**Prose review:** 1 failure.",
+            "posted": "Split the retry out.",
+            "model": "editor-model",
+            "reviewers": ["prose", "safety"],
+        },
+    )
+    write(database_url, edited)
+    row = one(engine, comment_edit, edited.event_id)
+    assert (row["status"], row["draft"], row["posted"], row["model"]) == (
+        "edited",
+        "**Prose review:** 1 failure.",
+        "Split the retry out.",
+        "editor-model",
+    )
+    assert rows(
+        engine, comment_edit_reviewer, edited.event_id, "position"
+    ) == [
+        (edited.event_id, 0, "prose"),
+        (edited.event_id, 1, "safety"),
+    ]
 
 
 def test_a_label_is_an_action_with_the_labels_removed(
