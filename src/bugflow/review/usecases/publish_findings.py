@@ -53,6 +53,7 @@ as it was. The editor writes at observe too, where nothing is posted,
 so the journal holds what it would have said.
 """
 
+import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict
 
@@ -134,6 +135,17 @@ def marker_for(correlation: Correlation, agent_id: str) -> str:
     comment.
     """
     return f"{MARKER_PREFIX}{correlation.run_id}:{agent_id} -->"
+
+
+#: A link in a comment, as a forge renders one: the address up to the
+#: character that ends it in Markdown or HTML.
+_LINK = re.compile(r"""https?://[^\s<>"')\]]+""")
+
+
+def links_in(text: str) -> frozenset[str]:
+    """The links a text holds, each once, without the punctuation a
+    sentence ends one with."""
+    return frozenset(found.rstrip(".,;:") for found in _LINK.findall(text))
 
 
 def unmarked_draft(draft: str) -> str:
@@ -470,6 +482,7 @@ class PublishFindingsUseCase:
                 tuple(exc.calls),
             )
         text = edited.text.strip()
+        held = links_in(shown)
         if not text:
             return (
                 draft,
@@ -479,6 +492,29 @@ class PublishFindingsUseCase:
                     posted=shown,
                     model=edited.model,
                     reviewers=reviewers,
+                    links_in_draft=len(held),
+                    links_kept=len(held),
+                ),
+                tuple(edited.calls),
+            )
+        found = links_in(text)
+        invented = sorted(found - held)
+        if invented:
+            # A link the draft did not hold leads the author somewhere
+            # nothing vouches for. The draft is posted instead.
+            return (
+                draft,
+                CommentEdit(
+                    status=(
+                        "refused: the editor added a link the draft does "
+                        f"not hold: {invented[0]}"
+                    ),
+                    draft=shown,
+                    posted=shown,
+                    model=edited.model,
+                    reviewers=reviewers,
+                    links_in_draft=len(held),
+                    links_kept=len(held),
                 ),
                 tuple(edited.calls),
             )
@@ -490,6 +526,8 @@ class PublishFindingsUseCase:
                 posted=text,
                 model=edited.model,
                 reviewers=reviewers,
+                links_in_draft=len(held),
+                links_kept=len(held & found),
             ),
             tuple(edited.calls),
         )

@@ -82,6 +82,10 @@ class CommentEdit:
     model: str | None = None
     #: The reviewers whose parts the draft held.
     reviewers: tuple[str, ...] = ()
+    #: The links the draft held, and how many of them the posted text
+    #: kept. A link the draft did not hold is never posted.
+    links_in_draft: int = 0
+    links_kept: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -600,6 +604,8 @@ def fact_from_payload(
             posted=str(payload["posted"]),
             model=payload.get("model"),
             reviewers=tuple(payload.get("reviewers") or ()),
+            links_in_draft=int(payload.get("links_in_draft") or 0),
+            links_kept=int(payload.get("links_kept") or 0),
         )
     if event_type == STOCKTAKE_TAKEN:
         return _taken(payload)

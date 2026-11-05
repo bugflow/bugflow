@@ -32,8 +32,9 @@ are not journalled, so cost completeness remains unknown.
 the disappearance of quoted words. Neither establishes agreement or
 correctness. `action.taken` includes actions that were not performed: read
 its `performed` and `status` fields. `comment.edited` holds the draft and
-what the editor posted, or, when its `status` opens with `unavailable`,
-the draft twice because it was posted as it was. Run completion remains unknown because
+what the editor posted, or, when its `status` is not `edited`, the draft
+twice because it was posted as it was. Its link counts say how many of
+the draft's links the editor kept. Run completion remains unknown because
 the journal has no universal completion event.
 
 ## Consistency and bounds

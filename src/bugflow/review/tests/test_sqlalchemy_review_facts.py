@@ -146,6 +146,8 @@ def test_an_edited_comment_keeps_the_draft_and_what_was_posted(
             "posted": "Split the retry out.",
             "model": "editor-model",
             "reviewers": ["prose", "safety"],
+            "links_in_draft": 2,
+            "links_kept": 1,
         },
     )
     write(database_url, edited)
@@ -156,6 +158,7 @@ def test_an_edited_comment_keeps_the_draft_and_what_was_posted(
         "Split the retry out.",
         "editor-model",
     )
+    assert (row["links_in_draft"], row["links_kept"]) == (2, 1)
     assert rows(
         engine, comment_edit_reviewer, edited.event_id, "position"
     ) == [
