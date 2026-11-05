@@ -13,6 +13,9 @@ from bugflow.method.infrastructure.policy_deployment_parsing import (
 )
 from bugflow.method.tests.policy_files import (
     DOCTRINE,
+    EDITED,
+    EDITOR,
+    GOOD_EXAMPLE,
     MANIFEST,
     POLICY,
     READ,
@@ -298,3 +301,104 @@ def test_a_glossary_file_is_not_read_as_a_reviewers_file() -> None:
     parsed = parse_deployment(deployment(files))
     assert list(parsed.agents) == ["prose"]
     assert list(parsed.glossary) == ["glossary/policies/P-09-example.md"]
+
+
+@pytest.mark.model(
+    "Editor",
+    "A binding may carry an editor: editor.md, and its examples under "
+    "editor/examples/.",
+)
+def test_the_editor_is_read_with_its_examples_in_path_order() -> None:
+    parsed = parse_deployment(deployment(READ | EDITED))
+    editor = parsed.editor
+    assert editor is not None
+    assert editor.model_class == "medium"
+    assert editor.instructions.startswith("You edit the draft")
+    assert [one.name for one in editor.examples] == [
+        "bad-01-every-finding",
+        "good-01-one-fix",
+    ]
+    assert [one.kind for one in editor.examples] == ["bad", "good"]
+    assert [one.name for one in editor.of_kind("good")] == ["good-01-one-fix"]
+    assert editor.examples[1].why == (
+        "One thing to fix, named first, with what to do about it."
+    )
+    assert editor.examples[1].text.startswith("The commit changes two")
+    assert list(parsed.agents) == ["prose"]
+
+
+def test_a_binding_without_an_editor_has_none() -> None:
+    assert parse_deployment(deployment(READ)).editor is None
+
+
+def test_an_editor_with_no_examples_is_read() -> None:
+    parsed = parse_deployment(deployment(READ | {"editor.md": EDITOR}))
+    assert parsed.editor is not None
+    assert parsed.editor.examples == ()
+
+
+@pytest.mark.model(
+    "Editor",
+    "Examples with no editor.md are refused.",
+)
+def test_examples_with_no_editor_are_refused() -> None:
+    files = READ | {"editor/examples/good-01-one-fix.md": GOOD_EXAMPLE}
+    with pytest.raises(
+        PolicyDeploymentError, match=r"editor/examples/: editor\.md is missing"
+    ):
+        parse_deployment(deployment(files))
+
+
+@pytest.mark.model(
+    "Editor",
+    "An example is named good-NN-name.md or bad-NN-name.md and says why.",
+)
+def test_an_example_of_another_name_is_refused() -> None:
+    files = READ | EDITED | {"editor/examples/fine-01-x.md": GOOD_EXAMPLE}
+    with pytest.raises(
+        PolicyDeploymentError,
+        match=r"editor/examples/fine-01-x\.md: an example is named",
+    ):
+        parse_deployment(deployment(files))
+
+
+def test_an_example_without_a_why_is_refused() -> None:
+    files = (
+        READ
+        | EDITED
+        | {"editor/examples/good-02-no-why.md": "---\nA comment.\n"}
+    )
+    with pytest.raises(
+        PolicyDeploymentError, match=r"good-02-no-why\.md: no why line"
+    ):
+        parse_deployment(deployment(files))
+
+
+def test_an_editor_of_an_unknown_model_class_is_refused() -> None:
+    files = READ | {"editor.md": "model_class: huge\n---\nEdit.\n"}
+    with pytest.raises(
+        PolicyDeploymentError, match=r"model class is one of small, medium"
+    ):
+        parse_deployment(deployment(files))
+
+
+def test_a_file_under_the_editors_directory_is_not_a_reviewers() -> None:
+    """editor/ is the editor's, so a manifest there is refused rather
+    than read as a reviewer named editor."""
+    files = READ | EDITED | {"editor/manifest.md": MANIFEST}
+    with pytest.raises(
+        PolicyDeploymentError,
+        match=r"editor/manifest\.md: not a file a server reads",
+    ):
+        parse_deployment(deployment(files))
+
+
+def test_every_editor_problem_is_reported_at_once() -> None:
+    files = READ | {
+        "editor.md": "model_class: huge\n---\nEdit.\n",
+        "editor/examples/good-01-one-fix.md": "no header\n",
+    }
+    with pytest.raises(PolicyDeploymentError) as refused:
+        parse_deployment(deployment(files))
+    assert "model class is one of" in str(refused.value)
+    assert "good-01-one-fix.md: no --- line" in str(refused.value)

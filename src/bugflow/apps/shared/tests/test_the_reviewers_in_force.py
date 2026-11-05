@@ -15,7 +15,12 @@ from bugflow.method.domain.models.policy_deployment import (
 from bugflow.method.infrastructure.in_memory_policy_deployments import (
     InMemoryPolicyDeployments,
 )
-from bugflow.method.tests.policy_files import DOCTRINE, MANIFEST, READ
+from bugflow.method.tests.policy_files import (
+    DOCTRINE,
+    EDITED,
+    MANIFEST,
+    READ,
+)
 
 REPOSITORY = "example-org/pull-request-policies"
 
@@ -56,6 +61,15 @@ def test_the_reviewers_are_those_of_the_deployment_in_force() -> None:
         reviewers.deployed_from.commit,
     ) == (REPOSITORY, "c1")
     assert reviewers.deployed_from.content_hash == deployment().content_hash
+
+
+def test_the_editor_is_the_deployments_or_none() -> None:
+    assert reviewers_in_force(in_force(), ()).editor is None  # type: ignore[union-attr]
+    reviewers = reviewers_in_force(in_force(READ | EDITED), ())
+    assert reviewers is not None
+    assert reviewers.editor is not None
+    assert reviewers.editor.model_class == "medium"
+    assert len(reviewers.editor.examples) == 2
 
 
 def test_a_reviewer_with_no_doctrine_files_cites_an_empty_one() -> None:

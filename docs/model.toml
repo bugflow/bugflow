@@ -11,6 +11,7 @@ things = [
     "case", "skill", "binding", "profile", "setting", "pace layer",
     "deployment", "server", "reviewer", "judge", "model class", "check",
     "finding", "grade", "ceiling", "verdict", "calibration", "glossary",
+    "editor",
 ]
 
 [[requirement]]
@@ -163,6 +164,27 @@ text = "A binding's pace-layers.toml pairs processes with cadences."
 group = "Binding"
 text = "The commit a binding pins a gnome at is the ref a garden declares it at."
 held_by = "the maintainer of the binding and the garden"
+
+[[requirement]]
+group = "Editor"
+text = "A binding may carry an editor: editor.md, and its examples under editor/examples/."
+
+[[requirement]]
+group = "Editor"
+text = "Examples with no editor.md are refused."
+
+[[requirement]]
+group = "Editor"
+text = "An example is named good-NN-name.md or bad-NN-name.md and says why."
+
+[[requirement]]
+group = "Editor"
+text = "bugflow deploy-policies sends the editor's files."
+
+[[requirement]]
+group = "Editor"
+text = "A server with an editor in force writes each review comment with it."
+held_by = "nothing yet: the next change to the review"
 
 [[requirement]]
 group = "Deployment"

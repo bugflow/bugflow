@@ -21,7 +21,9 @@ owner.
 
 A gnome names no server and no repository under review. A binding
 holds a copy of each gnome it pins, fetched at one commit, and two
-files of its own: `pace-layers.toml` and `profiles.toml`. One
+files of its own: `pace-layers.toml` and `profiles.toml`. It may also
+carry an editor, `editor.md` and the examples under `editor/examples/`,
+which writes each review comment from the server's draft. One
 repository may be a gnome and a binding at once, which is the smallest
 arrangement: its reviewers and the two files sit side by side.
 
@@ -220,7 +222,7 @@ what holds it instead.
 The things: gnome, manifest, doctrine, clause, policy, subject, case,
 skill, binding, profile, setting, pace layer, deployment, server,
 reviewer, judge, model class, check, finding, grade, ceiling, verdict,
-calibration, glossary.
+calibration, glossary, editor.
 
 **Gnome**
 
@@ -284,6 +286,16 @@ calibration, glossary.
 - The commit a binding pins a gnome at is the ref a garden declares it
   at. Not tested here: held by the maintainer of the binding and the
   garden.
+
+**Editor**
+
+- A binding may carry an editor: editor.md, and its examples under
+  editor/examples/.
+- Examples with no editor.md are refused.
+- An example is named good-NN-name.md or bad-NN-name.md and says why.
+- bugflow deploy-policies sends the editor's files.
+- A server with an editor in force writes each review comment with it.
+  Not tested here: held by nothing yet: the next change to the review.
 
 **Deployment**
 
