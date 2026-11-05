@@ -22,6 +22,14 @@ the repository:
 A push that follows within the repository's boundary, 60 seconds in
 the examples, joins the same review.
 
+Where the binding carries an editor, the comment is the editor's: a
+model is given the draft above, with the pull request's title and
+description, and the binding's instructions and examples of good and
+bad comments, and writes what the author reads. The findings, the
+label and the statuses are as before. A "comment edited" fact keeps
+the draft beside what was posted. [ADR 009](ADRs/009-the-comment-is-the-editors.md)
+says why.
+
 ## Where each part comes from
 
 Every part of the comment is one file of the binding, and the binding
@@ -36,6 +44,7 @@ holds a copy of each gnome at one commit.
 | The words quoted | The pull request | The part the policy's `evidence` line names: the title, the description, the commits or the patches |
 | That the policy ran at all | `profiles.toml`, and the server's settings | The profile that holds the policy, and the operator's setting of its gnome to that profile on this repository |
 | The example the judge was measured on | `<reviewer>/cases/<ID>/*.md` | A clean case, with nothing wrong, or a seeded case, with one fault and the clause a correct judge reports |
+| The words of the comment, with an editor | `pr-comment-editor.md` and `pr-comment-editor/examples/*.md` | The editor's instructions, and the comments it is shown as good or bad, each with why |
 
 ## One finding, end to end
 

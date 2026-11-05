@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Literal
 
 #: Why a call was made.
-Purpose = Literal["judge", "grade", "calibrate", "reproduce"]
+Purpose = Literal["judge", "grade", "calibrate", "reproduce", "edit"]
 
 #: How a call ended. "refused" means the provider said no, for example
 #: because of a quota, a rate limit or a rejected key. "unreachable"

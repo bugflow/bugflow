@@ -64,6 +64,9 @@ from bugflow.apps.worker.activities import (
 )
 from bugflow.apps.worker.backfill import BackfillWorkflow
 from bugflow.apps.worker.closed_pull_requests import ForgeClosedPullRequests
+from bugflow.apps.worker.comment_editor import (
+    comment_editor_from_environment,
+)
 from bugflow.apps.worker.conversation import ConversingForge
 from bugflow.apps.worker.evaluate_pull_request import (
     EvaluatePullRequestWorkflow,
@@ -402,6 +405,7 @@ def activities_from_environment(
         ),
         summaries=policy_summaries(reviewers.policies),
         sites=clause_sites(agents),
+        editor=comment_editor_from_environment(environ, reviewers, objects),
         reviewers=dispatch,
         # The reviewers of every layer on a clock, so a stocktake
         # dispatches what its own layer holds. By the runner that was

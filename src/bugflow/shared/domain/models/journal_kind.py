@@ -40,6 +40,7 @@ KIND_OF: dict[str, str] = {
     "finding.resolved": "review",
     "finding.rewritten": "review",
     "finding.withheld": "review",
+    "comment.edited": "review",
     "action.taken": "review",
     # What a periodic review of a repository did.
     "stocktake.taken": "stocktake",

@@ -295,7 +295,6 @@ calibration, glossary, editor.
 - An example is named good-NN-name.md or bad-NN-name.md and says why.
 - bugflow deploy-policies sends the editor's files.
 - A server with an editor in force writes each review comment with it.
-  Not tested here: held by nothing yet: the next change to the review.
 
 **Deployment**
 

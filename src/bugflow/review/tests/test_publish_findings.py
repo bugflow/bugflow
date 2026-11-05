@@ -8,12 +8,18 @@ from datetime import UTC, datetime
 import pytest
 
 from bugflow.review.domain.errors import (
+    EditorUnavailableError,
     PublicationRejectedError,
     SubmissionNotFoundError,
+)
+from bugflow.review.domain.models.comment_edit import (
+    CommentDraft,
+    EditedComment,
 )
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement
 from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.journal_facts import CommentEdit
 from bugflow.review.domain.models.recorder import Recorder
 from bugflow.review.domain.models.review import ReviewNote, ReviewVerdict
 from bugflow.review.domain.models.submission import (
@@ -34,8 +40,10 @@ from bugflow.review.usecases.publish_findings import (
     marker_for,
     resolved_since,
     review_label,
+    unmarked_draft,
     verdict_for,
 )
+from bugflow.shared.domain.models.call_record import CallRecord
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 
@@ -152,6 +160,7 @@ def publisher(
     governing: tuple[str, ...] = GOVERNING,
     enforcement: Enforcement | None = None,
     submissions: "Submissions | None" = None,
+    editor: "FakeEditor | None" = None,
 ) -> PublishFindingsUseCase:
     bound = enforcement or (
         gate(governing)
@@ -165,7 +174,37 @@ def publisher(
         enforcement=BoundTo(bound),
         agents=AGENTS if agents is None else agents,
         submissions=submissions,
+        editor=editor,
     )
+
+
+class FakeEditor:
+    """An editor that answers a fixed text, or refuses, and keeps what
+    it was given."""
+
+    def __init__(
+        self, text: str = "Split the retry out.", refuse: str | None = None
+    ) -> None:
+        self.text = text
+        self.refuse = refuse
+        self.drafts: list[CommentDraft] = []
+
+    def edit(self, draft: CommentDraft) -> EditedComment:
+        self.drafts.append(draft)
+        call = CallRecord(
+            call_id=f"edit-{len(self.drafts)}",
+            purpose="edit",
+            requested_model="medium",
+            answered_model="editor-model",
+            started_at=FixedClock().now(),
+            ended_at=FixedClock().now(),
+            client_duration_ms=1,
+        )
+        if self.refuse is not None:
+            raise EditorUnavailableError(self.refuse, calls=(call,))
+        return EditedComment(
+            text=self.text, model="editor-model", calls=(call,)
+        )
 
 
 class Submissions:
@@ -1699,3 +1738,143 @@ def test_canonical_publication_carries_only_findings_from_its_origin(
         assert result.carried == ()
         assert result.resolved == ()
         assert "seamless poller" not in result.comment
+
+
+def edits(journal: QueryableJournal) -> list[CommentEdit]:
+    return [
+        e.fact
+        for e in journal.entries_for_run(RUN)
+        if isinstance(e.fact, CommentEdit)
+    ]
+
+
+@pytest.mark.model(
+    "Editor",
+    "A server with an editor in force writes each review comment with it.",
+)
+def test_with_an_editor_the_comment_posted_is_the_editors() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    editor = FakeEditor("Split the retry out, so each change can be reverted.")
+    snapshot = says("Adds the poller.", "Add the poller")
+    publish = publisher(
+        forge,
+        journal=journal,
+        enabled=True,
+        submissions=Submissions(snap=snapshot),
+        editor=editor,
+    )
+    publish.execute(
+        request(finding("fail", "two changes")).model_copy(
+            update={"snapshot_id": "snap"}
+        )
+    )
+
+    ((marker, body),) = forge.comments
+    assert (
+        body
+        == f"{marker}\n\nSplit the retry out, so each change can be reverted."
+    )
+    (draft,) = editor.drafts
+    assert draft.reviewers == ("prose",)
+    assert (draft.title, draft.description) == (
+        "Add a poller",
+        "Adds the poller.",
+    )
+    assert "**Prose review:** 1 failure." in draft.text
+    assert "Two changes" in draft.text
+    assert "<!-- bugflow" not in draft.text
+
+    (edit,) = edits(journal)
+    assert edit.status == "edited"
+    assert edit.draft == draft.text
+    assert (
+        edit.posted == "Split the retry out, so each change can be reverted."
+    )
+    assert (edit.model, edit.reviewers) == ("editor-model", ("prose",))
+    called = [
+        e.payload
+        for e in journal.entries
+        if e.event_type == "llm.called" and e.run_id == RUN.run_id
+    ]
+    assert [c["purpose"] for c in called] == ["edit"]
+
+
+def test_an_editor_that_cannot_answer_leaves_the_draft_posted() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    editor = FakeEditor(refuse="the editor answered 400: no credit")
+    publish = publisher(forge, journal=journal, enabled=True, editor=editor)
+    publish.execute(request(finding("fail", "two changes")))
+
+    ((marker, body),) = forge.comments
+    assert body.startswith(f"{marker}\n\n{marker_for(RUN, PROSE)}")
+    assert "Two changes" in body
+    (edit,) = edits(journal)
+    assert edit.status == "unavailable: the editor answered 400: no credit"
+    assert edit.posted == edit.draft
+    assert "Two changes" in edit.draft
+    assert [
+        e.payload["purpose"]
+        for e in journal.entries
+        if e.event_type == "llm.called"
+    ] == ["edit"]
+
+
+def test_an_editor_that_answers_nothing_leaves_the_draft_posted() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    publish = publisher(
+        forge, journal=journal, enabled=True, editor=FakeEditor("  \n")
+    )
+    publish.execute(request(finding("fail", "two changes")))
+    ((_, body),) = forge.comments
+    assert "Two changes" in body
+    (edit,) = edits(journal)
+    assert edit.status == "unavailable: the editor answered nothing"
+
+
+def test_at_observe_the_editor_writes_and_nothing_is_posted() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    editor = FakeEditor("One thing to fix.")
+    publish = publisher(forge, journal=journal, editor=editor)
+    publish.execute(request(finding("fail", "two changes")))
+
+    assert forge.comments == []
+    (draft,) = editor.drafts
+    assert "Two changes" in draft.text
+    (edit,) = edits(journal)
+    assert (edit.status, edit.posted) == ("edited", "One thing to fix.")
+
+
+def test_the_editor_is_not_asked_when_there_is_nothing_to_say() -> None:
+    journal = QueryableJournal()
+    editor = FakeEditor()
+    publish = publisher(journal=journal, enabled=True, editor=editor)
+    publish.execute(request())
+    publish.execute(
+        request(run=Correlation(workflow_id="pr/6", run_id="run-2"))
+    )
+    # The first evaluation says "nothing to raise", the second has
+    # nothing new, so the editor is asked once.
+    assert len(editor.drafts) == 1
+    assert "nothing to raise" in editor.drafts[0].text
+
+
+def test_without_an_editor_no_edit_is_recorded() -> None:
+    journal = QueryableJournal()
+    publisher(journal=journal, enabled=True).execute(
+        request(finding("fail", "two changes"))
+    )
+    assert edits(journal) == []
+
+
+def test_the_draft_the_editor_sees_has_no_markers() -> None:
+    draft = (
+        f"{marker_for(RUN, 'prose')}\n\n**Prose review:** 1 failure.\n\n"
+        f"{marker_for(RUN, 'safety')}\n\n**Safety review:** nothing.\n"
+    )
+    assert unmarked_draft(draft) == (
+        "**Prose review:** 1 failure.\n\n**Safety review:** nothing."
+    )

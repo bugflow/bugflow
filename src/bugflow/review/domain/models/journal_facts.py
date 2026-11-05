@@ -24,6 +24,7 @@ from typing import Any, TypeVar
 from bugflow.review.domain.facts import (
     ACTION_TAKEN,
     AGENT_DISPATCHED,
+    COMMENT_EDITED,
     FINDING_RAISED,
     FINDING_RESOLVED,
     FINDING_REWRITTEN,
@@ -66,6 +67,21 @@ class ReviewAction:
     label: str | None = None
     #: The labels an outcome label replaced.
     removed: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
+class CommentEdit:
+    """The review comment as the editor wrote it from the server's
+    draft. ``status`` is "edited", or why the draft was posted as it
+    was. ``posted`` is the text the author read, without the markers
+    the server reads."""
+
+    status: str
+    draft: str
+    posted: str
+    model: str | None = None
+    #: The reviewers whose parts the draft held.
+    reviewers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -293,6 +309,7 @@ ReviewFact = (
     | ReviewGrade
     | AgentDispatch
     | ReviewAction
+    | CommentEdit
     | StocktakeTaken
     | StocktakeDispatch
     | StocktakeReview
@@ -576,6 +593,14 @@ def fact_from_payload(
         return _dispatch(payload)
     if event_type == ACTION_TAKEN:
         return _action(payload)
+    if event_type == COMMENT_EDITED:
+        return CommentEdit(
+            status=str(payload["status"]),
+            draft=str(payload["draft"]),
+            posted=str(payload["posted"]),
+            model=payload.get("model"),
+            reviewers=tuple(payload.get("reviewers") or ()),
+        )
     if event_type == STOCKTAKE_TAKEN:
         return _taken(payload)
     if event_type == STOCKTAKE_DISPATCHED:
