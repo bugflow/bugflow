@@ -45,6 +45,13 @@ fixed is still read from them. A "comment edited" fact keeps the draft
 and what was posted, the model, and the reviewers whose parts the draft
 held, so that what the editor dropped can be read later.
 
+A finding names its clause as a link to the clause's page on the
+gnome's site, and the author should be able to read the rule and argue
+with it where it is kept. The server counts the links the draft held
+and how many the posted text kept, on the fact. A link the draft did
+not hold leads the author somewhere nothing vouches for, so a comment
+carrying one is not posted: the draft is, and the fact says which link.
+
 The editor writes at observe too, where nothing is posted, and the fact
 is recorded, so a binding's editor can be read against real pull
 requests before a gnome is set to advise. An editor that refuses or
