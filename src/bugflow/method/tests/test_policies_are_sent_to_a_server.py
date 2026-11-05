@@ -23,7 +23,7 @@ from bugflow.method.infrastructure.http_policy_server import (
     PipelineSignIn,
 )
 from bugflow.method.infrastructure.policy_directory import PolicyDirectory
-from bugflow.method.tests.policy_files import READ, laid_out
+from bugflow.method.tests.policy_files import EDITED, READ, laid_out
 from bugflow.method.tests.stub_server import API, ISSUER, TOKEN, StubServer
 from bugflow.method.usecases.send_policies import SendPoliciesUseCase
 
@@ -97,6 +97,24 @@ def test_the_glossary_files_are_sent(tmp_path: Path) -> None:
     assert sent["files"] == [
         {"path": path, "text": text}
         for path, text in sorted((READ | glossary).items())
+    ]
+
+
+@pytest.mark.model(
+    "Editor",
+    "bugflow deploy-policies sends the editor's files.",
+)
+def test_the_editors_files_are_sent(tmp_path: Path) -> None:
+    beside = {"editor/README.md": "notes\n", "editor/cases/one.md": "x\n"}
+    for path, text in (EDITED | beside).items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text)
+    stub = StubServer()
+    use_case(laid_out(tmp_path), stub.transport()).execute(request())
+    ((_, sent),) = stub.posts
+    assert sent["files"] == [
+        {"path": path, "text": text}
+        for path, text in sorted((READ | EDITED).items())
     ]
 
 

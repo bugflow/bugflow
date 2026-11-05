@@ -43,6 +43,34 @@ processes = ["evaluate-pull-request"]
 
 DOCTRINE = "**EX-1.** A description says what changed.\n"
 
+EDITOR = """\
+model_class: medium
+---
+You edit the draft of a review comment. Keep what the author must act
+on, in the order it matters, and leave the rest out.
+"""
+
+GOOD_EXAMPLE = """\
+why: One thing to fix, named first, with what to do about it.
+---
+The commit changes two things. Split the retry out so each can be
+reverted alone.
+"""
+
+BAD_EXAMPLE = """\
+why: Every finding at the same weight, and the reason hedged.
+---
+Falls short of One reason in commit. Falls short of Say it once in the
+description. This is borderline compliant.
+"""
+
+#: The editor's files, by path, all valid.
+EDITED = {
+    "editor.md": EDITOR,
+    "editor/examples/good-01-one-fix.md": GOOD_EXAMPLE,
+    "editor/examples/bad-01-every-finding.md": BAD_EXAMPLE,
+}
+
 #: The reviewer's directory, which holds its policies and doctrine.
 REFERENCES = "prose"
 

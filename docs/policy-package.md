@@ -20,6 +20,10 @@ and the gnomes it pins.
     profiles.toml                     binding: named sets of each reviewer's policies
     glossary/**                       binding: the words documents it copies in,
                                       each a .md, .txt or .org file
+    editor.md                         binding: the instructions the editor of a
+                                      review comment follows
+    editor/examples/*.md              binding: comments the editor is shown, each
+                                      good or bad, with why
     <reviewer>/manifest.md            gnome: the reviewer's id, subjects, policies, checks
     <reviewer>/doctrine/*.md          gnome: the doctrine, read in filename order
     <reviewer>/policies/*.md          gnome: one policy each
@@ -42,9 +46,9 @@ garden installs a skill and reads the copy in its `references/`. The
 gnome's format tests compare each copy with the original and fail if
 they differ.
 
-A server reads the two binding files, the glossary files and, of each
-reviewer, the manifest, the doctrine and the policies. A deployment
-holding a file of any other path is refused. `bugflow deploy-policies
+A server reads the two binding files, the glossary files, the editor's
+files and, of each reviewer, the manifest, the doctrine and the
+policies. A deployment holding a file of any other path is refused. `bugflow deploy-policies
 DIRECTORY` sends only the files a server reads, so a repository holds
 its cases, scripts, skill instructions, notes and pipeline beside them.
 
@@ -256,6 +260,41 @@ its profiles (ADR 008). A deployment that drops a profile a setting
 judges by is refused, as is one that gives a layer a cadence a
 boundary declared on it cannot take. `declarations.toml`, which named each
 repository's policies before, is refused.
+
+## The editor
+
+A binding may carry an editor: the instructions a model follows to
+write each review comment from the server's draft, and examples of
+comments. The draft is one folded line for each finding, every finding
+at the same weight. The editor writes what a reviewer would have
+written: the few things the author must act on, in the order they
+matter, in plain words, with the passage quoted where the author needs
+to find it. One editor speaks for every reviewer on a server, so it is
+the binding's and not a gnome's. A binding without one posts the draft.
+
+`editor.md` is a header, a line of three dashes, and the instructions:
+
+    model_class: medium
+    ---
+    You edit the draft of a review comment ...
+
+- `model_class`: the class of model that follows the instructions,
+  `small`, `medium` or `large`. Required.
+
+Each file under `editor/examples/` is one example: a header, a line of
+three dashes, and a comment. The file is named `good-NN-name.md` for a
+comment to write like and `bad-NN-name.md` for one not to, and its one
+header line says why:
+
+    why: One thing to fix, named first, with what to do about it.
+    ---
+    The commit changes two things; split the retry out so each can be
+    reverted alone.
+
+The examples are given to the model with the instructions, in path
+order, each with its `why`. They are the editor's cases: when a comment
+lands badly, the comment and why go in as a bad example, and the next
+comment is written against it.
 
 ## Deployment
 

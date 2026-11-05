@@ -105,6 +105,10 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
   a binding under `glossary/` and sent with its deployment; a policy
   whose subject is `document/glossary` reads them.
   [The policy package](policy-package.md), "Subjects".
+- **Editor.** The instructions and examples a binding may carry in
+  `editor.md` and `editor/examples/`, which a model follows to write
+  each review comment from the server's draft of it. [The policy
+  package](policy-package.md), "The editor".
 - **Pace layer.** A group of the server's processes that run at one
   cadence, on an event or on a clock, declared in `pace-layers.toml`.
   [The policy package](policy-package.md), "The binding".

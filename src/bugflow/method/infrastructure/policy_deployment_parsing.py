@@ -2,8 +2,8 @@
 
 A deployment is a set of text files held in the database. This module
 parses them into what a worker reads: reviewers, each reviewer's
-policies and doctrine, the pace layers, each reviewer's profiles, and
-the glossary files.
+policies and doctrine, the pace layers, each reviewer's profiles, the
+glossary files, and the editor if the binding carries one.
 
 Every problem in a deployment is collected and reported in one
 ``PolicyDeploymentError``, so a sender sees all of them in one attempt.
@@ -17,10 +17,17 @@ from pathlib import Path, PurePosixPath
 
 from bugflow.method.domain.errors import PolicyDeploymentError
 from bugflow.method.domain.models.doctrine import Doctrine
+from bugflow.method.domain.models.editor import Editor, EditorExample
 from bugflow.method.domain.models.pace_layer import PaceLayer
 from bugflow.method.domain.models.policy_deployment import PolicyDeployment
 from bugflow.method.domain.models.policy_text import PolicyText
 from bugflow.method.infrastructure.doctrine_directory import joined
+from bugflow.method.infrastructure.editor_files import (
+    EDITOR,
+    EXAMPLES,
+    parse_editor,
+    parse_example,
+)
 from bugflow.method.infrastructure.pace_layer_file import parse_topology
 from bugflow.method.infrastructure.policy_files import parse_policy, source_of
 from bugflow.method.infrastructure.reviewer_packages import (
@@ -47,6 +54,9 @@ _PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 GLOSSARY = "glossary"
 #: The names a glossary file may have.
 GLOSSARY_SUFFIXES = (".md", ".txt", ".org")
+#: The directory the editor's examples are under, which is the editor's
+#: and no reviewer's.
+EDITORS = "editor"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -77,11 +87,25 @@ class ParsedDeployment:
     profiles: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
         default_factory=dict
     )
+    #: The binding's editor, or None for a binding without one.
+    editor: Editor | None = None
 
 
 def _in_glossary(path: str) -> bool:
     """Whether the path is under the glossary directory."""
     return PurePosixPath(path).parts[0] == GLOSSARY
+
+
+def _editors(path: str) -> bool:
+    """Whether the path is the editor's: ``editor.md`` or anything under
+    ``editor/``, which no reviewer may be named."""
+    return path == EDITOR or PurePosixPath(path).parts[0] == EDITORS
+
+
+def _is_example(path: str) -> bool:
+    """Whether the path is where an example is kept."""
+    parts = PurePosixPath(path).parts
+    return len(parts) == 3 and "/".join(parts[:2]) == EXAMPLES
 
 
 def _kind(path: str) -> tuple[str, str, str] | None:
@@ -144,8 +168,21 @@ def parse_deployment(
     manifests: dict[str, str] = {}
     layers: dict[str, PaceLayer] = {}
     glossary: dict[str, str] = {}
+    editor_text: str | None = None
+    examples: list[EditorExample] = []
 
     for one in deployment.files:
+        if _editors(one.path):
+            if one.path == EDITOR:
+                editor_text = one.text
+            elif _is_example(one.path):
+                try:
+                    examples.append(parse_example(one.path, one.text))
+                except (ValueError, PolicyDeploymentError) as exc:
+                    problems.append(str(exc))
+            else:
+                problems.append(f"{one.path}: not a file a server reads")
+            continue
         if _in_glossary(one.path):
             if one.path.endswith(GLOSSARY_SUFFIXES):
                 glossary[one.path] = one.text
@@ -187,6 +224,8 @@ def parse_deployment(
             by_directory[kind[0]] = agent
             manifests[agent.agent_id] = one.text
 
+    editor = _editor(editor_text, tuple(examples), problems)
+
     policies: dict[str, dict[str, PolicyText]] = {
         agent_id: {} for agent_id in agents
     }
@@ -195,7 +234,7 @@ def parse_deployment(
     originals = _originals(deployment, by_directory, problems)
     for one in deployment.files:
         kind = _kind(one.path)
-        if kind is None or kind[1] == "manifest":
+        if kind is None or kind[1] == "manifest" or _editors(one.path):
             continue
         owner = by_directory.get(kind[0])
         if owner is None:
@@ -260,7 +299,27 @@ def parse_deployment(
         layers=layers,
         glossary=glossary,
         profiles=profiles,
+        editor=editor,
     )
+
+
+def _editor(
+    text: str | None,
+    examples: tuple[EditorExample, ...],
+    problems: list[str],
+) -> Editor | None:
+    """The binding's editor, adding each problem found to ``problems``:
+    an editor file that does not parse, or examples with no editor file
+    to belong to. None for a binding without one."""
+    if text is None:
+        if examples:
+            problems.append(f"{EXAMPLES}/: {EDITOR} is missing")
+        return None
+    try:
+        return parse_editor(EDITOR, text, examples)
+    except (ValueError, PolicyDeploymentError) as exc:
+        problems.append(str(exc))
+        return None
 
 
 def _originals(
@@ -280,7 +339,7 @@ def _originals(
     places: dict[str, set[str]] = {}
     for one in deployment.files:
         kind = _kind(one.path)
-        if kind is None or kind[1] == "manifest":
+        if kind is None or kind[1] == "manifest" or _editors(one.path):
             continue
         if kind[0] not in by_directory:
             continue
