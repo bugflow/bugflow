@@ -50,6 +50,7 @@ from sqlalchemy.schema import SchemaItem
 from bugflow.review.domain.models.finding import Finding
 from bugflow.review.domain.models.journal_facts import (
     AgentDispatch,
+    CommentEdit,
     JudgeInvocation,
     ModelCall,
     PolicyCheck,
@@ -121,6 +122,24 @@ review_action_removed_label = sa.Table(
     metadata,
     _event_id("review_action"),
     sa.Column("label", sa.Text, primary_key=True),
+)
+
+comment_edit = sa.Table(
+    "comment_edit",
+    metadata,
+    _event_id(),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column("draft", sa.Text, nullable=False),
+    sa.Column("posted", sa.Text, nullable=False),
+    sa.Column("model", sa.Text),
+)
+
+comment_edit_reviewer = sa.Table(
+    "comment_edit_reviewer",
+    metadata,
+    _event_id("comment_edit"),
+    sa.Column("position", sa.Integer, primary_key=True),
+    sa.Column("agent_id", sa.Text, nullable=False),
 )
 
 agent_dispatch = sa.Table(
@@ -395,6 +414,27 @@ def unpack_action(connection: sa.Connection, entry: JournalEntry) -> None:
     )
 
 
+def unpack_edit(connection: sa.Connection, entry: JournalEntry) -> None:
+    p = entry.payload
+    _one(
+        connection,
+        comment_edit,
+        event_id=entry.event_id,
+        status=p["status"],
+        draft=p["draft"],
+        posted=p["posted"],
+        model=p.get("model"),
+    )
+    _many(
+        connection,
+        comment_edit_reviewer,
+        (
+            {"event_id": entry.event_id, "position": n, "agent_id": agent_id}
+            for n, agent_id in enumerate(p.get("reviewers") or ())
+        ),
+    )
+
+
 def unpack_dispatch(connection: sa.Connection, entry: JournalEntry) -> None:
     p = entry.payload
     budget = p.get("budget") or {}
@@ -618,6 +658,7 @@ Unpacker = Callable[[sa.Connection, JournalEntry], None]
 #: What writes each review fact's typed rows, by event type.
 UNPACKERS: Mapping[str, Unpacker] = {
     "action.taken": unpack_action,
+    "comment.edited": unpack_edit,
     "agent.dispatched": unpack_dispatch,
     "finding.raised": unpack_raised,
     "finding.resolved": unpack_resolved,
@@ -727,6 +768,17 @@ def read_facts(
             ),
             removed=tuple(
                 child["label"] for child in removed.get(row["event_id"], ())
+            ),
+        )
+    edit_reviewers = _children(
+        connection, comment_edit_reviewer, event_ids, "position"
+    )
+    for row in _rows(connection, comment_edit, event_ids):
+        facts[row["event_id"]] = CommentEdit(
+            **_columns(row, "status", "draft", "posted", "model"),
+            reviewers=tuple(
+                child["agent_id"]
+                for child in edit_reviewers.get(row["event_id"], ())
             ),
         )
     withheld_files = _children(

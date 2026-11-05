@@ -184,7 +184,6 @@ text = "bugflow deploy-policies sends the editor's files."
 [[requirement]]
 group = "Editor"
 text = "A server with an editor in force writes each review comment with it."
-held_by = "nothing yet: the next change to the review"
 
 [[requirement]]
 group = "Deployment"

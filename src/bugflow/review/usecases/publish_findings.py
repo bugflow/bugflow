@@ -45,25 +45,37 @@ Which findings count:
 An "action taken" fact is recorded for each reviewer's comment and
 status and for the label. Each says whether the write was made, and if
 not, why.
+
+With an editor, the comment the author reads is the editor's, written
+from the draft of every part that would be posted. A "comment edited"
+fact keeps the draft and what was posted, or why the draft was posted
+as it was. The editor writes at observe too, where nothing is posted,
+so the journal holds what it would have said.
 """
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import asdict
 
 from pydantic import BaseModel, ConfigDict
 
 from bugflow.review.domain.errors import (
+    EditorUnavailableError,
     PublicationRejectedError,
     SubmissionNotFoundError,
 )
 from bugflow.review.domain.facts import (
     ACTION_TAKEN,
+    COMMENT_EDITED,
     FINDING_RAISED,
     FINDING_REWRITTEN,
+    LLM_CALLED,
 )
+from bugflow.review.domain.models.comment_edit import CommentDraft
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement, fails
 from bugflow.review.domain.models.finding import Finding
 from bugflow.review.domain.models.journal_facts import (
+    CommentEdit,
     ReviewAction,
     RewrittenFinding,
 )
@@ -74,9 +86,12 @@ from bugflow.review.domain.models.review import (
     ReviewVerdict,
     project,
 )
-from bugflow.review.domain.models.submission import SubmissionRef
+from bugflow.review.domain.models.submission import Submission, SubmissionRef
 from bugflow.review.domain.repositories.submission_source import (
     SubmissionSourceRepository,
+)
+from bugflow.review.domain.services.comment_editor import (
+    CommentEditorService,
 )
 from bugflow.review.domain.services.enforcement import EnforcementService
 from bugflow.review.domain.services.journal import JournalService
@@ -102,6 +117,8 @@ from bugflow.review.dtos.publish_findings import (
     PublishFindingsRequest,
     PublishFindingsResponse,
 )
+from bugflow.review.usecases.model_calls import CALL_PAYLOAD, call_key
+from bugflow.shared.domain.models.call_record import CallRecord
 from bugflow.shared.domain.services.clock import ClockService
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
@@ -117,6 +134,20 @@ def marker_for(correlation: Correlation, agent_id: str) -> str:
     comment.
     """
     return f"{MARKER_PREFIX}{correlation.run_id}:{agent_id} -->"
+
+
+def unmarked_draft(draft: str) -> str:
+    """The draft without the markers the server reads, which the editor
+    is given: each part's marker line is dropped, and the blank lines
+    that follow it."""
+    kept: list[str] = []
+    for line in draft.splitlines():
+        if line.startswith(MARKER_PREFIX):
+            continue
+        if not line.strip() and (not kept or not kept[-1].strip()):
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
 
 
 #: The three labels this use case sets and removes. It leaves every
@@ -346,6 +377,7 @@ class PublishFindingsUseCase:
         summaries: Mapping[str, str] | None = None,
         submissions: SubmissionSourceRepository | None = None,
         sites: Mapping[str, str] | None = None,
+        editor: CommentEditorService | None = None,
     ) -> None:
         """``forge`` writes to the pull request. ``enforcement`` says which
         reviewers publish on a repository, and which of them gate and so
@@ -356,8 +388,11 @@ class PublishFindingsUseCase:
         earlier can be checked against it; with none, no finding is
         carried and none is recorded as rewritten. ``sites`` gives the
         address each reviewer's gnome publishes its pages at, by agent
-        id, which a comment links each clause it cites to.
+        id, which a comment links each clause it cites to. ``editor``
+        writes the comment from the draft of the reviewers' parts;
+        with none, the draft is the comment.
         """
+        self._editor = editor
         self._forge = forge
         self._journal = journal
         self._clock = clock
@@ -378,19 +413,86 @@ class PublishFindingsUseCase:
         declaring = [a for a, p in self._agents.items() if p]
         return declaring[0] if declaring else "doctrine"
 
-    def _text(self, request: PublishFindingsRequest) -> str | None:
-        """Everything the pull request says that a policy may quote, as
-        this evaluation read it. None if it cannot be read back.
-        """
+    def _submission(
+        self, request: PublishFindingsRequest
+    ) -> Submission | None:
+        """The pull request as this evaluation read it, or None if it
+        cannot be read back."""
         if self._submissions is None or request.snapshot_id is None:
             return None
         try:
-            submission = self._submissions.get(
+            return self._submissions.get(
                 SubmissionRef(snapshot_id=request.snapshot_id, ref=request.ref)
             )
         except SubmissionNotFoundError:
             return None
-        return passages(submission)
+
+    def _text(self, request: PublishFindingsRequest) -> str | None:
+        """Everything the pull request says that a policy may quote, as
+        this evaluation read it. None if it cannot be read back.
+        """
+        submission = self._submission(request)
+        return None if submission is None else passages(submission)
+
+    def _edited(
+        self,
+        request: PublishFindingsRequest,
+        parts: Sequence[_Said],
+    ) -> tuple[str, CommentEdit | None, tuple[CallRecord, ...]]:
+        """The comment to post for these parts, as the editor wrote it
+        or as the draft is, with the fact that records the editing and
+        the calls it made. Without an editor the draft is the comment
+        and nothing is recorded."""
+        draft = "\n\n".join(one.body for one in parts)
+        if self._editor is None or not parts:
+            return draft, None, ()
+        reviewers = tuple(one.agent_id for one in parts)
+        shown = unmarked_draft(draft)
+        submission = self._submission(request)
+        try:
+            edited = self._editor.edit(
+                CommentDraft(
+                    text=shown,
+                    reviewers=reviewers,
+                    title=submission.title if submission else "",
+                    description=submission.body if submission else "",
+                )
+            )
+        except EditorUnavailableError as exc:
+            return (
+                draft,
+                CommentEdit(
+                    status=f"unavailable: {exc}",
+                    draft=shown,
+                    posted=shown,
+                    reviewers=reviewers,
+                ),
+                tuple(exc.calls),
+            )
+        text = edited.text.strip()
+        if not text:
+            return (
+                draft,
+                CommentEdit(
+                    status="unavailable: the editor answered nothing",
+                    draft=shown,
+                    posted=shown,
+                    model=edited.model,
+                    reviewers=reviewers,
+                ),
+                tuple(edited.calls),
+            )
+        return (
+            text,
+            CommentEdit(
+                status="edited",
+                draft=shown,
+                posted=text,
+                model=edited.model,
+                reviewers=reviewers,
+            ),
+            tuple(edited.calls),
+        )
 
     def _carried(
         self,
@@ -671,15 +773,22 @@ class PublishFindingsUseCase:
         speaking = [
             one for one in said if one.body and publishes(one.agent_id)
         ]
+        # What the editor is given: the parts that are posted, or, where
+        # no reviewer publishes, every part that would have been.
+        drafted = speaking or (
+            [one for one in said if one.body]
+            if not enforcement.publishing
+            else []
+        )
+        comment, edit, edit_calls = self._edited(request, drafted)
         comment_ids: dict[str, int] = {}
         if speaking:
             # The comment starts with the marker the forge matches on.
-            # Each reviewer's part keeps its own marker inside it.
+            # Without an editor, each reviewer's part keeps its own
+            # marker inside it.
             marker = marker_for(request.correlation, "review")
             comment_id = self._forge.add_comment(
-                request.ref,
-                marker,
-                "\n\n".join([marker, *(one.body for one in speaking)]),
+                request.ref, marker, "\n\n".join([marker, comment])
             )
             comment_ids = {one.agent_id: comment_id for one in speaking}
         if enabled:
@@ -752,6 +861,18 @@ class PublishFindingsUseCase:
                     commit_sha=request.head_sha,
                 ),
             ]
+        if edit is not None:
+            entries += [
+                recorder.entry(
+                    LLM_CALLED,
+                    call_key(call),
+                    CALL_PAYLOAD.dump_python(call, mode="json"),
+                )
+                for call in edit_calls
+            ]
+            entries.append(
+                recorder.entry(COMMENT_EDITED, "review_comment", asdict(edit))
+            )
         if previous is not None:
             entries += recorder.resolutions(previous, resolved)
             entries += recorder.rewritten(

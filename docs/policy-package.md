@@ -292,9 +292,11 @@ header line says why:
     reverted alone.
 
 The examples are given to the model with the instructions, in path
-order, each with its `why`. They are the editor's cases: when a comment
-lands badly, the comment and why go in as a bad example, and the next
-comment is written against it.
+order, each with its `why`, and the model is given the draft with the
+pull request's title and description. They are the editor's cases:
+when a comment lands badly, the comment and why go in as a bad
+example, and the next comment is written against it. [What a review
+says](review.md) says what the editor writes and where it is kept.
 
 ## Deployment
 

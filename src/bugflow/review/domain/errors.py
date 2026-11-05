@@ -49,6 +49,21 @@ class JudgeTemporarilyUnavailableError(JudgeUnavailableError):
         self.retry_after = retry_after
 
 
+class EditorUnavailableError(Exception):
+    """The editor of a review comment refused or could not answer. The
+    draft is posted as it is, and the evaluation says so.
+
+    ``calls`` are the calls to the model made before the failure, kept
+    so that they can still be recorded.
+    """
+
+    def __init__(
+        self, message: str, calls: tuple[CallRecord, ...] = ()
+    ) -> None:
+        super().__init__(message)
+        self.calls = calls
+
+
 class GraderUnavailableError(Exception):
     """The grader could not be asked, or did not answer. The step that
     asked is tried again.
