@@ -305,8 +305,8 @@ def test_a_glossary_file_is_not_read_as_a_reviewers_file() -> None:
 
 @pytest.mark.model(
     "Editor",
-    "A binding may carry an editor: editor.md, and its examples under "
-    "editor/examples/.",
+    "A binding may carry an editor: pr-comment-editor.md, and its examples "
+    "under pr-comment-editor/examples/.",
 )
 def test_the_editor_is_read_with_its_examples_in_path_order() -> None:
     parsed = parse_deployment(deployment(READ | EDITED))
@@ -332,19 +332,24 @@ def test_a_binding_without_an_editor_has_none() -> None:
 
 
 def test_an_editor_with_no_examples_is_read() -> None:
-    parsed = parse_deployment(deployment(READ | {"editor.md": EDITOR}))
+    parsed = parse_deployment(
+        deployment(READ | {"pr-comment-editor.md": EDITOR})
+    )
     assert parsed.editor is not None
     assert parsed.editor.examples == ()
 
 
 @pytest.mark.model(
     "Editor",
-    "Examples with no editor.md are refused.",
+    "Examples with no pr-comment-editor.md are refused.",
 )
 def test_examples_with_no_editor_are_refused() -> None:
-    files = READ | {"editor/examples/good-01-one-fix.md": GOOD_EXAMPLE}
+    files = READ | {
+        "pr-comment-editor/examples/good-01-one-fix.md": GOOD_EXAMPLE
+    }
     with pytest.raises(
-        PolicyDeploymentError, match=r"editor/examples/: editor\.md is missing"
+        PolicyDeploymentError,
+        match=r"pr-comment-editor/examples/: editor\.md is missing",
     ):
         parse_deployment(deployment(files))
 
@@ -354,10 +359,14 @@ def test_examples_with_no_editor_are_refused() -> None:
     "An example is named good-NN-name.md or bad-NN-name.md and says why.",
 )
 def test_an_example_of_another_name_is_refused() -> None:
-    files = READ | EDITED | {"editor/examples/fine-01-x.md": GOOD_EXAMPLE}
+    files = (
+        READ
+        | EDITED
+        | {"pr-comment-editor/examples/fine-01-x.md": GOOD_EXAMPLE}
+    )
     with pytest.raises(
         PolicyDeploymentError,
-        match=r"editor/examples/fine-01-x\.md: an example is named",
+        match=r"pr-comment-editor/examples/fine-01-x\.md: an example is named",
     ):
         parse_deployment(deployment(files))
 
@@ -366,7 +375,7 @@ def test_an_example_without_a_why_is_refused() -> None:
     files = (
         READ
         | EDITED
-        | {"editor/examples/good-02-no-why.md": "---\nA comment.\n"}
+        | {"pr-comment-editor/examples/good-02-no-why.md": "---\nA comment.\n"}
     )
     with pytest.raises(
         PolicyDeploymentError, match=r"good-02-no-why\.md: no why line"
@@ -375,7 +384,7 @@ def test_an_example_without_a_why_is_refused() -> None:
 
 
 def test_an_editor_of_an_unknown_model_class_is_refused() -> None:
-    files = READ | {"editor.md": "model_class: huge\n---\nEdit.\n"}
+    files = READ | {"pr-comment-editor.md": "model_class: huge\n---\nEdit.\n"}
     with pytest.raises(
         PolicyDeploymentError, match=r"model class is one of small, medium"
     ):
@@ -384,19 +393,19 @@ def test_an_editor_of_an_unknown_model_class_is_refused() -> None:
 
 def test_a_file_under_the_editors_directory_is_not_a_reviewers() -> None:
     """editor/ is the editor's, so a manifest there is refused rather
-    than read as a reviewer named editor."""
-    files = READ | EDITED | {"editor/manifest.md": MANIFEST}
+    than read as a reviewer named pr-comment-editor."""
+    files = READ | EDITED | {"pr-comment-editor/manifest.md": MANIFEST}
     with pytest.raises(
         PolicyDeploymentError,
-        match=r"editor/manifest\.md: not a file a server reads",
+        match=r"pr-comment-editor/manifest\.md: not a file a server reads",
     ):
         parse_deployment(deployment(files))
 
 
 def test_every_editor_problem_is_reported_at_once() -> None:
     files = READ | {
-        "editor.md": "model_class: huge\n---\nEdit.\n",
-        "editor/examples/good-01-one-fix.md": "no header\n",
+        "pr-comment-editor.md": "model_class: huge\n---\nEdit.\n",
+        "pr-comment-editor/examples/good-01-one-fix.md": "no header\n",
     }
     with pytest.raises(PolicyDeploymentError) as refused:
         parse_deployment(deployment(files))

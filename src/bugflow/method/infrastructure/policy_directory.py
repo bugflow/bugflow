@@ -2,9 +2,10 @@
 
 Only the files a server reads are taken: each reviewer's manifest, its
 policies and its doctrine, the two files beside the reviewers, the
-words documents under ``glossary/``, and the editor's ``editor.md`` and
-``editor/examples/``. A reviewer's policies and doctrine
-are in its ``policies`` and ``doctrine`` directories. Each of its skills
+words documents under ``glossary/``, and the editor's
+``pr-comment-editor.md`` and ``pr-comment-editor/examples/``. A
+reviewer's policies and doctrine are in its ``policies`` and
+``doctrine`` directories. Each of its skills
 carries a copy of both under ``skills/<name>/references/``, and the
 copies are not sent. A reviewer laid out before the originals were kept
 at its root has the files in one skill's ``references`` directory and
@@ -34,8 +35,8 @@ PATTERNS = (
     "glossary/**/*.md",
     "glossary/**/*.txt",
     "glossary/**/*.org",
-    "editor.md",
-    "editor/examples/*.md",
+    "pr-comment-editor.md",
+    "pr-comment-editor/examples/*.md",
 )
 #: The directories a reviewer keeps its originals in.
 ORIGINALS = ("policies", "doctrine")

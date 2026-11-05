@@ -22,7 +22,7 @@ owner.
 A gnome names no server and no repository under review. A binding
 holds a copy of each gnome it pins, fetched at one commit, and two
 files of its own: `pace-layers.toml` and `profiles.toml`. It may also
-carry an editor, `editor.md` and the examples under `editor/examples/`,
+carry an editor, `pr-comment-editor.md` and the examples under `pr-comment-editor/examples/`,
 which writes each review comment from the server's draft. One
 repository may be a gnome and a binding at once, which is the smallest
 arrangement: its reviewers and the two files sit side by side.
@@ -289,9 +289,9 @@ calibration, glossary, editor.
 
 **Editor**
 
-- A binding may carry an editor: editor.md, and its examples under
-  editor/examples/.
-- Examples with no editor.md are refused.
+- A binding may carry an editor: pr-comment-editor.md, and its examples
+  under pr-comment-editor/examples/.
+- Examples with no pr-comment-editor.md are refused.
 - An example is named good-NN-name.md or bad-NN-name.md and says why.
 - bugflow deploy-policies sends the editor's files.
 - A server with an editor in force writes each review comment with it.
