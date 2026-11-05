@@ -135,6 +135,8 @@ def test_the_host_runs_the_scripts_when_it_starts(database_url: str) -> None:
             "finding_dismissal",
             "review_action",
             "review_action_removed_label",
+            "comment_edit",
+            "comment_edit_reviewer",
             "agent_dispatch",
             "agent_dispatch_withheld_file",
             "raised_finding",
