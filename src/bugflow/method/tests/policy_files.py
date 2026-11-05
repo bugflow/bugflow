@@ -66,9 +66,9 @@ description. This is borderline compliant.
 
 #: The editor's files, by path, all valid.
 EDITED = {
-    "editor.md": EDITOR,
-    "editor/examples/good-01-one-fix.md": GOOD_EXAMPLE,
-    "editor/examples/bad-01-every-finding.md": BAD_EXAMPLE,
+    "pr-comment-editor.md": EDITOR,
+    "pr-comment-editor/examples/good-01-one-fix.md": GOOD_EXAMPLE,
+    "pr-comment-editor/examples/bad-01-every-finding.md": BAD_EXAMPLE,
 }
 
 #: The reviewer's directory, which holds its policies and doctrine.

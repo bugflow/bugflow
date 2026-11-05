@@ -1,15 +1,16 @@
 """Read a binding's editor from its files.
 
-``editor.md`` is a header, a line of three dashes, and the instructions::
+``pr-comment-editor.md`` is a header, a line of three dashes, and the
+instructions::
 
     model_class: medium
     ---
     You edit the draft of a review comment ...
 
-Each file under ``editor/examples/`` is one example: a header, a line
-of three dashes, and the comment. The file's name says what it shows,
-``good-01-one-fix.md`` or ``bad-01-every-finding.md``, and the header's
-one line says why::
+Each file under ``pr-comment-editor/examples/`` is one example: a
+header, a line of three dashes, and the comment. The file's name says
+what it shows, ``good-01-one-fix.md`` or ``bad-01-every-finding.md``,
+and the header's one line says why::
 
     why: Three findings, the one that blocks first, each with its fix.
     ---
@@ -29,12 +30,12 @@ from bugflow.method.domain.models.editor import (
 )
 
 #: The binding's editor file, beside the reviewers.
-EDITOR = "editor.md"
+EDITOR = "pr-comment-editor.md"
 #: The directory of the editor's examples.
-EXAMPLES = "editor/examples"
+EXAMPLES = "pr-comment-editor/examples"
 #: An example's file name: its kind, a number, and a name.
 _EXAMPLE_NAME = re.compile(r"^(?P<kind>good|bad)-\d+-[a-z0-9-]+\.md$")
-#: The header lines ``editor.md`` has, one value each.
+#: The header lines ``pr-comment-editor.md`` has, one value each.
 _EDITOR_FIELDS = ("model_class",)
 #: The header lines an example has, one value each.
 _EXAMPLE_FIELDS = ("why",)

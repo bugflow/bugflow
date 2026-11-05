@@ -167,11 +167,11 @@ held_by = "the maintainer of the binding and the garden"
 
 [[requirement]]
 group = "Editor"
-text = "A binding may carry an editor: editor.md, and its examples under editor/examples/."
+text = "A binding may carry an editor: pr-comment-editor.md, and its examples under pr-comment-editor/examples/."
 
 [[requirement]]
 group = "Editor"
-text = "Examples with no editor.md are refused."
+text = "Examples with no pr-comment-editor.md are refused."
 
 [[requirement]]
 group = "Editor"
