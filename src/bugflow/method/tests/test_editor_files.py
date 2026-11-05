@@ -34,7 +34,9 @@ def test_an_editor_file_is_a_model_class_and_instructions() -> None:
 def test_a_malformed_editor_file_names_its_file(
     text: str, problem: str
 ) -> None:
-    with pytest.raises(ValueError, match=rf"^editor\.md: .*{problem}"):
+    with pytest.raises(
+        ValueError, match=rf"^pr-comment-editor\.md: .*{problem}"
+    ):
         parse_editor("pr-comment-editor.md", text)
 
 
