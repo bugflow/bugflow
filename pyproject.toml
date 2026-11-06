@@ -88,7 +88,7 @@ module = "pyposlib.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["src", "deployments"]
+testpaths = ["src", "deployments", "litellm"]
 markers = [
     "model(group, requirement): the test holds a requirement of docs/model.toml",
 ]
