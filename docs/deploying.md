@@ -29,7 +29,9 @@ Three kinds of file make a deployment:
   A deployer renders them into `env/` at the root of the repository,
   one file for each service. The composition reads them from there.
 - `Dockerfile`, which builds the one image every program runs from,
-  and `litellm/config.yaml`, the proxy's list of model roles.
+  and `litellm/config.yaml`, the proxy's list of model roles, with
+  `litellm/tokenomic_callback.py` beside it, which the composition
+  mounts into the proxy.
 
 `deployments/example/` is the composition this repository is tested
 against.
@@ -126,10 +128,10 @@ judges is watched, by `bugflow set` (ADR 008).
 | `bugflow_judge_model` | `worker` | One model for every class, overriding all of them. Not written if empty |
 | `bugflow_judge_requests_per_second` | `worker` | Requests a second each judging queue allows, across every worker on it. Default `0.2` |
 | `bugflow_judge_requests_per_second_small`, `bugflow_judge_requests_per_second_medium`, `bugflow_judge_requests_per_second_large` | `worker` | The same for one class of model. `0` is no limit. Not written if empty |
-| `bugflow_tokenomic_s3_bucket` | `worker` | The bucket the content of every call to a model is kept in. Not written if empty, and then the next four are not read |
-| `bugflow_tokenomic_s3_endpoint` | `worker` | That bucket's S3 endpoint |
-| `bugflow_tokenomic_s3_region` | `worker` | Its region. Default `us-east-1` |
-| `vault_bugflow_tokenomic_s3_access_key`, `vault_bugflow_tokenomic_s3_secret_key` | `worker` | A key that reads and writes that bucket alone |
+| `bugflow_tokenomic_s3_bucket` | `worker`, `litellm` | The bucket the content of every call to a model is kept in: the worker writes what it sent the proxy, what the proxy answered and a fact file of the call, and the proxy's callback writes what it sent the provider and what the provider answered. Not written if empty, and then the next four are not read |
+| `bugflow_tokenomic_s3_endpoint` | `worker`, `litellm` | That bucket's S3 endpoint |
+| `bugflow_tokenomic_s3_region` | `worker`, `litellm` | Its region. Default `us-east-1` |
+| `vault_bugflow_tokenomic_s3_access_key`, `vault_bugflow_tokenomic_s3_secret_key` | `worker`, `litellm` | A key that reads and writes that bucket alone |
 
 Once a policy deployment is in force that holds a policy for a model
 to judge, the worker checks the proxy as it starts and does not start

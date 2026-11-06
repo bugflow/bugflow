@@ -15,5 +15,11 @@ model_list:
       model: os.environ/ROLE_LARGE_MODEL
       api_key: os.environ/ROLE_LARGE_API_KEY
 
+# The callback beside this file keeps the two files of each call only
+# the proxy can write, in the bucket its settings name and the folder
+# the worker names in a header. With no bucket named it writes nothing.
+litellm_settings:
+  callbacks: ["tokenomic_callback.archive"]
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

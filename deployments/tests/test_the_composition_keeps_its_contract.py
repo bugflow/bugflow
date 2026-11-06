@@ -69,6 +69,7 @@ SHIPPED = sorted(
     if path.is_file()
     and "__pycache__" not in path.parts
     and DEPLOYMENTS / "tests" not in path.parents
+    and ROOT / "litellm" / "tests" not in path.parents
 )
 
 #: A host name under a top-level domain an organisation registers.
@@ -430,19 +431,19 @@ def test_the_worker_indexes_archives_only_where_a_bucket_is_named(
     assert "WORKER_ARCHIVE_S3_ACCESS_KEY=reader" in worker
 
 
-#: Each secret, by the one template that writes it: a credential a
+#: Each secret, by the templates that write it: a credential a
 #: service cannot use is one a break-in there gets for free.
 HELD_BY = {
     # The review key starts sessions that cost money, and the repository
     # token acts on the mounted repository through the git proxy.
-    "vault_bugflow_review_runner_api_key": "worker",
-    "vault_bugflow_review_repository_token": "worker",
-    # What the judge said to a model is the worker's to keep, and what
-    # scopes seal is the archive host's: a break-in at the host that
-    # serves archives reads no model exchange, and the worker cannot
-    # rewrite an archive.
-    "vault_bugflow_tokenomic_s3_secret_key": "worker",
-    "vault_bugflow_archive_s3_secret_key": "archive",
+    "vault_bugflow_review_runner_api_key": {"worker"},
+    "vault_bugflow_review_repository_token": {"worker"},
+    # What was said to a model is the worker's and the proxy's to keep,
+    # each the hops it has, and what scopes seal is the archive host's:
+    # a break-in at the host that serves archives reads no model
+    # exchange, and the worker cannot rewrite an archive.
+    "vault_bugflow_tokenomic_s3_secret_key": {"worker", "litellm"},
+    "vault_bugflow_archive_s3_secret_key": {"archive"},
 }
 
 
@@ -453,7 +454,7 @@ def test_a_secret_is_written_only_where_it_is_used(secret: str) -> None:
         for path in TEMPLATES.glob("*.env.j2")
         if secret in path.read_text()
     }
-    assert holders == {HELD_BY[secret]}
+    assert holders == HELD_BY[secret]
 
 
 def test_the_archive_host_takes_the_largest_append_only_where_named(
@@ -494,20 +495,63 @@ def test_the_worker_s_settings_run_the_webhooks_command() -> None:
 def test_the_proxy_publishes_the_roles_the_classes_ask_for() -> None:
     """Each role reads its model and its key from the environment, and
     the proxy's template supplies each of those names, and besides them
-    only the settings of its telemetry."""
+    only the settings of its telemetry and of its archive."""
     config = yaml.safe_load((ROOT / "litellm" / "config.yaml").read_text())
     roles = {entry["model_name"]: entry for entry in config["model_list"]}
     assert set(roles) == set(MODEL_CLASS_DEFAULTS.values())
 
     template = (TEMPLATES / "litellm.env.j2").read_text()
     supplied = set(re.findall(r"^([A-Z_]+)=", template, re.MULTILINE))
-    supplied -= {name for name in supplied if "OTEL" in name}
+    supplied -= {
+        name
+        for name in supplied
+        if "OTEL" in name or name.startswith("TOKENOMIC_")
+    }
     read = {config["general_settings"]["master_key"]}
     for name, entry in roles.items():
         assert set(entry["litellm_params"]) == {"model", "api_key"}, name
         read |= set(entry["litellm_params"].values())
     assert all(value.startswith("os.environ/") for value in read)
     assert {value.removeprefix("os.environ/") for value in read} == supplied
+
+
+def test_the_proxy_keeps_its_hops_in_the_bucket_the_worker_names(
+    tmp_path: Path,
+) -> None:
+    """The callback beside the proxy's model list is named in it and
+    mounted into the proxy by every composition. It reads the bucket
+    the worker reads, from the same settings, and is told of none when
+    none is named."""
+    config = yaml.safe_load((ROOT / "litellm" / "config.yaml").read_text())
+    assert (
+        "tokenomic_callback.archive" in config["litellm_settings"]["callbacks"]
+    )
+    mount = "../../litellm/tokenomic_callback.py:/app/tokenomic_callback.py:ro"
+    for environment in ENVIRONMENTS:
+        composition = yaml.safe_load(
+            (DEPLOYMENTS / environment / "docker-compose.yml").read_text()
+        )
+        assert mount in composition["services"]["litellm"]["volumes"], (
+            environment
+        )
+
+    without = rendered((ROOT / ".env.example").read_text(), tmp_path)
+    assert without.returncode == 0, without.stderr
+    assert "TOKENOMIC" not in (tmp_path / "env" / "litellm.env").read_text()
+    assert "TOKENOMIC" not in (tmp_path / "env" / "worker.env").read_text()
+
+    values = (ROOT / ".env.example").read_text() + (
+        "bugflow_tokenomic_s3_bucket=exchanges\n"
+        "bugflow_tokenomic_s3_endpoint=http://s3:9000\n"
+        "vault_bugflow_tokenomic_s3_access_key=writer\n"
+        "vault_bugflow_tokenomic_s3_secret_key=secret\n"
+    )
+    named = rendered(values, tmp_path)
+    assert named.returncode == 0, named.stderr
+    for service in ("litellm", "worker"):
+        lines = (tmp_path / "env" / f"{service}.env").read_text().splitlines()
+        assert "TOKENOMIC_S3_BUCKET=exchanges" in lines, service
+        assert "TOKENOMIC_S3_ACCESS_KEY=writer" in lines, service
 
 
 def test_the_proxy_is_told_where_traces_go_only_with_an_endpoint(
