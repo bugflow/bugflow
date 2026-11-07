@@ -145,7 +145,7 @@ belongs to a model, so each class has a queue and a limit of its own.
 | The services, their settings and their secrets | The deployment repository and the host | The operator |
 | Which repositories the server watches | The database: each a gnome judges, by `bugflow set` | The operator |
 | A webhook on each watched repository | The forge, by `bugflow webhooks` | The operator |
-| A token that reads pull requests and writes comments, labels and statuses | The worker's settings | The operator |
+| A credential that reads pull requests and writes comments, labels and statuses: a GitHub App installed on the watched repositories, or a token | The worker's settings | The operator |
 | A model for each class a policy names | The proxy's `config.yaml` and its keys | The operator |
 | A policy deployment in force | The binding repository, through its pipeline | The binding's owner |
 | The profiles of each gnome | `profiles.toml` in the binding | The binding's owner |
@@ -155,8 +155,8 @@ belongs to a model, so each class has a queue and a limit of its own.
 
 Two of these stop a worker rather than a review. A worker does not
 start while a watched repository lacks a boundary on a layer the
-deployment holds, and it does not start without a forge token while a
-gnome publishes on a repository. Each says what is
+deployment holds, and it does not start without a forge credential
+while a gnome publishes on a repository. Each says what is
 missing and stops, and Compose starts it again.
 
 A server matches a repository by its name, `owner/name`. A gnome's

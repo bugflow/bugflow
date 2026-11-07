@@ -40,7 +40,7 @@ DISCOVERY = "bugflow discovery"
 
 #: The setting that names the owners whose repositories are listed,
 #: comma-separated. Unset, they are the owners FORGE_TOKENS_BY_OWNER
-#: holds a token for.
+#: holds a token for and FORGE_APP_INSTALLATIONS an installation on.
 OWNERS_VARIABLE = "DISCOVERY_OWNERS"
 
 #: How often the worker discovers, in seconds, by
@@ -69,7 +69,7 @@ def owners_from(environ: Mapping[str, str]) -> tuple[str, ...]:
     if named:
         return named
     tokens = forge_tokens(environ)
-    return tuple(sorted(tokens.by_owner)) if tokens else ()
+    return tuple(sorted(tokens.owners)) if tokens else ()
 
 
 def interval_from(environ: Mapping[str, str]) -> float:
