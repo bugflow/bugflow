@@ -3,7 +3,11 @@ the forge its reference names."""
 
 from collections.abc import Mapping
 
-from bugflow.apps.shared.forges import forge_tokens, forgejo_settings
+from bugflow.apps.shared.forges import (
+    GITHUB_SETTINGS,
+    forge_tokens,
+    forgejo_settings,
+)
 from bugflow.apps.worker.conversation import ConversingForge
 from bugflow.forge.domain.errors import ForgeRejectedError
 from bugflow.forge.domain.models.pull_request import PullRequestSnapshot
@@ -119,8 +123,7 @@ def forge_from_environment(environ: Mapping[str, str]) -> ForgeByReference:
             "github": GitHubForge(tokens)
             if tokens
             else MissingForge(
-                "no forge token configured; set FORGE_TOKEN, or "
-                "FORGE_TOKENS_BY_OWNER"
+                f"no GitHub credential configured; set {GITHUB_SETTINGS}"
             ),
             "forgejo": ForgejoForge(*forgejo)
             if forgejo

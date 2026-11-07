@@ -22,7 +22,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TextIO
 
-from bugflow.apps.shared.forges import forge_tokens
+from bugflow.apps.shared.forges import GITHUB_SETTINGS, forge_tokens
 from bugflow.apps.shared.watching import watched
 from bugflow.forge.domain.repositories.webhook_admin import (
     WebhookAdminRepository,
@@ -168,9 +168,9 @@ def _token(
     token = forge_tokens(environ)
     if token is None and repositories:
         raise ValueError(
-            "FORGE_TOKEN is not set, nor FORGE_TOKENS_BY_OWNER; "
-            "a webhook can be registered or deleted only with a token "
-            "that may administer the repository's hooks"
+            f"none of {GITHUB_SETTINGS} is set; a webhook can be "
+            "registered or deleted only with a token that may administer "
+            "the repository's hooks"
         )
     return token or GitHubTokens()
 

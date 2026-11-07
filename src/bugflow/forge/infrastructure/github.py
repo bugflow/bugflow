@@ -1,9 +1,11 @@
 """The adapter for GitHub.
 
-It talks to GitHub's REST API at api.github.com, signing in with a personal
-access token: one for any owner, or one for each owner, since a
-fine-grained token belongs to one organisation. One class,
-``GitHubForge``, provides everything the forge context asks of a forge:
+It talks to GitHub's REST API at api.github.com, signing in with a
+personal access token, one for any owner or one for each owner, since a
+fine-grained token belongs to one organisation; or as a GitHub App,
+whose installation tokens ``github_app`` mints for each owner it is
+installed on. One class, ``GitHubForge``, provides everything the forge
+context asks of a forge:
 reading and writing a pull request, reading its discussion, listing what
 has changed for the poller, and managing webhooks.
 """
@@ -38,10 +40,10 @@ from bugflow.forge.domain.models.pull_request import (
 from bugflow.forge.domain.models.webhook import Webhook
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
+from bugflow.forge.infrastructure.github_app import API_URL, InstallationTokens
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
-API_URL = "https://api.github.com"
 PER_PAGE = 100
 # GitHub lists at most 250 commits and 3,000 files for a pull request. Thirty
 # pages of a hundred covers both.
@@ -201,27 +203,43 @@ def classify(response: httpx2.Response, path: str) -> ForgeError:
 
 @dataclass(frozen=True)
 class GitHubTokens:
-    """The tokens GitHub is signed in with: one for any owner, and one for
-    each owner that has a token of its own.
+    """What GitHub is signed in with: a token for any owner, a token for
+    each owner that has one of its own, and a GitHub App whose
+    installation tokens are minted for each owner it is installed on.
 
     A fine-grained token belongs to one organisation, so a server whose
     watched repositories span organisations holds one token per owner.
     ``by_owner`` is keyed by the owner's name in lower case, since GitHub
-    reads an owner's name without regard to case.
+    reads an owner's name without regard to case. An owner's own token
+    is used before the App's, and the App's before the token for any
+    owner.
     """
 
     any_owner: str | None = None
     by_owner: Mapping[str, str] = field(default_factory=dict)
+    app: InstallationTokens | None = None
+
+    @property
+    def owners(self) -> frozenset[str]:
+        """The owners signed in to by name: those with a token of their
+        own, and those the App is installed on, in lower case."""
+        held = frozenset(self.by_owner)
+        return held | self.app.owners if self.app else held
 
     def for_owner(self, owner: str) -> str:
-        """The token for ``owner``: its own, else the one for any owner.
-        Raises ``ForgeRejectedError`` where there is neither, before
-        anything is sent."""
-        token = self.by_owner.get(owner.lower()) or self.any_owner
+        """The token for ``owner``: its own, else the App's installation
+        token, else the one for any owner. Raises ``ForgeRejectedError``
+        where there is none, before anything is sent."""
+        token = self.by_owner.get(owner.lower())
+        if not token and self.app and self.app.holds(owner):
+            token = self.app.for_owner(owner)
+        token = token or self.any_owner
         if not token:
             raise ForgeRejectedError(
                 f"no token for {owner}: name it in FORGE_TOKENS_BY_OWNER as "
-                f"{owner}=TOKEN, or set FORGE_TOKEN for any owner"
+                f"{owner}=TOKEN, or its installation in "
+                f"FORGE_APP_INSTALLATIONS as {owner}=INSTALLATION_ID, or set "
+                f"FORGE_TOKEN for any owner"
             )
         return token
 
@@ -234,17 +252,20 @@ class GitHubTokens:
             return self.for_owner(parts[2])
         if len(parts) > 3 and parts[1] in ("orgs", "users") and parts[2]:
             return self.for_owner(parts[2])
-        token = self.any_owner or next(iter(self.by_owner.values()), None)
-        if not token:
-            raise ForgeRejectedError("no token for GitHub: set FORGE_TOKEN")
-        return token
+        if self.any_owner:
+            return self.any_owner
+        if self.by_owner:
+            return next(iter(self.by_owner.values()))
+        if self.app and self.app.owners:
+            return self.app.for_owner(min(self.app.owners))
+        raise ForgeRejectedError("no token for GitHub: set FORGE_TOKEN")
 
 
 class GitHubForge:
     """GitHub, as the forge context sees a forge.
 
-    ``token`` is a personal access token, or the tokens by owner. Each
-    request is signed with the token for the repository's owner.
+    ``token`` is a personal access token, or the ``GitHubTokens`` held.
+    Each request is signed with the token for the repository's owner.
     ``transport`` replaces the network, for tests.
     """
 

@@ -13,7 +13,8 @@ no credentials for is said and not polled.
 
 Configured from the environment: ``DATABASE_URL``,
 ``POLL_INTERVAL_SECONDS``, ``INGRESS_URL``, ``WEBHOOK_SECRET``,
-``FORGE_TOKEN`` for repositories on github.com, and ``FORGEJO_URL`` and
+``FORGE_TOKEN``, ``FORGE_TOKENS_BY_OWNER`` or a GitHub App's
+``FORGE_APP_ID`` for repositories on github.com, and ``FORGEJO_URL`` and
 ``FORGEJO_TOKEN`` for repositories on a Forgejo.
 """
 
@@ -23,7 +24,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from bugflow.apps.shared.forges import forge_tokens, forgejo_settings
+from bugflow.apps.shared.forges import (
+    GITHUB_SETTINGS,
+    forge_tokens,
+    forgejo_settings,
+)
 from bugflow.apps.shared.watching import watched_names
 from bugflow.forge.domain.services.polling import PullRequestFeedService
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
@@ -87,9 +92,9 @@ class PollerSettings:
         forgejo = forgejo_settings(environ)
         if token is None and forgejo is None:
             raise ValueError(
-                "FORGE_TOKEN is not set, nor FORGE_TOKENS_BY_OWNER, nor "
-                "FORGEJO_URL and FORGEJO_TOKEN; the poller does not start "
-                "without a forge to poll"
+                f"none of {GITHUB_SETTINGS} is set, nor FORGEJO_URL and "
+                "FORGEJO_TOKEN; the poller does not start without a forge "
+                "to poll"
             )
         raw_interval = environ.get("POLL_INTERVAL_SECONDS") or str(
             DEFAULT_INTERVAL_SECONDS

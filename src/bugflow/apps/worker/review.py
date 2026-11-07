@@ -50,6 +50,7 @@ from bugflow.apps.shared.discovering import (
     said,
 )
 from bugflow.apps.shared.forges import (
+    GITHUB_SETTINGS,
     forge_tokens,
     forgejo_settings,
     repository_endpoints,
@@ -569,9 +570,9 @@ def refuse_without_a_forge(
     if publishing:
         raise ValueError(
             f"{', '.join(publishing)} has a gnome that "
-            "publishes, and FORGE_TOKEN is not set, nor "
-            "FORGE_TOKENS_BY_OWNER, nor FORGEJO_URL and FORGEJO_TOKEN; the "
-            "worker does not start without a forge to publish to"
+            f"publishes, and none of {GITHUB_SETTINGS} is set, nor "
+            "FORGEJO_URL and FORGEJO_TOKEN; the worker does not start "
+            "without a forge to publish to"
         )
 
 

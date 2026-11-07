@@ -58,7 +58,8 @@ deployment or the server refused them. 2 if the call could not be made
 or was not allowed.
 
 ``discover`` lists the repositories of each owner ``DISCOVERY_OWNERS``
-names, or that ``FORGE_TOKENS_BY_OWNER`` holds a token for, and keeps
+names, that ``FORGE_TOKENS_BY_OWNER`` holds a token for or that
+``FORGE_APP_INSTALLATIONS`` holds an installation on, and keeps
 each that is new, renamed, archived or unarchived, in the database
 ``DATABASE_URL`` names (ADR 008). Every gnome on a repository found
 archived is switched off. The worker does the same once a day.
@@ -723,8 +724,9 @@ def _discover(environ: Mapping[str, str]) -> int:
         return 2
     if discovering is None:
         print(
-            "error: discovery needs DATABASE_URL, a GitHub token, and an "
-            "owner: DISCOVERY_OWNERS, or FORGE_TOKENS_BY_OWNER",
+            "error: discovery needs DATABASE_URL, a GitHub credential, and "
+            "an owner: DISCOVERY_OWNERS, FORGE_TOKENS_BY_OWNER or "
+            "FORGE_APP_INSTALLATIONS",
             file=sys.stderr,
         )
         return 2
