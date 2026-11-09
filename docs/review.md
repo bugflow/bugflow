@@ -36,8 +36,9 @@ says why.
 
 An editor that finds nothing in the draft worth the author's reading
 answers "Nothing to raise." and no comment is posted; the fact keeps
-the draft. A draft that reports fixes is posted whatever the editor
-answers, since the author's fixes landing is not nothing.
+the draft. If the draft has a failure, or reports fixes, bugflow posts
+the draft whatever the editor answers. A failure sets the label to
+`review:escalate`, so the comment must show it.
 
 ## Where each part comes from
 

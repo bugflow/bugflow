@@ -53,8 +53,9 @@ fact keeps the draft and what was posted, or why the draft was posted
 as it was. The editor writes at observe too, where nothing is posted,
 so the journal holds what it would have said. An editor that finds
 nothing in the draft the author needs to read says so in the words
-``NOTHING_TO_RAISE`` holds, and no comment is posted, unless the draft
-reports something the author fixed: then the draft is posted.
+``NOTHING_TO_RAISE`` holds, and no comment is posted. If the draft
+has a failure, or reports something the author fixed, the draft is
+posted instead.
 """
 
 import re
@@ -499,24 +500,31 @@ class PublishFindingsUseCase:
                 tuple(edited.calls),
             )
         if says_nothing_to_raise(text):
-            fixed = any(one.fixed for one in parts)
-            # A draft that reports fixes tells the author their work
-            # landed, which is not nothing. The draft is posted instead.
+            # The label and the commit status count a failing finding,
+            # so the comment must show it. The author must also hear
+            # that their fixes landed. Either way, the draft is posted.
+            refused = (
+                "a failure"
+                if any(one.verdict == "fail" for one in parts)
+                else "fixes"
+                if any(one.fixed for one in parts)
+                else None
+            )
             return (
-                draft if fixed else "",
+                draft if refused else "",
                 CommentEdit(
                     status=(
                         "refused: the editor found nothing to raise in a "
-                        "draft that reports fixes"
-                        if fixed
+                        f"draft that reports {refused}"
+                        if refused
                         else "nothing to raise"
                     ),
                     draft=shown,
-                    posted=shown if fixed else "",
+                    posted=shown if refused else "",
                     model=edited.model,
                     reviewers=reviewers,
                     links_in_draft=len(held),
-                    links_kept=len(held) if fixed else 0,
+                    links_kept=len(held) if refused else 0,
                 ),
                 tuple(edited.calls),
             )
