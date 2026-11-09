@@ -190,6 +190,10 @@ group = "Editor"
 text = "A link the draft does not hold is never posted."
 
 [[requirement]]
+group = "Editor"
+text = "A failing finding the draft shows is never left out of the comment."
+
+[[requirement]]
 group = "Deployment"
 text = "The binding's pipeline runs bugflow deploy-policies when a change to the binding is merged."
 held_by = "the binding's pipeline"

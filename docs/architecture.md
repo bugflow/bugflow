@@ -296,6 +296,7 @@ calibration, glossary, editor.
 - bugflow deploy-policies sends the editor's files.
 - A server with an editor in force writes each review comment with it.
 - A link the draft does not hold is never posted.
+- A failing finding the draft shows is never left out of the comment.
 
 **Deployment**
 
