@@ -76,7 +76,6 @@ from bugflow.archive.infrastructure.sqlalchemy_search_index import (
     SqlAlchemyIndexPositions,
 )
 from bugflow.archive.infrastructure.temporal_indexing import (
-    TemporalAddress,
     TemporalIndexingRequests,
 )
 from bugflow.archive.usecases.append_event import AppendEventUseCase
@@ -98,6 +97,7 @@ from bugflow.shared.infrastructure.jwt_bearer_token import (
 )
 from bugflow.shared.infrastructure.s3_object_store import S3ObjectStore
 from bugflow.shared.infrastructure.system_clock import SystemClock
+from bugflow.shared.infrastructure.temporal_client import TemporalSettings
 
 #: The largest append accepted unless ARCHIVE_MAX_UPLOAD_BYTES says
 #: otherwise. A whole append is held in memory while it is checked.
@@ -631,11 +631,7 @@ def from_environment(
                 "queue the worker listens on"
             )
         indexing = TemporalIndexingRequests(
-            TemporalAddress(
-                environ["TEMPORAL_ADDRESS"],
-                environ.get("TEMPORAL_NAMESPACE") or "default",
-                task_queue,
-            )
+            TemporalSettings.from_environment(environ)
         )
 
     def migrate() -> None:

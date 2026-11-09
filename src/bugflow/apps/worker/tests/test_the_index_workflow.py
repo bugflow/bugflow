@@ -37,9 +37,11 @@ with workflow.unsafe.imports_passed_through():
     )
     from bugflow.archive.infrastructure.temporal_indexing import (
         INDEX_WORKFLOW,
-        TemporalAddress,
         TemporalIndexingRequests,
         index_workflow_id,
+    )
+    from bugflow.shared.infrastructure.temporal_client import (
+        TemporalSettings,
     )
 
 BOUND = [
@@ -188,10 +190,11 @@ def test_the_host_s_request_starts_the_workflow_for_one_ledger() -> None:
             data_converter=pydantic_data_converter
         ) as env:
             queue = f"archive-index-{uuid.uuid4()}"
-            where = TemporalAddress(
-                env.client.service_client.config.target_host,
-                env.client.namespace,
-                queue,
+            where = TemporalSettings(
+                address=env.client.service_client.config.target_host,
+                namespace=env.client.namespace,
+                task_queue=queue,
+                ui_url="",
             )
             async with Worker(
                 env.client,
@@ -221,5 +224,10 @@ def test_the_host_s_request_starts_the_workflow_for_one_ledger() -> None:
 
 def test_a_request_that_cannot_reach_temporal_raises_nothing() -> None:
     TemporalIndexingRequests(
-        TemporalAddress("127.0.0.1:1", "default", "a-queue")
+        TemporalSettings(
+            address="127.0.0.1:1",
+            namespace="default",
+            task_queue="a-queue",
+            ui_url="",
+        )
     ).request_catch_up(BOUND[0])

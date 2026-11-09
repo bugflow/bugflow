@@ -11,19 +11,16 @@ that composes a starter passes the names in, as ``WorkerWorkflows``.
 """
 
 import asyncio
-from collections.abc import Callable, Coroutine, Iterable, Mapping, Sequence
+from collections.abc import Callable, Coroutine, Iterable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
 
 from temporalio.client import (
     Client,
-    Interceptor,
     WorkflowExecutionDescription,
     WorkflowExecutionStatus,
 )
 from temporalio.common import WorkflowIDReusePolicy
-from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.service import RPCError, RPCStatusCode
 
 from bugflow.forge.domain.errors import EvaluationStartError
@@ -31,70 +28,26 @@ from bugflow.review.dtos.wait_review import WaitReviewResponse
 from bugflow.shared.domain.values.acknowledgement import Acknowledgement
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
+from bugflow.shared.infrastructure.temporal_client import (
+    DEFAULT_TASK_QUEUE,
+    TemporalSettings,
+    TemporalUnavailableError,
+    connect,
+)
 
-#: The task queue the programs use when ``TEMPORAL_TASK_QUEUE`` is unset.
-DEFAULT_TASK_QUEUE = "bugflow"
+__all__ = [
+    "CALL_TIMEOUT_SECONDS",
+    "DEFAULT_TASK_QUEUE",
+    "TemporalEvaluationStarter",
+    "TemporalSettings",
+    "TemporalUnavailableError",
+    "WorkerWorkflows",
+    "connect",
+]
 
 #: How long a call waits for Temporal before the delivery is refused and
 #: the forge told to send it again.
 CALL_TIMEOUT_SECONDS = 30
-
-
-class TemporalUnavailableError(Exception):
-    """Temporal could not be reached."""
-
-
-@dataclass(frozen=True)
-class TemporalSettings:
-    """Where Temporal is, and which queue the worker listens on."""
-
-    address: str
-    namespace: str
-    task_queue: str
-    ui_url: str
-
-    @classmethod
-    def from_environment(
-        cls, environ: Mapping[str, str]
-    ) -> "TemporalSettings":
-        """Read ``TEMPORAL_ADDRESS``, ``TEMPORAL_NAMESPACE``,
-        ``TEMPORAL_TASK_QUEUE`` and ``TEMPORAL_UI_URL``, each with a
-        default for a server on the same host."""
-        return cls(
-            address=environ.get("TEMPORAL_ADDRESS") or "localhost:7233",
-            namespace=environ.get("TEMPORAL_NAMESPACE") or "default",
-            task_queue=environ.get("TEMPORAL_TASK_QUEUE")
-            or DEFAULT_TASK_QUEUE,
-            ui_url=environ.get("TEMPORAL_UI_URL") or "http://localhost:8080",
-        )
-
-    def history_url(self, workflow_id: str, run_id: str) -> str:
-        """The address of a run's history in Temporal's own web UI."""
-        return (
-            f"{self.ui_url}/namespaces/{self.namespace}/workflows/"
-            f"{quote(workflow_id, safe='')}/{run_id}/history"
-        )
-
-
-async def connect(
-    settings: TemporalSettings, interceptors: Sequence[Interceptor] = ()
-) -> Client:
-    """Connect to Temporal, or raise ``TemporalUnavailableError``.
-
-    ``interceptors`` are the client's, for a program that traces what it
-    starts.
-    """
-    try:
-        return await Client.connect(
-            settings.address,
-            namespace=settings.namespace,
-            data_converter=pydantic_data_converter,
-            interceptors=list(interceptors),
-        )
-    except Exception as exc:
-        raise TemporalUnavailableError(
-            f"could not reach Temporal at {settings.address}"
-        ) from exc
 
 
 @dataclass(frozen=True, kw_only=True)
