@@ -51,7 +51,10 @@ With an editor, the comment the author reads is the editor's, written
 from the draft of every part that would be posted. A "comment edited"
 fact keeps the draft and what was posted, or why the draft was posted
 as it was. The editor writes at observe too, where nothing is posted,
-so the journal holds what it would have said. An editor that finds
+so the journal holds what it would have said. The editor may shorten
+the draft, but its comment keeps the clause link of every failing
+finding the draft shows; one that drops one is not posted, and the
+draft is. An editor that finds
 nothing in the draft the author needs to read says so in the words
 ``NOTHING_TO_RAISE`` holds, and no comment is posted. If the draft
 has a failure, or reports something the author fixed, the draft is
@@ -118,6 +121,7 @@ from bugflow.review.domain.values.passage import (
 )
 from bugflow.review.domain.values.review_comments import (
     agent_comment,
+    clause_page,
     findings_comment,
 )
 from bugflow.review.domain.values.withholding import drawn
@@ -356,6 +360,9 @@ class _Said(BaseModel):
     fixed: int = 0
     findings: int = 0
     dismissed: int = 0
+    #: The clause page of each failing finding the body shows. The
+    #: editor's comment must keep each one the draft links to.
+    failing_links: tuple[str, ...] = ()
 
 
 def _enforced(
@@ -539,6 +546,27 @@ class PublishFindingsUseCase:
                     status=(
                         "refused: the editor added a link the draft does "
                         f"not hold: {invented[0]}"
+                    ),
+                    draft=shown,
+                    posted=shown,
+                    model=edited.model,
+                    reviewers=reviewers,
+                    links_in_draft=len(held),
+                    links_kept=len(held),
+                ),
+                tuple(edited.calls),
+            )
+        required = {link for one in parts for link in one.failing_links}
+        dropped = sorted((required & held) - found)
+        if dropped:
+            # The label and the commit status count each failing finding,
+            # so the comment must show it. The draft is posted instead.
+            return (
+                draft,
+                CommentEdit(
+                    status=(
+                        "refused: the editor dropped a failing finding: "
+                        f"{dropped[0]}"
                     ),
                     draft=shown,
                     posted=shown,
@@ -1107,6 +1135,18 @@ class PublishFindingsUseCase:
                 )
             else:
                 body = ""
+            site = self._sites.get(agent_id, "")
+            failing_links = (
+                tuple(
+                    dict.fromkeys(
+                        clause_page(site, f.clause)
+                        for f in new
+                        if f.severity == "fail"
+                    )
+                )
+                if body and site
+                else ()
+            )
             state, description = commit_status_for(mine, unanswered)
             state, description = _enforced(
                 state,
@@ -1125,6 +1165,7 @@ class PublishFindingsUseCase:
                     raised=len(new),
                     fixed=len(gone),
                     findings=len(mine),
+                    failing_links=failing_links,
                     dismissed=sum(
                         self._owner(f) == agent_id for f in dismissed
                     ),

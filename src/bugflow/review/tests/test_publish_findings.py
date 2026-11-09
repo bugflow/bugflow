@@ -1986,9 +1986,33 @@ def test_a_link_dropped_by_the_editor_is_counted_as_not_kept() -> None:
     journal = QueryableJournal()
     linking_publisher(
         RecordingForge(), journal, FakeEditor("Split the retry out.")
-    ).execute(linking(finding("fail", "two changes")))
+    ).execute(linking(finding("warn", "two changes")))
     (edit,) = edits(journal)
+    assert edit.status == "edited"
     assert (edit.links_in_draft, edit.links_kept) == (1, 0)
+
+
+@pytest.mark.model(
+    "Editor",
+    "A failing finding the draft shows is never left out of the comment.",
+)
+def test_an_edit_that_drops_a_failing_finding_leaves_the_draft_posted() -> (
+    None
+):
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    linking_publisher(
+        forge, journal, FakeEditor("Not blocking: a long line.")
+    ).execute(linking(finding("fail", "two changes")))
+
+    ((_, body),) = forge.comments
+    assert GIT_4_PAGE in body
+    assert "Not blocking" not in body
+    (edit,) = edits(journal)
+    assert edit.status == (
+        f"refused: the editor dropped a failing finding: {GIT_4_PAGE}"
+    )
+    assert edit.posted == edit.draft
 
 
 @pytest.mark.model(
