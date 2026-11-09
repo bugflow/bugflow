@@ -14,11 +14,13 @@ application.
 
 import asyncio
 import sys
-from dataclasses import dataclass
 
-from temporalio.client import Client
 from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
-from temporalio.contrib.pydantic import pydantic_data_converter
+
+from bugflow.shared.infrastructure.temporal_client import (
+    TemporalSettings,
+    connect,
+)
 
 #: The name the index workflow is registered under.
 INDEX_WORKFLOW = "ArchiveIndexWorkflow"
@@ -34,40 +36,30 @@ def index_workflow_id(ledger_id: str) -> str:
     return f"{INDEX_SCHEDULE}/{ledger_id}"
 
 
-@dataclass(frozen=True)
-class TemporalAddress:
-    """Where a Temporal server is, and which task queue the worker
-    listens on."""
-
-    address: str
-    namespace: str
-    task_queue: str
-
-
 class TemporalIndexingRequests:
     """Implements ``IndexingRequestService`` by starting the index
     workflow for one ledger. It does not wait for the workflow to
     finish.
+
+    ``settings`` says where Temporal is, which namespace the ledger's
+    worker serves, and which queue it listens on: the same settings the
+    worker itself reads.
 
     If a run for that ledger is already going, nothing new is started.
     If Temporal cannot be reached, the failure is printed to stderr and
     nothing is raised: the schedule will index the ledger later anyway.
     """
 
-    def __init__(self, where: TemporalAddress) -> None:
-        self._where = where
+    def __init__(self, settings: TemporalSettings) -> None:
+        self._settings = settings
 
     async def _start(self, ledger_id: str) -> None:
-        client = await Client.connect(
-            self._where.address,
-            namespace=self._where.namespace,
-            data_converter=pydantic_data_converter,
-        )
+        client = await connect(self._settings)
         await client.start_workflow(
             INDEX_WORKFLOW,
             {"ledgers": [ledger_id]},
             id=index_workflow_id(ledger_id),
-            task_queue=self._where.task_queue,
+            task_queue=self._settings.task_queue,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
         )
