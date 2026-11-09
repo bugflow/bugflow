@@ -18,7 +18,9 @@ from bugflow.review.domain.models.spend_binding import (
     owner_of,
 )
 from bugflow.shared.domain.values.budget import Budget
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 spend_bindings = sa.Table(
@@ -84,9 +86,7 @@ def _binding(
 
 class SqlAlchemySpendBindings:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def binding_for(
         self, forge: str, repo: str, layer: str, agent_id: str

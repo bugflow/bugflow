@@ -33,7 +33,9 @@ from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_association import (
     RepositoryAssociationUnresolvedError,
 )
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 from bugflow.shared.infrastructure.serde import from_columns
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     ENTRY_COLUMNS,
@@ -86,9 +88,7 @@ class SqlAlchemyJournalQueries:
     """The queries declared in ``review/domain/services/journal.py``."""
 
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def entries_for_run(self, correlation: Correlation) -> list[ReviewEntry]:
         return self._entries(

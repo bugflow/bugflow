@@ -13,7 +13,7 @@ from collections.abc import Iterator
 import pytest
 import sqlalchemy as sa
 
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import dispose_engine, engine_url
 
 
 def scratch_database() -> Iterator[str]:
@@ -31,8 +31,12 @@ def scratch_database() -> Iterator[str]:
     with server.connect() as connection:
         connection.execute(sa.text(f'CREATE DATABASE "{scratch}"'))
     try:
-        yield url.set(database=scratch).render_as_string(hide_password=False)
+        scratch_url = url.set(database=scratch).render_as_string(
+            hide_password=False
+        )
+        yield scratch_url
     finally:
+        dispose_engine(scratch_url)
         with server.connect() as connection:
             connection.execute(
                 sa.text(f'DROP DATABASE IF EXISTS "{scratch}" WITH (FORCE)')

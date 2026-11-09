@@ -23,7 +23,9 @@ from bugflow.review.domain.models.gnome_setting import (
     GnomeSetting,
 )
 from bugflow.shared.domain.models.journal_entry import JournalEntry
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 from bugflow.shared.infrastructure.sqlalchemy_entities import (
     forge,
     repository,
@@ -105,9 +107,7 @@ _SELECT = (
 
 class SqlAlchemyGnomeSettings:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def settings_of(
         self, forge_name: str, repo: str

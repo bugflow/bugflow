@@ -18,7 +18,9 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 from bugflow.shared.domain.values.correlation import Correlation
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 from bugflow.shared.infrastructure.serde import from_columns
 from bugflow.shared.infrastructure.sqlalchemy_journal import (
     ENTRY_COLUMNS,
@@ -68,9 +70,7 @@ class SqlAlchemyJournalQueries:
         such work is matched to its workflow run. Each table has a
         dispatch's columns: ``agent_id``, ``step``, ``runner`` and
         ``remote_id``."""
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
         self._dispatch_tables = dict(
             dispatch_tables
             if dispatch_tables is not None
