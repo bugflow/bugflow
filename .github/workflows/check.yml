@@ -16,12 +16,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
       - name: Lint, format, imports and types
         run: make lint fmt imports types
 
   test:
-    name: tests, with a Postgres
+    # The server image runs 3.12. The tests also run on 3.14, the
+    # newest Python, so a move to it finds nothing broken.
+    name: tests on Python ${{ matrix.python }}, with a Postgres
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
     services:
       postgres:
         image: postgres:16-alpine
@@ -43,6 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
       - name: Tests
         run: make test
 
