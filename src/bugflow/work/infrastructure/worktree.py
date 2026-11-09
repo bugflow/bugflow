@@ -79,7 +79,12 @@ def _escapes(link: Path, root: Path) -> bool:
     A link that cannot be resolved, such as one in a loop of links, is
     counted as pointing outside.
     """
+    # Since Python 3.13 a resolve that is not strict returns a loop's
+    # path as it is and raises nothing. A strict one raises on a loop,
+    # and also on a missing target, which is resolved again leniently.
     try:
+        target = link.resolve(strict=True)
+    except FileNotFoundError:
         target = link.resolve()
     except (OSError, RuntimeError):
         return True
