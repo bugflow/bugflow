@@ -19,6 +19,10 @@ the repository:
 - a commit status named by the reviewer's id, `pass`, `warn` or
   `fail`.
 
+A reviewer that found nothing writes no comment: its commit status
+says so. When everything a reviewer raised has been fixed, its comment
+says so and thanks the author.
+
 A push that follows within the repository's boundary, 60 seconds in
 the examples, joins the same review.
 
@@ -29,6 +33,11 @@ bad comments, and writes what the author reads. The findings, the
 label and the statuses are as before. A "comment edited" fact keeps
 the draft beside what was posted. [ADR 009](ADRs/009-the-comment-is-the-editors.md)
 says why.
+
+An editor that finds nothing in the draft worth the author's reading
+answers "Nothing to raise." and no comment is posted; the fact keeps
+the draft. A draft that reports fixes is posted whatever the editor
+answers, since the author's fixes landing is not nothing.
 
 ## Where each part comes from
 

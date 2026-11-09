@@ -15,6 +15,7 @@ from bugflow.review.domain.errors import (
 from bugflow.review.domain.models.comment_edit import (
     CommentDraft,
     EditedComment,
+    says_nothing_to_raise,
 )
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement
@@ -34,6 +35,7 @@ from bugflow.review.tests.journal import QueryableJournal
 from bugflow.review.usecases.publish_findings import (
     MANAGED_LABELS,
     NOTHING_NEW,
+    NOTHING_RAISED,
     PublishFindingsUseCase,
     cited_clauses,
     commit_status_for,
@@ -338,18 +340,16 @@ def test_the_worst_is_said_first_and_nothing_is_for_a_machine() -> None:
         assert code not in visible, code
 
 
-def test_a_clean_first_review_is_said_once() -> None:
+def test_a_clean_review_is_said_by_its_status_and_not_a_comment() -> None:
     forge = RecordingForge()
-    journal = QueryableJournal()
-    publish = publisher(forge, journal=journal, enabled=True)
+    publish = publisher(forge, journal=QueryableJournal(), enabled=True)
 
     first = publish.execute(request())
-    second = publish.execute(request(run=SECOND))
 
-    assert "**Prose review: nothing to raise.**" in first.comment
-    assert second.comment == "" and second.status == NOTHING_NEW
-    assert len(forge.comments) == 1
-    ((add, _), _) = forge.label_calls
+    assert first.comment == "" and first.status == NOTHING_NEW
+    assert forge.comments == []
+    assert forge.statuses == [(HEAD, PROSE, "success", "no findings")]
+    ((add, _),) = forge.label_calls
     assert add == {"review:pass"}
 
 
@@ -1058,7 +1058,7 @@ def test_a_checkout_agent_speaks_for_itself() -> None:
     assert response.comments[SAFETY].endswith(
         f"**Safety review: nothing to raise.** {NOTE}\n"
     )
-    assert NOTE not in response.comments[PROSE]
+    assert PROSE not in response.comments
     assert (HEAD, SAFETY, "success", "nothing to raise") in forge.statuses
 
 
@@ -1854,13 +1854,66 @@ def test_the_editor_is_not_asked_when_there_is_nothing_to_say() -> None:
     editor = FakeEditor()
     publish = publisher(journal=journal, enabled=True, editor=editor)
     publish.execute(request())
-    publish.execute(
-        request(run=Correlation(workflow_id="pr/6", run_id="run-2"))
+    assert editor.drafts == []
+
+
+def review_comments(journal: QueryableJournal) -> list[dict[str, object]]:
+    return [
+        e.payload
+        for e in journal.entries
+        if e.event_type == "action.taken"
+        and e.payload["action"] == "review_comment"
+    ]
+
+
+def test_an_editor_with_nothing_to_raise_leaves_no_comment() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    publish = publisher(
+        forge,
+        journal=journal,
+        enabled=True,
+        editor=FakeEditor("Nothing to raise."),
     )
-    # The first evaluation says "nothing to raise", the second has
-    # nothing new, so the editor is asked once.
-    assert len(editor.drafts) == 1
-    assert "nothing to raise" in editor.drafts[0].text
+    response = publish.execute(request(finding("warn", "long line")))
+
+    assert forge.comments == []
+    assert response.status == NOTHING_RAISED
+    (edit,) = edits(journal)
+    assert (edit.status, edit.posted) == ("nothing to raise", "")
+    assert "Long line" in edit.draft
+    (action,) = review_comments(journal)
+    assert action["performed"] is False
+    assert action["status"] == NOTHING_RAISED
+    # The status still counts the finding.
+    assert forge.statuses == [(HEAD, PROSE, "success", "1 warning; advisory")]
+
+
+def test_fixes_are_posted_though_the_editor_has_nothing_to_raise() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    editor = FakeEditor("Two things to fix.")
+    publish = publisher(forge, journal=journal, enabled=True, editor=editor)
+    first = finding("warn", "past tense", subject='summary "Added it"')
+    second = finding("warn", "a noun phrase", subject='summary "Support"')
+    raised(journal, RUN, first, second)
+    publish.execute(request(first, second, run=RUN))
+
+    editor.text = "Nothing to raise."
+    publish.execute(request(run=SECOND))
+
+    (_, (_, body)) = forge.comments
+    assert "everything raised is fixed. Thank you." in body
+    (edit,) = [
+        e.fact
+        for e in journal.entries_for_run(SECOND)
+        if isinstance(e.fact, CommentEdit)
+    ]
+    assert edit.status == (
+        "refused: the editor found nothing to raise in a draft that "
+        "reports fixes"
+    )
+    assert edit.posted == edit.draft
 
 
 def test_without_an_editor_no_edit_is_recorded() -> None:
@@ -1971,3 +2024,23 @@ def test_links_are_read_as_a_forge_ends_them() -> None:
         "https://example.org/x",
         "https://example.org/y",
     }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Nothing to raise.",
+        "nothing to raise",
+        "**Nothing to raise.**",
+        "  Nothing to raise.\n",
+    ],
+)
+def test_the_editor_says_nothing_to_raise_in_one_phrase(text: str) -> None:
+    assert says_nothing_to_raise(text)
+
+
+@pytest.mark.parametrize(
+    "text", ["Nothing to raise, but thank you.", "Two things to fix.", ""]
+)
+def test_any_other_answer_is_a_comment(text: str) -> None:
+    assert not says_nothing_to_raise(text)

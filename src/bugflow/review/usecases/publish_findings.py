@@ -18,11 +18,12 @@ written. A gnome at ``advise`` or ``gate`` has both written, and the
 label is written when any gnome publishes. If nothing publishes, the
 response still has the text that would have been posted.
 
-When a reviewer speaks. A reviewer's first comment on a pull request is
-always posted, even if it found nothing. After that it speaks only when
-what it has to say changes: it raises something new, or something it
-raised is gone. An evaluation that finds what the last one found posts
-no comment.
+When a reviewer speaks. A reviewer that judges or checks speaks when it
+has something to say: its first comment holds everything it found, and
+after that it speaks only when what it has to say changes: it raises
+something new, or something it raised is gone. A reviewer that found
+nothing posts no comment, and its commit status says so. An evaluation
+that finds what the last one found posts no comment.
 
 Which findings count:
 
@@ -50,7 +51,10 @@ With an editor, the comment the author reads is the editor's, written
 from the draft of every part that would be posted. A "comment edited"
 fact keeps the draft and what was posted, or why the draft was posted
 as it was. The editor writes at observe too, where nothing is posted,
-so the journal holds what it would have said.
+so the journal holds what it would have said. An editor that finds
+nothing in the draft the author needs to read says so in the words
+``NOTHING_TO_RAISE`` holds, and no comment is posted, unless the draft
+reports something the author fixed: then the draft is posted.
 """
 
 import re
@@ -71,7 +75,10 @@ from bugflow.review.domain.facts import (
     FINDING_REWRITTEN,
     LLM_CALLED,
 )
-from bugflow.review.domain.models.comment_edit import CommentDraft
+from bugflow.review.domain.models.comment_edit import (
+    CommentDraft,
+    says_nothing_to_raise,
+)
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement, fails
 from bugflow.review.domain.models.finding import Finding
@@ -110,7 +117,6 @@ from bugflow.review.domain.values.passage import (
 )
 from bugflow.review.domain.values.review_comments import (
     agent_comment,
-    clean_comment,
     findings_comment,
 )
 from bugflow.review.domain.values.withholding import drawn
@@ -171,6 +177,8 @@ MANAGED_LABELS = frozenset(("review:wip", "review:pass", "review:escalate"))
 DISABLED = "skipped: publishing disabled"
 NOT_REQUESTED = "skipped: not published for this evaluation"
 NOTHING_NEW = "skipped: nothing the last evaluation did not say"
+#: The status of a comment the editor found nothing in to raise.
+NOTHING_RAISED = "skipped: the editor found nothing to raise"
 
 
 def verdict_for(
@@ -320,13 +328,6 @@ def cited_clauses(
             cited[clause] = text
     return cited
 
-
-#: What a reviewer that judges or checks says in its first comment
-#: when it found nothing.
-READ = (
-    "The title, the description and the commit messages were read against "
-    "the doctrine, and nothing in them breaks it."
-)
 
 # A checkout agent's commit status and its text, for each verdict.
 _AGENT_STATUS: dict[ReviewStatus, tuple[CommitState, str]] = {
@@ -494,6 +495,28 @@ class PublishFindingsUseCase:
                     reviewers=reviewers,
                     links_in_draft=len(held),
                     links_kept=len(held),
+                ),
+                tuple(edited.calls),
+            )
+        if says_nothing_to_raise(text):
+            fixed = any(one.fixed for one in parts)
+            # A draft that reports fixes tells the author their work
+            # landed, which is not nothing. The draft is posted instead.
+            return (
+                draft if fixed else "",
+                CommentEdit(
+                    status=(
+                        "refused: the editor found nothing to raise in a "
+                        "draft that reports fixes"
+                        if fixed
+                        else "nothing to raise"
+                    ),
+                    draft=shown,
+                    posted=shown if fixed else "",
+                    model=edited.model,
+                    reviewers=reviewers,
+                    links_in_draft=len(held),
+                    links_kept=len(held) if fixed else 0,
                 ),
                 tuple(edited.calls),
             )
@@ -820,7 +843,9 @@ class PublishFindingsUseCase:
         )
         comment, edit, edit_calls = self._edited(request, drafted)
         comment_ids: dict[str, int] = {}
-        if speaking:
+        # An editor that found nothing to raise leaves no comment.
+        quiet = bool(drafted) and not comment
+        if speaking and not quiet:
             # The comment starts with the marker the forge matches on.
             # Without an editor, each reviewer's part keeps its own
             # marker inside it.
@@ -871,10 +896,15 @@ class PublishFindingsUseCase:
                         "action": "review_comment",
                         "agent_id": one.agent_id,
                         "performed": publishes(one.agent_id)
-                        and bool(one.body),
-                        "status": status_of(one.agent_id)
-                        if one.body
-                        else NOTHING_NEW,
+                        and bool(one.body)
+                        and not quiet,
+                        "status": (
+                            NOTHING_NEW
+                            if not one.body
+                            else NOTHING_RAISED
+                            if quiet
+                            else status_of(one.agent_id)
+                        ),
                         "comment_id": comment_ids.get(one.agent_id),
                         "verdict": one.verdict,
                         "head_sha": request.head_sha,
@@ -933,7 +963,13 @@ class PublishFindingsUseCase:
 
         bodies = [one.body for one in said if one.body]
         return PublishFindingsResponse(
-            status=status if bodies else NOTHING_NEW,
+            status=(
+                NOTHING_NEW
+                if not bodies
+                else NOTHING_RAISED
+                if quiet and enabled
+                else status
+            ),
             label=label,
             comment="\n".join(bodies),
             comments={one.agent_id: one.body for one in said if one.body},
@@ -1060,17 +1096,6 @@ class PublishFindingsUseCase:
                     self._summaries,
                     request.clauses,
                     site=self._sites.get(agent_id, ""),
-                )
-            elif first and not unanswered and request.head_sha:
-                body = clean_comment(
-                    marker,
-                    agent_id,
-                    READ,
-                    [
-                        self._summaries[p]
-                        for p in policies
-                        if p in self._summaries
-                    ],
                 )
             else:
                 body = ""
