@@ -9,7 +9,9 @@ from bugflow.shared.domain.values.repository_association import (
     RepositoryAssociation,
 )
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 repository_associations = sa.Table(
@@ -36,10 +38,11 @@ sa.Index(
 
 class SqlAlchemyRepositoryAssociations:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(engine_url(database_url))
+        self._engine = shared_engine(database_url)
 
     def close(self) -> None:
-        self._engine.dispose()
+        """Close nothing. The engine is shared by every adapter of the
+        database, and outlives this one."""
 
     def associate(
         self, associations: tuple[RepositoryAssociation, ...]

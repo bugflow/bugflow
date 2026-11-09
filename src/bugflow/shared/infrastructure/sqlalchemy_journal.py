@@ -37,7 +37,9 @@ from bugflow.shared.domain.values.repository_association import (
     RepositoryAssociation,
 )
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 from bugflow.shared.infrastructure.sqlalchemy_entities import (
     metadata as metadata,
 )
@@ -243,9 +245,7 @@ class SqlAlchemyJournal:
 
         The application passes each of them in.
         """
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
         self._placements = dict(placements or {})
         self._unpackers = dict(unpackers or {})
         self._stamps = {

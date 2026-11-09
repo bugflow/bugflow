@@ -10,7 +10,9 @@ from sqlalchemy.dialects.postgresql import JSONB, insert
 from bugflow.review.domain.errors import ExchangeNotFoundError
 from bugflow.review.domain.models.judgement import JudgeExchange
 from bugflow.shared.domain.errors import ContentTooLargeError
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 exchanges = sa.Table(
@@ -30,9 +32,7 @@ exchanges = sa.Table(
 
 class SqlAlchemyJudgeArchive:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def put(self, exchange: JudgeExchange) -> str:
         exchange_id = exchange.exchange_id
