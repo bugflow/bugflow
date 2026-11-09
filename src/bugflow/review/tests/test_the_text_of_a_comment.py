@@ -6,7 +6,6 @@ from bugflow.review.domain.models.review import ReviewNote
 from bugflow.review.domain.values.review_comments import (
     agent_comment,
     clause_page,
-    clean_comment,
     findings_comment,
     passage_of,
     reviewer_name,
@@ -78,23 +77,11 @@ def test_the_first_line_counts_what_stands_and_what_is_new_follows() -> None:
 def test_what_was_fixed_is_a_count_with_its_passages_folded() -> None:
     gone = said('"Some of it was wrong:": Narrates.')
     body = findings_comment(MARKER, "prose", [], [gone, gone], [])
-    assert "**Prose review: nothing to raise.**" in body
+    assert "**Prose review: everything raised is fixed. Thank you.**" in body
     assert (
         "<details><summary>1 passage fixed since the last review</summary>"
     ) in body
     assert '- "Some of it was wrong:"' in body
-
-
-def test_a_clean_first_word_says_what_was_read_and_folds_for_what() -> None:
-    body = clean_comment(
-        MARKER, "prose", "The description was read.", ["One reason."]
-    )
-    assert body.startswith(
-        f"{MARKER}\n\n**Prose review: nothing to raise.** "
-        "The description was read."
-    )
-    assert "<details><summary>What it was read for</summary>" in body
-    assert "- One reason\n" in body
 
 
 def test_a_note_of_one_paragraph_follows_the_verdict() -> None:

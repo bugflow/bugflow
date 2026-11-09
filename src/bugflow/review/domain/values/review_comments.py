@@ -4,7 +4,7 @@ Each reviewer posts comments of its own. A comment starts with the
 reviewer's name and its verdict. It has nothing in it that is only for
 a machine: ids, hashes and the name of the model are in the journal.
 
-There are three kinds of comment:
+There are two kinds of comment:
 
 - ``findings_comment``, from a reviewer that judges or checks. Each
   finding is one folded line: a sentence that names the clause it
@@ -12,9 +12,8 @@ There are three kinds of comment:
   the passage is. Unfolded, it shows the passage at fault, quoted, and
   what is wrong with it. Findings that break one clause stand
   together, the most severe clause first. What has been fixed is given
-  as a count, with the passages folded away.
-- ``clean_comment``, the first comment of such a reviewer when it found
-  nothing.
+  as a count, with the passages folded away. When everything raised
+  is fixed, the comment says so and thanks the author.
 - ``agent_comment``, from a checkout agent. It is the agent's note to
   the author. If there is no note fit to show, the whole write-up is
   folded under the verdict.
@@ -231,14 +230,13 @@ def findings_comment(
     clauses = clauses or {}
     name = reviewer_name(agent_id)
     counted = _counts(standing)
-    lines = [
-        marker,
-        "",
-        f"**{name}:** {counted}."
-        if counted
-        else f"**{name}: nothing to raise.**",
-        "",
-    ]
+    if counted:
+        headline = f"**{name}:** {counted}."
+    elif fixed:
+        headline = f"**{name}: everything raised is fixed. Thank you.**"
+    else:
+        headline = f"**{name}: nothing to raise.**"
+    lines = [marker, "", headline, ""]
     if rejudged:
         lines += [
             "The pull request has not changed since the last review; this "
@@ -294,32 +292,6 @@ def findings_comment(
         lines += _fold(
             f"{_count(len(gone), 'passage')} fixed since the last review",
             listed,
-        )
-    return "\n".join(lines).rstrip("\n") + "\n"
-
-
-def clean_comment(
-    marker: str,
-    agent_id: str,
-    read: str,
-    aims: Sequence[str] = (),
-) -> str:
-    """Build a reviewer's first comment on a pull request it found
-    nothing in.
-
-    ``read`` is a sentence saying what the reviewer read. ``aims`` say
-    what it read for, and are folded beneath.
-    """
-    lines = [
-        marker,
-        "",
-        f"**{reviewer_name(agent_id)}: nothing to raise.** {read}",
-        "",
-    ]
-    if aims:
-        lines += _fold(
-            "What it was read for",
-            "\n".join(f"- {aim.strip().rstrip('.')}" for aim in aims),
         )
     return "\n".join(lines).rstrip("\n") + "\n"
 
