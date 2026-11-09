@@ -40,6 +40,10 @@ the draft. If the draft has a failure, or reports fixes, bugflow posts
 the draft whatever the editor answers. A failure sets the label to
 `review:escalate`, so the comment must show it.
 
+The editor may shorten the draft, but it may not leave out a failing
+finding. If its comment drops the link to a failing finding's clause,
+bugflow posts the draft instead.
+
 ## Where each part comes from
 
 Every part of the comment is one file of the binding, and the binding
