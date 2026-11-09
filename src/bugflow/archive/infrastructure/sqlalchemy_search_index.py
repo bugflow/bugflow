@@ -36,7 +36,9 @@ from bugflow.archive.domain.models.indexed_file import (
     FoundLine,
     IndexedFile,
 )
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 
@@ -94,9 +96,7 @@ class SqlAlchemyIndexedFiles:
     def __init__(
         self, database_url: str, within_seconds: float = SEARCH_WITHIN_SECONDS
     ) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
         self._within_ms = max(1, round(within_seconds * 1000))
 
     def indexed(self, cids: Sequence[str]) -> set[str]:
@@ -186,9 +186,7 @@ class SqlAlchemyIndexedFiles:
 
 class SqlAlchemyIndexPositions:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def position(self, ledger_id: str) -> int:
         query = sa.select(archive_index_positions.c.events).where(

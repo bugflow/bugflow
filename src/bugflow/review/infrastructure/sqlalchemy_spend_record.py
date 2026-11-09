@@ -27,7 +27,9 @@ from bugflow.review.domain.models.spend import (
     SpendKind,
     Spent,
 )
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 #: A nanodollar is a billionth, which is what the proxy's figures are
 #: kept as so that a million of them summed is still exact.
@@ -147,7 +149,7 @@ class SqlAlchemySpendRecord:
     def __init__(self, database_url: str, relation: str = "journal") -> None:
         """``relation`` is the table or view the journal is read
         through. It has the journal's columns."""
-        self._engine = sa.create_engine(engine_url(database_url))
+        self._engine = shared_engine(database_url)
         self._grouped = sa.text(_grouped_query(relation))
         self._by_run = sa.text(_by_run_query(relation))
         self._window = sa.text(_window_query(relation))

@@ -23,7 +23,9 @@ from bugflow.shared.domain.values.repository_association import (
     RepositoryAssociationUnresolvedError,
 )
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 from bugflow.shared.infrastructure.serde import from_json, to_json
 from bugflow.shared.infrastructure.sqlalchemy_repository_associations import (
     associate_on_connection,
@@ -51,9 +53,7 @@ class SqlAlchemySnapshotStore:
     """
 
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def has_contribution(
         self,

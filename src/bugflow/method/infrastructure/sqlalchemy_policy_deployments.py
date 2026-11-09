@@ -21,7 +21,9 @@ from bugflow.method.domain.models.policy_deployment import (
 )
 from bugflow.method.domain.repositories.policy_deployment import Facts
 from bugflow.shared.domain.models.journal_entry import JournalEntry
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 
@@ -90,9 +92,7 @@ class SqlAlchemyPolicyDeployments:
     def __init__(
         self, database_url: str, journal: JournalOnAConnection | None = None
     ) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
         self._journal = journal
 
     def deploy(

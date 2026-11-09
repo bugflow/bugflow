@@ -22,7 +22,9 @@ from bugflow.forge.domain.models.forge_repository import (
     ListedRepository,
 )
 from bugflow.shared.domain.models.journal_entry import JournalEntry
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 from bugflow.shared.infrastructure.sqlalchemy_entities import (
     forge,
     repository,
@@ -51,9 +53,7 @@ repository_finding = sa.Table(
 
 class SqlAlchemyKnownRepositories:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def known(
         self, forge_name: str, owner: str, forge_keys: Collection[str] = ()

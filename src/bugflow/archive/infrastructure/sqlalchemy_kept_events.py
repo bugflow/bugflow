@@ -12,7 +12,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from bugflow.archive.domain.models.kept_event import KeptEvent
 from bugflow.archive.domain.repositories.kept_events import EventTakenError
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 
@@ -47,9 +49,7 @@ def _event(row: sa.RowMapping) -> KeptEvent:
 
 class SqlAlchemyKeptEvents:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def of_ledger(self, ledger_id: str) -> list[KeptEvent]:
         query = (

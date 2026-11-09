@@ -10,7 +10,9 @@ from sqlalchemy.dialects.postgresql import insert
 from bugflow.review.domain.errors import WriteUpNotFoundError
 from bugflow.review.domain.models.write_up import WriteUp
 from bugflow.shared.domain.values.correlation import Correlation
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 write_ups = sa.Table(
@@ -32,9 +34,7 @@ write_ups = sa.Table(
 
 class SqlAlchemyWriteUpArchive:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def put(self, write_up: WriteUp) -> str:
         write_up_id = write_up.write_up_id

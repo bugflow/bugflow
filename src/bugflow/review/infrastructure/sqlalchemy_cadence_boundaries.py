@@ -8,7 +8,9 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
 from bugflow.review.domain.models.cadence_boundary import CadenceBoundary
-from bugflow.shared.infrastructure.database import engine_url
+from bugflow.shared.infrastructure.database import (
+    shared_engine,
+)
 
 metadata = sa.MetaData()
 
@@ -28,9 +30,7 @@ cadence_boundaries = sa.Table(
 
 class SqlAlchemyCadenceBoundaries:
     def __init__(self, database_url: str) -> None:
-        self._engine = sa.create_engine(
-            engine_url(database_url), pool_pre_ping=True
-        )
+        self._engine = shared_engine(database_url)
 
     def boundary(self, cadence: str) -> str | None:
         query = sa.select(cadence_boundaries.c.boundary).where(
