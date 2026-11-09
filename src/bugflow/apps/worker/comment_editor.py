@@ -26,6 +26,7 @@ from bugflow.apps.worker.litellm_judge import (
 from bugflow.method.domain.models.editor import Editor
 from bugflow.review.domain.errors import EditorUnavailableError
 from bugflow.review.domain.models.comment_edit import (
+    NOTHING_TO_RAISE,
     CommentDraft,
     EditedComment,
 )
@@ -43,7 +44,9 @@ EDIT_TAGS = ("example", "why", "comment", "title", "description", "draft")
 #: the binding's taste.
 ANSWER = (
     "Answer with the comment alone, in Markdown, with nothing before it "
-    "and nothing after it."
+    "and nothing after it. If nothing in the draft is worth the author's "
+    "reading, and the draft reports nothing the author fixed, answer "
+    f"`{NOTHING_TO_RAISE}` alone, and no comment is posted."
 )
 
 
