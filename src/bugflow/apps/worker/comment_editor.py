@@ -44,9 +44,9 @@ EDIT_TAGS = ("example", "why", "comment", "title", "description", "draft")
 #: the binding's taste.
 ANSWER = (
     "Answer with the comment alone, in Markdown, with nothing before it "
-    "and nothing after it. If nothing in the draft is worth the author's "
-    "reading, and the draft reports nothing the author fixed, answer "
-    f"`{NOTHING_TO_RAISE}` alone, and no comment is posted."
+    "and nothing after it. If the draft has no failure, reports no "
+    "fixes, and holds nothing else worth the author's reading, answer "
+    f"`{NOTHING_TO_RAISE}` alone. Then no comment is posted."
 )
 
 

@@ -2044,3 +2044,24 @@ def test_the_editor_says_nothing_to_raise_in_one_phrase(text: str) -> None:
 )
 def test_any_other_answer_is_a_comment(text: str) -> None:
     assert not says_nothing_to_raise(text)
+
+
+def test_a_failure_is_posted_though_the_editor_has_nothing_to_raise() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    publish = publisher(
+        forge,
+        journal=journal,
+        enabled=True,
+        editor=FakeEditor("Nothing to raise."),
+    )
+    response = publish.execute(request(finding("fail", "two changes")))
+
+    ((_, body),) = forge.comments
+    assert "Two changes" in body
+    assert response.label == "review:escalate"
+    (edit,) = edits(journal)
+    assert edit.status == (
+        "refused: the editor found nothing to raise in a draft that "
+        "reports a failure"
+    )
