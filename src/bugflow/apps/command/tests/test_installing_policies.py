@@ -38,7 +38,11 @@ class Host:
         self.out = io.StringIO()
 
     def install(
-        self, directory: Path, commit: str = "c1", check_only: bool = False
+        self,
+        directory: Path,
+        commit: str = "c1",
+        check_only: bool = False,
+        tenant: str = "default",
     ) -> int:
         return run_install_policies(
             directory,
@@ -48,7 +52,41 @@ class Host:
             (),
             out=self.out,
             check_only=check_only,
+            tenant=tenant,
         )
+
+
+def test_a_deployment_is_installed_for_the_tenant_named(
+    tmp_path: Path,
+) -> None:
+    host = Host()
+    assert host.install(laid_out(tmp_path), tenant="business-development") == 0
+    assert host.deployments.in_force() is None
+    theirs = host.deployments.in_force("business-development")
+    assert theirs is not None and theirs.commit == "c1"
+    assert host.out.getvalue().startswith(
+        f"{REPOSITORY} at c1 is in force for business-development, 4 files"
+    )
+
+
+def test_a_tenant_that_is_no_tenants_name_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    status = run(
+        [
+            "install-policies",
+            str(laid_out(tmp_path)),
+            "--repository",
+            REPOSITORY,
+            "--commit",
+            "c1",
+            "--tenant",
+            "Business Development",
+        ],
+        environ={"DATABASE_URL": "postgresql://nowhere/none"},
+    )
+    assert status == 2
+    assert "--tenant is 'Business Development'" in capsys.readouterr().err
 
 
 def test_a_directory_is_stored_and_what_is_in_force_is_printed(

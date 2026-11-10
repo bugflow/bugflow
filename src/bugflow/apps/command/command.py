@@ -10,9 +10,9 @@ Its subcommands include::
         [--withhold SHARE]
     bugflow declared [REPOSITORY]
     bugflow deploy-policies DIRECTORY --repository OWNER/NAME
-        --commit SHA --api URL [--check]
+        --commit SHA --api URL [--check] [--tenant TENANT]
     bugflow install-policies DIRECTORY --repository OWNER/NAME
-        --commit SHA [--check]
+        --commit SHA [--check] [--tenant TENANT]
     bugflow discover
     bugflow migrate [--check]
     bugflow repository-origins [--apply MAPPINGS.json]
@@ -38,6 +38,10 @@ what DIRECTORY holds in the database named by ``DATABASE_URL`` and
 puts it in force, writing the declarations the deployment carries.
 ``BUILD_SHA`` and ``POLICY_CHECKS`` are read as the API reads them.
 With ``--check`` it parses the files and stores nothing.
+
+Both put the deployment in force for one tenant (ADR 011): the one
+``--tenant`` names, or the setting ``TENANT``, or ``default`` on a
+server with one tenant. A tenant's pipeline names its own.
 
 Exit status: 0 if the database holds the deployment afterwards, or
 with ``--check`` if the files parse. 1 if the files are not a
@@ -218,6 +222,7 @@ from bugflow.apps.shared.discovering import (
 from bugflow.apps.shared.journals import build_sha, stamped_journal
 from bugflow.apps.shared.telemetry import configure_telemetry
 from bugflow.apps.shared.temporal import TemporalUnavailableError
+from bugflow.apps.shared.tenancy import tenant_from
 from bugflow.apps.worker import worker
 from bugflow.forge.infrastructure.github import GitHubForge
 from bugflow.forge.infrastructure.sqlalchemy_journal_queries import (
@@ -231,6 +236,10 @@ from bugflow.method.domain.errors import (
     ReviewAgentError,
 )
 from bugflow.method.domain.models.pace_layer import CADENCES, EVENT
+from bugflow.method.domain.models.policy_deployment import (
+    DEFAULT_TENANT,
+    checked_tenant,
+)
 from bugflow.method.dtos.send_policies import (
     SendPoliciesRequest,
     SendPoliciesResponse,
@@ -315,6 +324,7 @@ def _parser() -> argparse.ArgumentParser:
         help="have the server parse the files and say what is wrong "
         "with them, storing nothing",
     )
+    _tenant_argument(deploy_policies)
     install_policies = commands.add_parser(
         "install-policies",
         help="store the reviewers, policies and doctrine a directory "
@@ -342,6 +352,7 @@ def _parser() -> argparse.ArgumentParser:
         help="parse the files and say what is wrong with them, storing "
         "nothing",
     )
+    _tenant_argument(install_policies)
     migrate = commands.add_parser(
         "migrate",
         help="bring the database named by DATABASE_URL up to date by "
@@ -413,6 +424,27 @@ def _parser() -> argparse.ArgumentParser:
     )
     _declaring_parsers(commands)
     return parser
+
+
+def _tenant_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--tenant",
+        default=None,
+        help="the tenant the deployment is put in force for, which has a "
+        "deployment in force of its own. Omitted, the setting TENANT, or "
+        "default on a server with one tenant",
+    )
+
+
+def _tenant_of(args: argparse.Namespace, environ: Mapping[str, str]) -> str:
+    """The tenant a deployment is for: ``--tenant``, or the setting.
+    Raises ``ValueError`` for a name that is no tenant's."""
+    if args.tenant is not None:
+        try:
+            return checked_tenant(args.tenant)
+        except PolicyDeploymentError as exc:
+            raise ValueError(f"--tenant is {exc}") from exc
+    return tenant_from(environ)
 
 
 def _declaring_parsers(
@@ -626,6 +658,11 @@ def _said(answered: SendPoliciesResponse) -> str:
     now = (
         f"{in_force.repository} at {in_force.commit}, "
         f"content {in_force.content_hash[:12]}"
+        + (
+            ""
+            if in_force.tenant == DEFAULT_TENANT
+            else f", for {in_force.tenant}"
+        )
         if in_force
         else "nothing"
     )
@@ -682,6 +719,11 @@ def run(
             file=sys.stderr,
         )
         return 2
+    try:
+        tenant = _tenant_of(args, environ)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     send = SendPoliciesUseCase(
         PolicyDirectory(args.directory),
         HttpPolicyServer(
@@ -701,6 +743,7 @@ def run(
                 repository=args.repository,
                 commit=args.commit,
                 check_only=args.check,
+                tenant=tenant,
             )
         )
     except PolicyDeploymentError as exc:
@@ -751,6 +794,11 @@ def _install_policies(
         )
         return 2
     checks = checks_from(environ)
+    try:
+        tenant = _tenant_of(args, environ)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     return run_install_policies(
         args.directory,
         args.repository,
@@ -758,6 +806,7 @@ def _install_policies(
         deploying_over(database_url, build_sha(environ), checks),
         checks,
         check_only=args.check,
+        tenant=tenant,
     )
 
 

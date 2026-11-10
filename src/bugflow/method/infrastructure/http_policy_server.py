@@ -15,7 +15,10 @@ from bugflow.method.domain.errors import (
     PoliciesRefusedError,
     PolicyServerError,
 )
-from bugflow.method.domain.models.policy_deployment import PolicyDeployment
+from bugflow.method.domain.models.policy_deployment import (
+    DEFAULT_TENANT,
+    PolicyDeployment,
+)
 from bugflow.method.domain.values.server_answer import (
     InForce,
     Outcome,
@@ -72,6 +75,7 @@ class HttpPolicyServer:
                             for one in deployment.files
                         ],
                         "check_only": check_only,
+                        "tenant": deployment.tenant,
                     },
                 )
             except httpx2.HTTPError as exc:
@@ -161,6 +165,7 @@ def _answer(said: dict[str, Any]) -> ServerAnswer:
             repository=in_force["repository"],
             commit=in_force["commit"],
             content_hash=in_force["content_hash"],
+            tenant=in_force.get("tenant", DEFAULT_TENANT),
         )
         if in_force
         else None,

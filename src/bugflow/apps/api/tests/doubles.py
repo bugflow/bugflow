@@ -11,7 +11,7 @@ from bugflow.apps.api.role_policy_deployment_access import (
 )
 from bugflow.apps.api.settings import PageSignIn, SettingsAdministration
 from bugflow.apps.shared.deploying import Deploying, deployment_check
-from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.apps.shared.policies import tenants_in_force
 from bugflow.forge.infrastructure.sqlalchemy_known_repositories import (
     InMemoryKnownRepositories,
 )
@@ -117,7 +117,9 @@ class Server:
         self.deploying = Deploying(
             deploy=DeployPoliciesUseCase(
                 self.deployments,
-                deployment_check(CHECKS, self.settings),
+                deployment_check(
+                    CHECKS, self.settings, deployments=self.deployments
+                ),
                 Clock(),
             ),
             deployments=self.deployments,
@@ -140,7 +142,7 @@ class Server:
                         self.settings, self.journal, Clock(), "run-1"
                     ),
                     repositories=self.repositories.everything,
-                    reviewers=lambda: reviewers_in_force(
+                    reviewers=lambda: tenants_in_force(
                         self.deployments, CHECKS
                     ),
                     boundaries=self.boundaries,

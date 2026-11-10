@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed, 2026-11-04.
+Proposed, 2026-11-04. Amended, 2026-11-10: ADR 011 lets more than one
+tenant compose the review part, each with a policy deployment in force
+of its own.
 
 ## Context
 

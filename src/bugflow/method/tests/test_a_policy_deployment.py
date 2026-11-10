@@ -6,6 +6,7 @@ The in-memory store answers here what the Postgres one answers in
 purpose.
 """
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from bugflow.method.domain.errors import (
     PolicyDeploymentError,
 )
 from bugflow.method.domain.models.policy_deployment import (
+    DEFAULT_TENANT,
     DeployedFile,
     PolicyDeployment,
 )
@@ -149,9 +151,33 @@ def test_an_earlier_deployment_is_still_held_after_it_is_replaced() -> None:
     held = InMemoryPolicyDeployments()
     held.deploy(deployment("c1"))
     held.deploy(deployment("c2", **{"a.md": "new"}))
-    earlier = held.kept[(REPOSITORY, "c1")]
+    earlier = held.kept[(DEFAULT_TENANT, REPOSITORY, "c1")]
     assert earlier.text_of("prose/reviewer.md") == "agent_id: prose\n"
-    assert (REPOSITORY, "c3") not in held.kept
+    assert (DEFAULT_TENANT, REPOSITORY, "c3") not in held.kept
+
+
+def test_each_tenant_has_a_deployment_in_force_of_its_own() -> None:
+    """Two tenants may hold one commit, each with files of its own, and
+    the one in force is asked for by tenant (ADR 011)."""
+    held = InMemoryPolicyDeployments()
+    ours = deployment("c1")
+    theirs = replace(
+        deployment("c1", **{"site/reviewer.md": "agent_id: site\n"}),
+        tenant="business-development",
+    )
+    assert held.deploy(ours) is True
+    assert held.deploy(theirs) is True
+    assert held.in_force() == ours
+    assert held.in_force("business-development") == theirs
+    assert held.in_force("nobody") is None
+    assert held.tenants() == ("business-development", DEFAULT_TENANT)
+    latest = held.last_put_in_force("business-development")
+    assert latest is not None and latest.tenant == "business-development"
+
+
+def test_a_deployment_names_a_tenant_by_a_tenants_name() -> None:
+    with pytest.raises(PolicyDeploymentError, match="no tenant's name"):
+        replace(deployment("c1"), tenant="Business Development")
 
 
 def test_the_files_beside_the_reviewers_are_read(tmp_path: Path) -> None:

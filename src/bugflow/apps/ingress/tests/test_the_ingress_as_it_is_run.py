@@ -13,6 +13,7 @@ Skipped unless DATABASE_URL names a Postgres server.
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -25,9 +26,19 @@ from bugflow.apps.ingress.ingress import (
     IngressParts,
     app_from_environment,
 )
+from bugflow.apps.shared.deploying import deploying_over
 from bugflow.apps.shared.temporal import TemporalSettings
 from bugflow.apps.worker.pull_request import DEBOUNCE
 from bugflow.forge.infrastructure.sqlalchemy_forge_facts import delivery
+from bugflow.method.dtos.deploy_policies import (
+    DeployPoliciesRequest,
+    PolicyFile,
+)
+from bugflow.method.tests.policy_files import READ
+from bugflow.review.domain.models.gnome_setting import GnomeSetting
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
+)
 from bugflow.shared.infrastructure.database import engine_url
 from bugflow.shared.infrastructure.sqlalchemy_journal import journal
 
@@ -166,6 +177,83 @@ def test_a_delivery_is_handed_to_the_worker_with_the_default_window(
     assert response.json()["workflow_id"] == "pr/github/o/r/6"
     (input,) = temporal.started
     assert input.debounce_seconds == DEBOUNCE.total_seconds()
+
+
+SITE = {
+    path.replace("prose", "site"): text.replace("prose", "site")
+    for path, text in READ.items()
+}
+
+
+def deployed(database_url: str, tenant: str, files: dict[str, str]) -> None:
+    deploying_over(database_url, None, ()).deploy.execute(
+        DeployPoliciesRequest(
+            repository=f"example-org/{tenant}-policies",
+            commit="c1",
+            files=tuple(
+                PolicyFile(path=path, text=text)
+                for path, text in files.items()
+            ),
+            sent_by="a test",
+            tenant=tenant,
+        )
+    )
+
+
+def ingress_for_tenants(
+    database_url: str,
+) -> tuple[FastAPI, dict[str, FakeClient]]:
+    """The ingress with another tenant listed, and a client for each
+    namespace it connects to."""
+    clients: dict[str, FakeClient] = {}
+
+    async def connect(settings: TemporalSettings) -> Any:
+        clients[settings.namespace] = FakeClient()
+        return clients[settings.namespace]
+
+    environ = environment(database_url) | {
+        "TENANTS": "business-development=business-development/bd-queue"
+    }
+    return app_from_environment(environ, connect=connect), clients
+
+
+def test_a_tenant_listed_with_no_deployment_is_not_connected_to(
+    database_url: str,
+) -> None:
+    app, clients = ingress_for_tenants(database_url)
+    with TestClient(app):
+        pass
+    assert set(clients) == {"default"}
+
+
+def test_a_delivery_is_handed_to_the_tenant_whose_gnome_judges(
+    database_url: str,
+) -> None:
+    """Site, business development's gnome, is set on the repository and
+    prose, default's, is not, so the delivery starts a workflow in
+    business development's namespace alone (ADR 011)."""
+    deployed(database_url, "default", READ)
+    deployed(database_url, "business-development", SITE)
+    SqlAlchemyGnomeSettings(database_url).save(
+        GnomeSetting(
+            forge="github",
+            repo="o/r",
+            gnome="site",
+            behaviour="observe",
+            set_by="a test",
+            set_at=datetime.now(UTC),
+        )
+    )
+    app, clients = ingress_for_tenants(database_url)
+    body = pull_request("opened")
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/github", content=body, headers=signed(body, "d-site")
+        )
+    assert response.status_code == 202
+    assert set(clients) == {"default", "business-development"}
+    assert clients["default"].started == []
+    assert len(clients["business-development"].started) == 1
 
 
 def test_the_parts_another_server_adds_are_used(database_url: str) -> None:

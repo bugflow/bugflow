@@ -3,10 +3,11 @@ one row is (ADR 007).
 
 A ``policies.deployed`` row is one deploy: a policy deployment stored
 and put in force on this server. It names the deployment by its
-repository, commit and content hash, counts its files, says who sent
-it and names the deployment it replaced, which is null for the server's
-first. The deployment itself is kept in ``policy_deployment``; this
-table is the fact that it was put in force, each time it was.
+repository, commit and content hash, the tenant it is in force for,
+counts its files, says who sent it and names the deployment it
+replaced, which is null for the tenant's first. The deployment itself
+is kept in ``policy_deployment``; this table is the fact that it was
+put in force, each time it was.
 
 The table is keyed by the event's id, a foreign key to the policy
 journal. ``UNPACKERS`` writes the typed row from the envelope's payload
@@ -21,6 +22,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.dialects.postgresql import insert
 
+from bugflow.method.domain.models.policy_deployment import DEFAULT_TENANT
 from bugflow.shared.domain.models.journal_entry import JournalEntry
 
 metadata = sa.MetaData()
@@ -45,6 +47,11 @@ policy_deploy = sa.Table(
     sa.Column("files", sa.Integer, nullable=False),
     # The identity that sent the deployment, as the claim named it.
     sa.Column("sent_by", sa.Text, nullable=False),
+    # The tenant the deployment was put in force for (ADR 011). A row
+    # older than the column is the tenant a server names none of.
+    sa.Column(
+        "tenant", sa.Text, nullable=False, server_default=DEFAULT_TENANT
+    ),
     # The deployment in force before this one; null for the first.
     sa.Column("replaced_repository", sa.Text),
     sa.Column("replaced_commit", sa.Text),
@@ -65,6 +72,7 @@ def unpack_deploy(connection: sa.Connection, entry: JournalEntry) -> None:
             content_hash=p["content_hash"],
             files=p["files"],
             sent_by=p["sent_by"],
+            tenant=p.get("tenant", DEFAULT_TENANT),
             replaced_repository=replaced.get("repository"),
             replaced_commit=replaced.get("commit"),
             replaced_content_hash=replaced.get("content_hash"),

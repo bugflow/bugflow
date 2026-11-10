@@ -101,6 +101,26 @@ hold only letters, digits, `-`, `.`, `_` and `~`.
 | `bugflow_temporal_task_queue` | `worker`, `ingress`, `archive` | The task queue the worker listens on. Default `bugflow` |
 | `bugflow_temporal_ui_url` | `ingress` | The address people reach the workflow console at. Not written if empty |
 
+### Tenants
+
+A tenant is an area of responsibility with a review worker of its own
+on the server, each in a Temporal namespace of its own (ADR 010). Each
+tenant has a policy deployment in force of its own, sent by its own
+binding's pipeline, and its worker reads it and the settings of the
+gnomes it holds (ADR 011). A server with one tenant sets none of these.
+
+| Variable | Read by | Is |
+|---|---|---|
+| `bugflow_tenant` | `worker`, `ingress` | The tenant this worker reviews for, and the ingress's own tenant: lower case letters, digits and hyphens. Default `default` |
+| `bugflow_tenants` | `ingress` | The other tenants a delivery reaches, each as `tenant=namespace/task-queue`, comma-separated: `business-development=business-development/bugflow-bd`. A delivery is handed to each tenant whose gnome judges the repository, in that tenant's namespace. Not written if empty |
+| `bugflow_tenant_deployers` | `api` | The client that deploys each tenant's policies, as `tenant=client` pairs separated by commas, so one tenant's pipeline cannot put a deployment in force for another. A tenant not named takes any caller with `bugflow_policy_deployer_role`. Not written if empty |
+
+A tenant's pipeline passes `--tenant` to `bugflow deploy-policies`. A
+reviewer's id is one tenant's on a server, and a layer's name has one
+cadence: a deployment that holds a reviewer, or gives a layer a
+cadence, that another tenant's deployment in force holds otherwise is
+refused.
+
 ### The forge
 
 The repositories this server watches are not a variable: each a gnome

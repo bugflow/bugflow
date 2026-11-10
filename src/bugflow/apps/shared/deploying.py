@@ -8,10 +8,14 @@ imported. A deployment that drops a profile, or a gnome, that a setting
 names is refused (ADR 008), so a repository is never left set to a
 profile that is gone, even with its gnome off. So is one that gives a
 layer a cadence a declared boundary on it cannot take, which the
-ingress or the worker would raise on. The API's route and the
-command's ``install-policies`` run the same composition, so a
-deployment made on the host is checked and recorded as one a pipeline
-sends is.
+ingress or the worker would raise on. On a server with several tenants
+(ADR 011), so is one that holds a reviewer another tenant's deployment
+in force holds, or names a layer another tenant's holds at a different
+cadence: a reviewer's id and a layer's cadence are one tenant's each,
+because the settings and the boundaries name them with no tenant. The
+API's route and the command's ``install-policies`` run the same
+composition, so a deployment made on the host is checked and recorded
+as one a pipeline sends is.
 """
 
 import sys
@@ -26,8 +30,11 @@ from bugflow.method.domain.errors import (
     PolicyDeploymentError,
 )
 from bugflow.method.domain.models.boundary import BoundaryError
-from bugflow.method.domain.models.pace_layer import check_boundary
-from bugflow.method.domain.models.policy_deployment import PolicyDeployment
+from bugflow.method.domain.models.pace_layer import PaceLayer, check_boundary
+from bugflow.method.domain.models.policy_deployment import (
+    DEFAULT_TENANT,
+    PolicyDeployment,
+)
 from bugflow.method.domain.models.policy_text import JUDGED_SUBJECTS
 from bugflow.method.domain.repositories.policy_deployment import (
     PolicyDeploymentRepository,
@@ -37,6 +44,7 @@ from bugflow.method.dtos.deploy_policies import (
     PolicyFile,
 )
 from bugflow.method.infrastructure.policy_deployment_parsing import (
+    ParsedDeployment,
     parse_deployment,
     refuse_retired,
 )
@@ -81,23 +89,95 @@ def checks_from(environ: Mapping[str, str]) -> tuple[str, ...]:
 class SettledDeploymentCheck:
     """Implements ``PolicyDeploymentCheckService``: a retired file is
     refused, then the parse, told which checks this server has and which
-    subjects it renders, then each setting, which must name a gnome and
-    a profile the deployment holds, and then each declared boundary,
-    which the cadence the deployment gives its layer must take."""
+    subjects it renders, then what the other tenants' deployments in
+    force hold, which this one may not, then each setting of this
+    tenant's gnomes, which must name a gnome and a profile the
+    deployment holds, and then each declared boundary, which the
+    cadence the deployment gives its layer must take."""
 
     def __init__(
         self,
         checks: Collection[str],
         settings: GnomeSettingsService | None = None,
         boundaries: LayerBoundariesService | None = None,
+        deployments: PolicyDeploymentRepository | None = None,
     ) -> None:
         self._checks = checks
         self._settings = settings
         self._boundaries = boundaries
+        self._deployments = deployments
+
+    def _others(
+        self, tenant: str
+    ) -> tuple[dict[str, str], dict[str, tuple[str, PaceLayer]]]:
+        """What the other tenants' deployments in force hold: each
+        reviewer's tenant by reviewer id, and each layer's tenant and
+        layer by layer name."""
+        gnomes: dict[str, str] = {}
+        layers: dict[str, tuple[str, PaceLayer]] = {}
+        if self._deployments is None:
+            return gnomes, layers
+        for other in self._deployments.tenants():
+            if other == tenant:
+                continue
+            held = self._deployments.in_force(other)
+            if held is None:
+                continue
+            try:
+                theirs = parse_deployment(held, self._checks, JUDGED_SUBJECTS)
+            except PolicyDeploymentError as exc:
+                raise PolicyDeploymentError(
+                    f"the deployment in force for {other} does not parse, "
+                    f"so what it holds cannot be kept apart from this one: "
+                    f"{exc}"
+                ) from exc
+            for gnome in theirs.agents:
+                gnomes.setdefault(gnome, other)
+            for name, layer in theirs.layers.items():
+                layers.setdefault(name, (other, layer))
+        return gnomes, layers
+
+    def _refuse_what_another_tenant_holds(
+        self,
+        parsed: ParsedDeployment,
+        gnomes: Mapping[str, str],
+        layers: Mapping[str, tuple[str, PaceLayer]],
+    ) -> None:
+        taken = sorted(
+            f"{gnome} is {gnomes[gnome]}'s"
+            for gnome in parsed.agents
+            if gnome in gnomes
+        )
+        if taken:
+            raise PolicyDeploymentError(
+                "the deployment holds a reviewer another tenant's "
+                "deployment in force holds: "
+                + "; ".join(taken)
+                + ". A reviewer's id is one tenant's on a server, since a "
+                "setting names the reviewer and not its tenant"
+            )
+        crossed = sorted(
+            f"{name} runs at the {theirs[1].cadence.name} cadence for "
+            f"{other} and at the {layer.cadence.name} cadence here"
+            for name, layer in parsed.layers.items()
+            if (theirs := layers.get(name)) is not None
+            and theirs[1].cadence.name != layer.cadence.name
+            for other in (theirs[0],)
+        )
+        if crossed:
+            raise PolicyDeploymentError(
+                "the deployment gives a layer a cadence another tenant's "
+                "deployment in force gives it otherwise: "
+                + "; ".join(crossed)
+                + ". A layer's name has one cadence on a server, since a "
+                "boundary is declared on the name"
+            )
 
     def check(self, deployment: PolicyDeployment) -> None:
         refuse_retired(deployment)
         parsed = parse_deployment(deployment, self._checks, JUDGED_SUBJECTS)
+        others, their_layers = self._others(deployment.tenant)
+        self._refuse_what_another_tenant_holds(parsed, others, their_layers)
         if self._boundaries is not None:
             unfit = []
             for one in self._boundaries.declarations():
@@ -122,10 +202,12 @@ class SettledDeploymentCheck:
                 )
         if self._settings is None:
             return
+        # A setting of another tenant's gnome is that tenant's to keep.
         dropped = sorted(
             f"{one.forge}:{one.repo} sets {one.gnome} to {one.profile}"
             for one in self._settings.settings()
-            if one.profile not in parsed.profiles.get(one.gnome, {})
+            if one.gnome not in others
+            and one.profile not in parsed.profiles.get(one.gnome, {})
         )
         if dropped:
             raise PolicyDeploymentError(
@@ -139,9 +221,12 @@ def deployment_check(
     checks: Collection[str],
     settings: GnomeSettingsService | None = None,
     boundaries: LayerBoundariesService | None = None,
+    deployments: PolicyDeploymentRepository | None = None,
 ) -> SettledDeploymentCheck:
-    """Return the check a deployment passes before it is stored."""
-    return SettledDeploymentCheck(checks, settings, boundaries)
+    """Return the check a deployment passes before it is stored.
+    ``deployments`` is where the other tenants' deployments in force are
+    read from; given none, nothing is kept apart from them."""
+    return SettledDeploymentCheck(checks, settings, boundaries, deployments)
 
 
 @dataclass(frozen=True)
@@ -165,7 +250,7 @@ def deploying_with(
     return Deploying(
         deploy=DeployPoliciesUseCase(
             deployments,
-            deployment_check(checks, settings, boundaries),
+            deployment_check(checks, settings, boundaries, deployments),
             SystemClock(),
         ),
         deployments=deployments,
@@ -199,10 +284,11 @@ def run_install_policies(
     checks: Collection[str],
     out: TextIO | None = None,
     check_only: bool = False,
+    tenant: str = DEFAULT_TENANT,
 ) -> int:
-    """Store what the directory holds and put it in force; 0 when the
-    database holds it afterwards. With ``check_only``, parse it and
-    store nothing; 0 when it parses.
+    """Store what the directory holds and put it in force for the
+    tenant; 0 when the database holds it afterwards. With
+    ``check_only``, parse it and store nothing; 0 when it parses.
 
     Prints what the database holds afterwards, read back and not
     echoed.
@@ -223,6 +309,7 @@ def run_install_policies(
                 ),
                 sent_by=INSTALLED_ON_THE_HOST,
                 check_only=check_only,
+                tenant=tenant,
             )
         )
     except (PolicyDeploymentError, PolicyDeploymentConflictError) as exc:
@@ -235,12 +322,13 @@ def run_install_policies(
             file=out,
         )
         return 0
-    now = deploying.deployments.in_force()
+    now = deploying.deployments.in_force(tenant)
     if now is None:
         print("error: nothing is in force after the write", file=sys.stderr)
         return 1
+    whose = "" if tenant == DEFAULT_TENANT else f" for {tenant}"
     print(
-        f"{now.repository} at {now.commit} is in force, "
+        f"{now.repository} at {now.commit} is in force{whose}, "
         f"{len(now.files)} files, content {now.content_hash[:12]}"
         + ("" if answered.outcome == "deployed" else "; it already was"),
         file=out,

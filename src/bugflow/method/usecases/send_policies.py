@@ -6,6 +6,8 @@ force. Sending the deployment already in force changes nothing, so a
 pipeline may send it again.
 """
 
+from dataclasses import replace
+
 from bugflow.method.domain.services.policy_files import PolicyFilesService
 from bugflow.method.domain.services.policy_server import PolicyServerService
 from bugflow.method.dtos.send_policies import (
@@ -31,7 +33,10 @@ class SendPoliciesUseCase:
         self._server = server
 
     def execute(self, request: SendPoliciesRequest) -> SendPoliciesResponse:
-        deployment = self._files.read(request.repository, request.commit)
+        deployment = replace(
+            self._files.read(request.repository, request.commit),
+            tenant=request.tenant,
+        )
         answer = self._server.send(deployment, request.check_only)
         in_force = answer.in_force
         return SendPoliciesResponse(
@@ -42,6 +47,7 @@ class SendPoliciesUseCase:
                 repository=in_force.repository,
                 commit=in_force.commit,
                 content_hash=in_force.content_hash,
+                tenant=in_force.tenant,
             )
             if in_force
             else None,
