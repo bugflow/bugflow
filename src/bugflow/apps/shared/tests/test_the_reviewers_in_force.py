@@ -1,9 +1,11 @@
 """The reviewers a program runs with come from the deployment in force,
 parsed with the checks this server has."""
 
+from dataclasses import replace
+
 import pytest
 
-from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.apps.shared.policies import reviewers_in_force, tenants_in_force
 from bugflow.method.domain.errors import (
     PolicyDeploymentError,
     ReviewAgentError,
@@ -86,6 +88,45 @@ def test_names_narrow_the_reviewers_to_those_named() -> None:
     assert set(reviewers.agents) == {"prose"}
     with pytest.raises(ReviewAgentError, match="not installed: other"):
         reviewers_in_force(in_force(), (), names=("other",))
+
+
+def test_the_reviewers_are_the_tenants_own() -> None:
+    """Each tenant's reviewers come from its own deployment in force,
+    and every tenant's are read together for the programs that serve
+    them all (ADR 011)."""
+    deployments = InMemoryPolicyDeployments()
+    deployments.deploy(deployment())
+    site = {
+        path.replace("prose", "site"): text.replace("prose", "site")
+        for path, text in READ.items()
+    }
+    deployments.deploy(
+        replace(deployment(site, "c2"), tenant="business-development")
+    )
+    ours = reviewers_in_force(deployments, ())
+    theirs = reviewers_in_force(deployments, (), tenant="business-development")
+    assert ours is not None and set(ours.agents) == {"prose"}
+    assert theirs is not None and set(theirs.agents) == {"site"}
+    assert theirs.tenant == "business-development"
+    assert theirs.held == frozenset({"site"})
+    assert reviewers_in_force(deployments, (), tenant="nobody") is None
+
+    everyone = tenants_in_force(deployments, ())
+    assert list(everyone.by_tenant) == ["business-development", "default"]
+    assert everyone.tenant_of == {
+        "prose": "default",
+        "site": "business-development",
+    }
+    assert set(everyone.profiles) == {"prose", "site"}
+    assert set(everyone.agents) == {"prose", "site"}
+    assert set(everyone.layers) == {"pull-request"}
+    assert set(everyone.layers_of("site")) == {"pull-request"}
+    assert everyone.layers_of("nobody") == {}
+    assert {t: d.commit for t, d in everyone.deployed.items()} == {
+        "default": "c1",
+        "business-development": "c2",
+    }
+    assert tenants_in_force(InMemoryPolicyDeployments(), ()).by_tenant == {}
 
 
 def test_a_manifest_naming_a_check_the_server_lacks_is_refused() -> None:

@@ -5,8 +5,10 @@ A program needs the same things whichever deployment they come from: the
 reviewers, each reviewer's policies and doctrine, the pace layers, the
 glossary files, the editor, and the texts that feed a corpus version.
 ``ReviewersInForce`` holds them, and ``reviewers_in_force`` builds one
-from the deployment the database says is in force, parsed with the
-checks this server has.
+from the deployment the database says is in force for one tenant,
+parsed with the checks this server has. A program that serves every
+tenant, as the ingress and the API do, reads ``tenants_in_force``
+(ADR 011).
 """
 
 from collections.abc import Collection, Iterable, Mapping
@@ -15,7 +17,10 @@ from dataclasses import dataclass, field
 from bugflow.method.domain.models.doctrine import Doctrine
 from bugflow.method.domain.models.editor import Editor
 from bugflow.method.domain.models.pace_layer import PaceLayer
-from bugflow.method.domain.models.policy_deployment import PolicyDeployment
+from bugflow.method.domain.models.policy_deployment import (
+    DEFAULT_TENANT,
+    PolicyDeployment,
+)
 from bugflow.method.domain.models.policy_text import (
     JUDGED_SUBJECTS,
     PolicyText,
@@ -64,6 +69,14 @@ class ReviewersInForce:
     #: The binding's editor, which writes each review comment from the
     #: server's draft; None for a binding without one.
     editor: Editor | None = None
+    #: Every reviewer the deployment holds, by id, before ``names``
+    #: narrowed them: the gnomes whose settings are this tenant's.
+    held: frozenset[str] = frozenset()
+
+    @property
+    def tenant(self) -> str:
+        """Whose deployment the reviewers were built from."""
+        return self.deployed_from.tenant
 
     def doctrine_of(self, agent_id: str) -> DoctrineRepository:
         """Return the doctrine that reviewer cites, or an empty one
@@ -110,7 +123,9 @@ def deployed_reviewers(
             repository=deployment.repository,
             commit=deployment.commit,
             content_hash=deployment.content_hash,
+            tenant=deployment.tenant,
         ),
+        held=frozenset(parsed.agents),
     )
 
 
@@ -118,14 +133,99 @@ def reviewers_in_force(
     deployments: PolicyDeploymentRepository,
     checks: Collection[str],
     names: Iterable[str] = (),
+    tenant: str = DEFAULT_TENANT,
 ) -> ReviewersInForce | None:
-    """Return the reviewers of the deployment in force, or None on a
-    server that was never sent one, which reviews nothing.
+    """Return the reviewers of the tenant's deployment in force, or None
+    for a tenant that was never sent one, which reviews nothing.
 
     Reads the database once. A deployment put in force later is not
     seen; ``deployment_watch`` stops a program when that happens.
     """
-    deployment = deployments.in_force()
+    deployment = deployments.in_force(tenant)
     if deployment is None:
         return None
     return deployed_reviewers(deployment, checks, names)
+
+
+@dataclass(frozen=True)
+class TenantsInForce:
+    """Every tenant's reviewers, for a program that serves them all.
+
+    A reviewer's id is one tenant's on a server, which deploying holds
+    to, so the gnomes of every tenant read together as one mapping.
+    """
+
+    #: By tenant, in name order.
+    by_tenant: Mapping[str, ReviewersInForce]
+
+    @property
+    def tenant_of(self) -> dict[str, str]:
+        """Each gnome's tenant, by the gnome's id."""
+        return {
+            gnome: tenant
+            for tenant, reviewers in self.by_tenant.items()
+            for gnome in reviewers.held
+        }
+
+    @property
+    def agents(self) -> dict[str, DomainSpecificReviewAgent]:
+        return {
+            gnome: agent
+            for reviewers in self.by_tenant.values()
+            for gnome, agent in reviewers.agents.items()
+        }
+
+    @property
+    def policies(self) -> dict[str, Mapping[str, PolicyText]]:
+        return {
+            gnome: held
+            for reviewers in self.by_tenant.values()
+            for gnome, held in reviewers.policies.items()
+        }
+
+    @property
+    def profiles(self) -> dict[str, Mapping[str, tuple[str, ...]]]:
+        """Each gnome's profiles, by gnome, across every tenant."""
+        return {
+            gnome: named
+            for reviewers in self.by_tenant.values()
+            for gnome, named in reviewers.profiles.items()
+        }
+
+    @property
+    def layers(self) -> dict[str, PaceLayer]:
+        """Every tenant's layers by name. Deploying holds a layer's name
+        to one cadence across the server, so the one kept where two
+        tenants name a layer alike rides the same clock as the other."""
+        found: dict[str, PaceLayer] = {}
+        for reviewers in self.by_tenant.values():
+            for name, layer in reviewers.layers.items():
+                found.setdefault(name, layer)
+        return found
+
+    def layers_of(self, gnome: str) -> Mapping[str, PaceLayer]:
+        """The layers of the tenant whose gnome that is, or none for a
+        gnome no tenant holds."""
+        tenant = self.tenant_of.get(gnome)
+        return self.by_tenant[tenant].layers if tenant else {}
+
+    @property
+    def deployed(self) -> dict[str, DeployedFrom]:
+        """Which deployment each tenant's reviewers were built from."""
+        return {
+            tenant: reviewers.deployed_from
+            for tenant, reviewers in self.by_tenant.items()
+        }
+
+
+def tenants_in_force(
+    deployments: PolicyDeploymentRepository, checks: Collection[str]
+) -> TenantsInForce:
+    """Return every tenant's reviewers, from each tenant's deployment in
+    force. A server never sent one holds no tenant."""
+    found: dict[str, ReviewersInForce] = {}
+    for tenant in deployments.tenants():
+        reviewers = reviewers_in_force(deployments, checks, tenant=tenant)
+        if reviewers is not None:
+            found[tenant] = reviewers
+    return TenantsInForce(by_tenant=found)

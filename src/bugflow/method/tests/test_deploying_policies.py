@@ -11,6 +11,7 @@ from bugflow.method.domain.errors import (
     PolicyDeploymentError,
 )
 from bugflow.method.domain.facts import POLICIES_DEPLOYED
+from bugflow.method.domain.models.policy_deployment import DEFAULT_TENANT
 from bugflow.method.dtos.deploy_policies import (
     DeployPoliciesRequest,
     PolicyFile,
@@ -94,6 +95,7 @@ def test_a_deployment_is_stored_put_in_force_and_recorded() -> None:
         "content_hash": answered.content_hash,
         "files": len(READ),
         "sent_by": "a test",
+        "tenant": "default",
         "replaced": None,
     }
 
@@ -153,7 +155,7 @@ def test_a_check_says_which_deployment_is_in_force() -> None:
         request("c2", edited("Second.\n"), check_only=True)
     )
     assert answered.in_force is not None and answered.in_force.commit == "c1"
-    assert (REPOSITORY, "c2") not in fixture.deployments.kept
+    assert (DEFAULT_TENANT, REPOSITORY, "c2") not in fixture.deployments.kept
 
 
 @pytest.mark.model(
@@ -196,4 +198,26 @@ def test_a_deployment_whose_fact_is_refused_is_not_put_in_force() -> None:
     with pytest.raises(RuntimeError, match="the journal refuses"):
         deploy.execute(request())
     assert deployments.in_force() is None
-    assert (REPOSITORY, "c1") not in deployments.kept
+    assert (DEFAULT_TENANT, REPOSITORY, "c1") not in deployments.kept
+
+
+def test_a_deployment_is_put_in_force_for_the_tenant_named() -> None:
+    """Each tenant's deployment in force stands apart, and the fact
+    names the tenant (ADR 011)."""
+    fixture = Fixture()
+    fixture.deploy.execute(request("c1"))
+    theirs = request("c2", edited("Theirs.\n")).model_copy(
+        update={"tenant": "business-development"}
+    )
+    answered = fixture.deploy.execute(theirs)
+    assert answered.outcome == "deployed"
+    assert answered.in_force is not None
+    assert (answered.in_force.commit, answered.in_force.tenant) == (
+        "c2",
+        "business-development",
+    )
+    ours = fixture.deployments.in_force()
+    assert ours is not None and ours.commit == "c1"
+    fact = fixture.journal.entries[-1]
+    assert fact.payload["tenant"] == "business-development"
+    assert fact.payload["replaced"] is None

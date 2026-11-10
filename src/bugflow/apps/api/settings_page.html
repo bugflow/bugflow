@@ -164,6 +164,9 @@ function gnomeHeading(gnome) {
   th.append(element("div", "", gnome));
   const about = (held.gnomes || {})[gnome];
   if (!about) return th;
+  if ((held.deployments || []).length > 1) {
+    th.append(element("div", "tenant", about.tenant + "'s"));
+  }
   if (about.summary) th.append(element("div", "about", about.summary));
   th.append(element("div", "runs", about.runs.length
     ? "Runs " + about.runs.join("; ") : "Runs no process"));
@@ -184,17 +187,32 @@ function gnomeHeading(gnome) {
   return th;
 }
 
-function definedIn() {
-  const where = document.getElementById("defined");
-  where.replaceChildren();
-  if (!held.deployment) return;
-  const { repository, commit } = held.deployment;
+function deploymentLink({ repository, commit }) {
   const link = element("a", "", repository + " at " + commit.slice(0, 7));
   link.href = "https://github.com/" + repository.split("/").map(encodeURIComponent).join("/") +
     "/tree/" + encodeURIComponent(commit);
+  return link;
+}
+
+function definedIn() {
+  const where = document.getElementById("defined");
+  where.replaceChildren();
+  const deployments = held.deployments || [];
+  if (!deployments.length) return;
+  if (deployments.length === 1) {
+    where.append("Each gnome, its profiles and their policies are defined in " +
+      "the policy deployment in force: profiles.toml and the gnomes' " +
+      "directories in ", deploymentLink(deployments[0]), ".");
+    return;
+  }
   where.append("Each gnome, its profiles and their policies are defined in " +
-    "the policy deployment in force: profiles.toml and the gnomes' " +
-    "directories in ", link, ".");
+    "its tenant's policy deployment in force: profiles.toml and the " +
+    "gnomes' directories in ");
+  deployments.forEach((deployment, index) => {
+    if (index) where.append(index === deployments.length - 1 ? " and " : ", ");
+    where.append(deployment.tenant + "'s ", deploymentLink(deployment));
+  });
+  where.append(".");
 }
 
 function render() {

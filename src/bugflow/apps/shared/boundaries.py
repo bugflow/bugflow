@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from bugflow.apps.shared.policies import ReviewersInForce
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.method.domain.models.boundary import (
     BoundaryError,
@@ -264,16 +263,16 @@ def where_named(scope: SpendScope) -> str:
 
 
 def boundaries_from_environment(
-    environ: Mapping[str, str], reviewers: ReviewersInForce
+    environ: Mapping[str, str], layers: Mapping[str, PaceLayer]
 ) -> Boundaries:
     """Build where the periods an allowance is counted over begin: each
     repository's declaration, this server's own, the layers that join
     them, and the timezone ``PERIODS_TIMEZONE`` names."""
     database_url = environ["DATABASE_URL"]
     return Boundaries(
-        layers=reviewers.layers,
+        layers=layers,
         repositories=Defaulted(
-            SqlAlchemyLayerBoundaries(database_url), reviewers.layers
+            SqlAlchemyLayerBoundaries(database_url), layers
         ),
         deployment=SqlAlchemyCadenceBoundaries(database_url),
         zone=periods_timezone(environ),

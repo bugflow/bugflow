@@ -15,7 +15,7 @@ from typing import TextIO
 
 from bugflow.apps.command.declaring import Console, _split
 from bugflow.apps.shared.journals import stamped_journal
-from bugflow.apps.shared.policies import ReviewersInForce, reviewers_in_force
+from bugflow.apps.shared.policies import TenantsInForce, tenants_in_force
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
 )
@@ -49,11 +49,11 @@ def _line(setting: GnomeSetting) -> str:
     )
 
 
-def _profiles(reviewers: ReviewersInForce) -> dict[str, tuple[str, ...]]:
-    """Each gnome's profile names, by agent id."""
+def _profiles(held: TenantsInForce) -> dict[str, tuple[str, ...]]:
+    """Each gnome's profile names, by agent id, across every tenant."""
     return {
         agent_id: tuple(sorted(named))
-        for agent_id, named in reviewers.profiles.items()
+        for agent_id, named in held.profiles.items()
     }
 
 
@@ -99,10 +99,10 @@ def run_set(
             f"{behaviour!r} is no behaviour; name one of "
             f"{', '.join(BEHAVIOURS)}"
         )
-    reviewers = reviewers_in_force(
+    reviewers = tenants_in_force(
         SqlAlchemyPolicyDeployments(database_url), checks
     )
-    if reviewers is None:
+    if not reviewers.by_tenant:
         return console.refuse(
             "no policy deployment is in force, so no gnome can be set"
         )

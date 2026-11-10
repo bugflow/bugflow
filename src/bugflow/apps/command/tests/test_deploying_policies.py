@@ -75,6 +75,22 @@ def test_a_deployment_already_in_force_is_said_to_change_nothing(
     )
 
 
+def test_the_tenant_is_sent_with_the_files(tmp_path: Path) -> None:
+    """A pipeline names its tenant, or the setting names it, or the
+    server's one tenant takes it (ADR 011)."""
+    stub = StubServer()
+    assert deploy(stub, laid_out(tmp_path)) == 0
+    assert deploy(stub, tmp_path, "--tenant", "business-development") == 0
+    assert (
+        deploy(stub, tmp_path, environ=ENVIRON | {"TENANT": "delivery"}) == 0
+    )
+    assert [sent["tenant"] for _, sent in stub.posts] == [
+        "default",
+        "business-development",
+        "delivery",
+    ]
+
+
 def test_a_check_says_nothing_was_stored(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

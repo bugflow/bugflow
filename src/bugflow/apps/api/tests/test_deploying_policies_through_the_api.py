@@ -6,6 +6,7 @@ import pytest
 
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
+    deployers_from,
 )
 from bugflow.apps.api.tests.doubles import DEPLOYER, READER, Server, bearer
 from bugflow.method.tests.policy_files import MANIFEST, READ
@@ -142,8 +143,58 @@ def test_the_role_that_deploys_is_the_one_given() -> None:
     access = RolePolicyDeploymentAccess("may-deploy")
     holding = Caller(subject="s", client="c", roles=frozenset({"may-deploy"}))
     other = Caller(subject="s", client="c", roles=frozenset({"other"}))
-    assert access.may_deploy(holding)
-    assert not access.may_deploy(other)
+    assert access.may_deploy(holding, "default")
+    assert not access.may_deploy(other, "default")
+
+
+def test_a_tenant_that_names_its_deployer_takes_that_client_alone() -> None:
+    """One tenant's pipeline cannot put a deployment in force for
+    another (ADR 011); a tenant that names none takes any deployer."""
+    access = RolePolicyDeploymentAccess(
+        "may-deploy", deployers_from("business-development=bd-pipeline")
+    )
+    theirs = Caller(
+        subject="s", client="bd-pipeline", roles=frozenset({"may-deploy"})
+    )
+    ours = Caller(
+        subject="s", client="ca-pipeline", roles=frozenset({"may-deploy"})
+    )
+    assert access.may_deploy(theirs, "business-development")
+    assert not access.may_deploy(ours, "business-development")
+    assert access.may_deploy(ours, "default")
+    assert access.may_deploy(theirs, "default")
+    with pytest.raises(ValueError, match="tenant=client"):
+        deployers_from("business-development")
+
+
+def test_a_deployment_for_another_tenant_stands_apart() -> None:
+    server = Server()
+    server.client.post(ROUTE, json=body(), headers=bearer(DEPLOYER))
+    # The same reviewer id as the deployment in force for default.
+    taken = server.client.post(
+        ROUTE,
+        json=body(commit="c9", tenant="business-development"),
+        headers=bearer(DEPLOYER),
+    )
+    assert taken.status_code == 422
+    assert "prose is default's" in taken.text
+    # A reviewer of its own.
+    site = {
+        path.replace("prose", "site"): text.replace("prose", "site")
+        for path, text in READ.items()
+    }
+    theirs = body(commit="c9", files=site, tenant="business-development")
+    posted = server.client.post(ROUTE, json=theirs, headers=bearer(DEPLOYER))
+    assert posted.status_code == 200, posted.text
+    assert posted.json()["in_force"]["tenant"] == "business-development"
+    ours = server.client.get(IN_FORCE, headers=bearer(DEPLOYER)).json()
+    assert (ours["commit"], ours["tenant"]) == ("c1", "default")
+    read = server.client.get(
+        IN_FORCE,
+        params={"tenant": "business-development"},
+        headers=bearer(DEPLOYER),
+    ).json()
+    assert (read["commit"], read["tenant"]) == ("c9", "business-development")
 
 
 DROPPING = READ | {

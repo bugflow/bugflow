@@ -121,3 +121,9 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 - **Operator.** Whoever runs a server: sets each gnome on each
   repository, fills its model classes, and says what a run may spend.
   [What is deployed where](architecture.md).
+- **Tenant.** An area of responsibility with a worker of its own on a
+  server, in a Temporal namespace of its own, and a policy deployment
+  in force of its own, sent by its own binding; a server with one
+  tenant names none, and it is `default`. A reviewer's id is one
+  tenant's on a server. [ADR 010](ADRs/010-tenants.md) and
+  [ADR 011](ADRs/011-a-deployment-belongs-to-a-tenant.md).

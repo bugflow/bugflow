@@ -3,11 +3,13 @@ is put in force, so that its next start reads the new one."""
 
 import asyncio
 import inspect
+from dataclasses import replace
 
 import pytest
 from opentelemetry.instrumentation.utils import is_instrumentation_enabled
 
 from bugflow.method.domain.models.policy_deployment import (
+    DEFAULT_TENANT,
     DeployedFile,
     PolicyDeployment,
     PutInForce,
@@ -17,6 +19,7 @@ from bugflow.method.infrastructure.deployment_watch import (
     DeployedFrom,
     changed_since,
     stop_on_new_deployment,
+    stop_on_new_deployments,
     wait_for_new_deployment,
 )
 from bugflow.method.infrastructure.in_memory_policy_deployments import (
@@ -97,11 +100,13 @@ def test_a_failed_check_is_reported_and_tried_again() -> None:
     class FailsOnce(InMemoryPolicyDeployments):
         failed = False
 
-        def last_put_in_force(self) -> PutInForce | None:
+        def last_put_in_force(
+            self, tenant: str = DEFAULT_TENANT
+        ) -> PutInForce | None:
             if not self.failed:
                 self.failed = True
                 raise ConnectionError("database is away")
-            return super().last_put_in_force()
+            return super().last_put_in_force(tenant)
 
     async def scenario() -> tuple[PutInForce | None, list[str]]:
         held = FailsOnce()
@@ -124,9 +129,11 @@ def test_a_check_is_not_traced() -> None:
     traced: list[bool] = []
 
     class Observed(InMemoryPolicyDeployments):
-        def last_put_in_force(self) -> PutInForce | None:
+        def last_put_in_force(
+            self, tenant: str = DEFAULT_TENANT
+        ) -> PutInForce | None:
             traced.append(is_instrumentation_enabled())
-            return super().last_put_in_force()
+            return super().last_put_in_force(tenant)
 
     async def scenario() -> None:
         held = Observed()
@@ -165,8 +172,61 @@ def test_the_program_is_stopped_once_and_told_why() -> None:
     stops, said = asyncio.run(scenario())
     assert stops == 1
     assert said == [
-        f"deployment {REPOSITORY} at c2 is in force; "
+        f"deployment {REPOSITORY} at c2 is in force for default; "
         "stopping so the next start reads it"
+    ]
+
+
+def test_a_worker_watches_its_own_tenants_deployment_alone() -> None:
+    """Another tenant's deployment put in force stops nothing here; its
+    own does (ADR 011)."""
+
+    async def scenario() -> tuple[bool, PutInForce | None]:
+        held = InMemoryPolicyDeployments()
+        held.deploy(deployment("c1"))
+        held.deploy(replace(deployment("c2"), tenant="business-development"))
+        waiting = asyncio.create_task(
+            wait_for_new_deployment(started_with("c1"), held, interval=0.01)
+        )
+        await asyncio.sleep(0.05)
+        undisturbed = not waiting.done()
+        held.deploy(deployment("c3"))
+        return undisturbed, await asyncio.wait_for(waiting, timeout=2)
+
+    undisturbed, latest = asyncio.run(scenario())
+    assert undisturbed is True
+    assert latest is not None and latest.commit == "c3"
+
+
+def test_the_ingress_is_stopped_by_any_tenants_deployment() -> None:
+    """The ingress serves every tenant, so a deployment put in force
+    for one it started without, or one it started with another
+    deployment of, stops it, and it says which (ADR 011)."""
+
+    async def scenario() -> list[str]:
+        held = InMemoryPolicyDeployments()
+        held.deploy(deployment("c1"))
+        said: list[str] = []
+        stopped = asyncio.Event()
+        watching = asyncio.create_task(
+            stop_on_new_deployments(
+                stopped.set,
+                {"default": started_with("c1")},
+                held,
+                interval=0.01,
+                say=said.append,
+            )
+        )
+        await asyncio.sleep(0.05)
+        assert not stopped.is_set()
+        held.deploy(replace(deployment("c2"), tenant="business-development"))
+        await asyncio.wait_for(watching, timeout=2)
+        assert stopped.is_set()
+        return said
+
+    assert asyncio.run(scenario()) == [
+        f"deployment {REPOSITORY} at c2 is in force for "
+        "business-development; stopping so the next start reads it"
     ]
 
 
