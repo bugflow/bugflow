@@ -231,7 +231,8 @@ def test_a_delivery_is_handed_to_the_tenant_whose_gnome_judges(
 ) -> None:
     """Site, business development's gnome, is set on the repository and
     prose, default's, is not, so the delivery starts a workflow in
-    business development's namespace alone (ADR 011)."""
+    business development's namespace alone (ADR 011). The setting names
+    its tenant (ADR 012)."""
     deployed(database_url, "default", READ)
     deployed(database_url, "business-development", SITE)
     SqlAlchemyGnomeSettings(database_url).save(
@@ -240,6 +241,7 @@ def test_a_delivery_is_handed_to_the_tenant_whose_gnome_judges(
             repo="o/r",
             gnome="site",
             behaviour="observe",
+            tenant="business-development",
             set_by="a test",
             set_at=datetime.now(UTC),
         )

@@ -76,9 +76,9 @@ each binding's pipeline sends its deployment with `--tenant`. Each
 tenant's deployment in force stands apart, each tenant's worker reads
 its own and the settings of the gnomes it holds, and the one ingress
 hands a delivery to each tenant whose gnome judges the repository, in
-that tenant's namespace (ADR 011). A gnome's id is one tenant's on a
-server, so the settings page sets every tenant's gnomes under one
-list, each named for its tenant.
+that tenant's namespace (ADR 011). Each gnome's setting names its
+tenant, so the settings page sets every tenant's gnomes under one list,
+another tenant's gnome named `tenant/id` (ADR 012).
 
 ## How a pull request is reviewed
 
@@ -348,6 +348,8 @@ calibration, glossary, editor.
   and pass when none does.
 - Each reviewer sets a commit status on the head commit, named by its
   id.
+- Another tenant's reviewer names its status tenant/id, so two tenants'
+  reviewers of one id set two statuses.
 - The commit status is failure when one of the reviewer's findings
   fails, and success otherwise.
 

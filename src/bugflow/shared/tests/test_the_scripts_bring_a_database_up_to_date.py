@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0029"
+LAST = "0030"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -1302,6 +1302,71 @@ def test_the_deployments_already_held_become_the_default_tenants(
         engine.dispose()
     assert tuple(tenants) == ("default", "default", "default")
     assert in_force == "agent_id: prose"
+    assert last_run(empty) == [LAST]
+
+
+def test_the_settings_already_held_become_the_default_tenants(
+    empty: str,
+) -> None:
+    """A setting made before settings had tenants is the default
+    tenant's after script 0030, and another tenant's setting of a gnome
+    of the same id stands beside it (ADR 012)."""
+    upgrade(empty)
+    downgrade(empty, "0029")
+    engine = _engine(empty)
+    try:
+        with engine.begin() as connection:
+            forge_id = connection.execute(
+                sa.text(
+                    "INSERT INTO forge (name) VALUES ('github') RETURNING id"
+                )
+            ).scalar_one()
+            repository_id = connection.execute(
+                sa.text(
+                    "INSERT INTO repository (forge_id, name) "
+                    "VALUES (:forge_id, 'o/widgets') RETURNING id"
+                ),
+                {"forge_id": forge_id},
+            ).scalar_one()
+            connection.execute(
+                sa.text(
+                    "INSERT INTO gnome_setting (repository_id, gnome, "
+                    "behaviour, profile, set_by, set_at) VALUES "
+                    "(:repository_id, 'prose', 'observe', 'default', "
+                    "'a test', now())"
+                ),
+                {"repository_id": repository_id},
+            )
+
+        upgrade(empty)
+
+        with engine.begin() as connection:
+            held = connection.execute(
+                sa.text("SELECT tenant, gnome FROM gnome_setting")
+            ).all()
+            assert [tuple(row) for row in held] == [("default", "prose")]
+            # Another tenant's setting of a gnome of the same id.
+            connection.execute(
+                sa.text(
+                    "INSERT INTO gnome_setting (repository_id, tenant, gnome, "
+                    "behaviour, profile, set_by, set_at) VALUES "
+                    "(:repository_id, 'business-development', 'prose', "
+                    "'advise', 'default', 'a test', now())"
+                ),
+                {"repository_id": repository_id},
+            )
+            both = connection.execute(
+                sa.text(
+                    "SELECT tenant, behaviour FROM gnome_setting "
+                    "ORDER BY tenant"
+                )
+            ).all()
+        assert [tuple(row) for row in both] == [
+            ("business-development", "advise"),
+            ("default", "observe"),
+        ]
+    finally:
+        engine.dispose()
     assert last_run(empty) == [LAST]
 
 

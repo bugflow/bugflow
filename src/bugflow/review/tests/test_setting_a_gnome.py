@@ -127,3 +127,24 @@ def test_a_behaviour_says_what_the_gnome_may_do() -> None:
     ]
     with pytest.raises(ValueError, match="'loud' is no behaviour"):
         gnome("loud")
+
+
+def test_each_tenants_setting_of_one_gnome_stands_apart() -> None:
+    """Two tenants may hold a gnome of one id (ADR 012); each setting
+    names its tenant, and so does its fact."""
+    settings, journal, use_case = setting_up()
+    use_case.execute(request(profile="strict"))
+
+    answered = use_case.execute(request(tenant="business-development"))
+
+    assert answered.changed and answered.was_behaviour is None
+    assert answered.tenant == "business-development"
+    assert [
+        (one.tenant, one.profile, one.qualified)
+        for one in settings.settings_of("github", "example/widgets")
+    ] == [
+        ("business-development", "default", "business-development/pr-gnome"),
+        ("default", "strict", "pr-gnome"),
+    ]
+    assert journal.entries[-1].payload["tenant"] == "business-development"
+    assert len({entry.event_id for entry in journal.entries}) == 2

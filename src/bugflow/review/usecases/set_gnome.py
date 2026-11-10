@@ -44,8 +44,9 @@ class SetGnomeUseCase:
 
     def execute(self, request: SetGnomeRequest) -> SetGnomeResponse:
         """Raises ``UnknownGnomeError`` for a gnome or profile the
-        deployment in force does not hold, unless the gnome is switched
-        off, and ``ValueError`` for a setting that is not one."""
+        tenant's deployment in force does not hold, unless the gnome is
+        switched off, and ``ValueError`` for a setting that is not
+        one."""
         held = request.profiles.get(request.gnome)
         if request.behaviour == "off":
             # A gnome may always be switched off, even one the
@@ -55,7 +56,7 @@ class SetGnomeUseCase:
             known = ", ".join(sorted(request.profiles)) or "none"
             raise UnknownGnomeError(
                 f"{request.gnome!r} is not a gnome the deployment in force "
-                f"holds; it holds {known}"
+                f"holds for {request.tenant}; it holds {known}"
             )
         elif request.profile not in held:
             raise UnknownGnomeError(
@@ -69,6 +70,7 @@ class SetGnomeUseCase:
             gnome=request.gnome,
             behaviour=request.behaviour,
             profile=request.profile,
+            tenant=request.tenant,
             set_by=request.set_by,
             set_at=when,
         )
@@ -78,7 +80,7 @@ class SetGnomeUseCase:
                 for one in self._settings.settings_of(
                     request.forge, request.repo
                 )
-                if one.gnome == request.gnome
+                if (one.gnome, one.tenant) == (request.gnome, request.tenant)
             ),
             None,
         )
@@ -95,6 +97,7 @@ class SetGnomeUseCase:
             gnome=setting.gnome,
             behaviour=setting.behaviour,
             profile=setting.profile,
+            tenant=setting.tenant,
             changed=changed,
             was_behaviour=previous.behaviour if previous else None,
             was_profile=previous.profile if previous else None,
@@ -112,6 +115,7 @@ class SetGnomeUseCase:
                 (setting.behaviour, setting.profile),
                 (previous.behaviour, previous.profile) if previous else None,
                 setting.set_at,
+                setting.tenant,
             ),
             occurred_at=setting.set_at,
             event_type=GNOME_SET,
@@ -126,6 +130,7 @@ class SetGnomeUseCase:
             payload={
                 "behaviour": setting.behaviour,
                 "profile": setting.profile,
+                "tenant": setting.tenant,
                 "set_by": setting.set_by,
                 "was_behaviour": previous.behaviour if previous else None,
                 "was_profile": previous.profile if previous else None,

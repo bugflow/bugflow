@@ -39,6 +39,7 @@ from bugflow.method.infrastructure.reviewer_packages import (
     DomainSpecificReviewAgent,
     installed,
 )
+from bugflow.review.domain.models.gnome_setting import qualified
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -70,7 +71,7 @@ class ReviewersInForce:
     #: server's draft; None for a binding without one.
     editor: Editor | None = None
     #: Every reviewer the deployment holds, by id, before ``names``
-    #: narrowed them: the gnomes whose settings are this tenant's.
+    #: narrowed them.
     held: frozenset[str] = frozenset()
 
     @property
@@ -151,45 +152,76 @@ def reviewers_in_force(
 class TenantsInForce:
     """Every tenant's reviewers, for a program that serves them all.
 
-    A reviewer's id is one tenant's on a server, which deploying holds
-    to, so the gnomes of every tenant read together as one mapping.
+    Two tenants may hold a gnome of one id (ADR 012), so the gnomes of
+    every tenant read together by qualified name: the id for the
+    default tenant's, and ``tenant/id`` for another's.
     """
 
     #: By tenant, in name order.
     by_tenant: Mapping[str, ReviewersInForce]
 
     @property
-    def tenant_of(self) -> dict[str, str]:
-        """Each gnome's tenant, by the gnome's id."""
+    def gnomes(self) -> dict[str, tuple[str, str]]:
+        """Each tenant and gnome the deployments hold, by the gnome's
+        qualified name."""
         return {
-            gnome: tenant
+            qualified(tenant, gnome): (tenant, gnome)
             for tenant, reviewers in self.by_tenant.items()
-            for gnome in reviewers.held
+            for gnome in sorted(reviewers.held)
         }
 
     @property
+    def holders(self) -> dict[str, tuple[str, ...]]:
+        """The tenants whose deployment in force holds each gnome, by
+        the gnome's id, in tenant order."""
+        found: dict[str, list[str]] = {}
+        for tenant, reviewers in self.by_tenant.items():
+            for gnome in reviewers.held:
+                found.setdefault(gnome, []).append(tenant)
+        return {gnome: tuple(tenants) for gnome, tenants in found.items()}
+
+    def tenants_of(self, gnome: str) -> tuple[str, ...]:
+        """The tenants whose deployment in force holds the gnome, or
+        none."""
+        return self.holders.get(gnome, ())
+
+    @property
     def agents(self) -> dict[str, DomainSpecificReviewAgent]:
+        """Each installed reviewer, by qualified name."""
         return {
-            gnome: agent
-            for reviewers in self.by_tenant.values()
+            qualified(tenant, gnome): agent
+            for tenant, reviewers in self.by_tenant.items()
             for gnome, agent in reviewers.agents.items()
         }
 
     @property
     def policies(self) -> dict[str, Mapping[str, PolicyText]]:
+        """Each reviewer's policies, by qualified name."""
         return {
-            gnome: held
-            for reviewers in self.by_tenant.values()
+            qualified(tenant, gnome): held
+            for tenant, reviewers in self.by_tenant.items()
             for gnome, held in reviewers.policies.items()
         }
 
     @property
     def profiles(self) -> dict[str, Mapping[str, tuple[str, ...]]]:
-        """Each gnome's profiles, by gnome, across every tenant."""
+        """Each gnome's profiles, by qualified name, across every
+        tenant."""
         return {
-            gnome: named
-            for reviewers in self.by_tenant.values()
+            qualified(tenant, gnome): named
+            for tenant, reviewers in self.by_tenant.items()
             for gnome, named in reviewers.profiles.items()
+        }
+
+    def profiles_of(self, tenant: str) -> dict[str, tuple[str, ...]]:
+        """The profile names of each of one tenant's gnomes, by the
+        gnome's id, or none for a tenant with no deployment in force.
+        What a setting of that tenant's gnome is checked against."""
+        reviewers = self.by_tenant.get(tenant)
+        if reviewers is None:
+            return {}
+        return {
+            gnome: tuple(named) for gnome, named in reviewers.profiles.items()
         }
 
     @property
@@ -203,11 +235,11 @@ class TenantsInForce:
                 found.setdefault(name, layer)
         return found
 
-    def layers_of(self, gnome: str) -> Mapping[str, PaceLayer]:
-        """The layers of the tenant whose gnome that is, or none for a
-        gnome no tenant holds."""
-        tenant = self.tenant_of.get(gnome)
-        return self.by_tenant[tenant].layers if tenant else {}
+    def layers_of(self, tenant: str) -> Mapping[str, PaceLayer]:
+        """The tenant's layers, or none for a tenant with no deployment
+        in force."""
+        reviewers = self.by_tenant.get(tenant)
+        return reviewers.layers if reviewers else {}
 
     @property
     def deployed(self) -> dict[str, DeployedFrom]:

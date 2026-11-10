@@ -102,15 +102,13 @@ def test_each_gnome_says_what_it_reads_runs_and_judges_by() -> None:
 
 def test_every_tenants_gnomes_are_listed_with_whose_each_is() -> None:
     """One page sets every tenant's gnomes (ADR 011), each under the
-    tenant whose deployment holds it, with each tenant's deployment."""
+    tenant whose deployment holds it, by qualified name, since two
+    tenants may hold a gnome of one id (ADR 012)."""
     server = Server()
     deployed(server)
     deployed(
         server,
-        {
-            path.replace("prose", "site"): text.replace("prose", "site")
-            for path, text in READ.items()
-        }
+        READ
         | {
             "pace-layers.toml": READ["pace-layers.toml"].replace(
                 "pull-request", "site-pull-request"
@@ -121,24 +119,58 @@ def test_every_tenants_gnomes_are_listed_with_whose_each_is() -> None:
     held = server.client.get(
         "/api/settings", headers=bearer(ADMINISTRATOR)
     ).json()
-    assert set(held["profiles"]) == {"prose", "site"}
+    theirs = "business-development/prose"
+    assert set(held["profiles"]) == {"prose", theirs}
     assert held["gnomes"]["prose"]["tenant"] == "default"
-    assert held["gnomes"]["site"]["tenant"] == "business-development"
-    assert held["gnomes"]["site"]["runs"] == [
+    assert (
+        held["gnomes"][theirs]["tenant"],
+        held["gnomes"][theirs]["gnome"],
+    ) == (
+        "business-development",
+        "prose",
+    )
+    assert held["gnomes"][theirs]["runs"] == [
         "evaluate-site-pull-request, each pull request"
     ]
     assert [one["tenant"] for one in held["deployments"]] == [
         "business-development",
         "default",
     ]
+    # A gnome two tenants hold is set for the tenant the body names.
+    unnamed = server.client.put(
+        WIDGETS, json={"behaviour": "observe"}, headers=bearer(ADMINISTRATOR)
+    )
+    assert unnamed.status_code == 422
+    assert "name the tenant" in unnamed.json()["detail"]
     # The boundary a setting needs is on the gnome's own tenant's layer.
     refused = server.client.put(
-        WIDGETS.replace("prose", "site"),
-        json={"behaviour": "observe"},
+        WIDGETS,
+        json={"behaviour": "observe", "tenant": "business-development"},
         headers=bearer(ADMINISTRATOR),
     )
     assert refused.status_code == 409
     assert "site-pull-request" in refused.text
+    bounded(server)
+    server.boundaries.declare(
+        LayerBoundary(
+            forge="github",
+            repo="example-org/widgets",
+            layer="site-pull-request",
+            boundary="60s",
+        )
+    )
+    for tenant in ("default", "business-development"):
+        answered = server.client.put(
+            WIDGETS,
+            json={"behaviour": "advise", "tenant": tenant},
+            headers=bearer(ADMINISTRATOR),
+        )
+        assert answered.status_code == 200, answered.text
+    assert set(answered.json()["gnomes"]) == {"prose", theirs}
+    assert [one.tenant for one in server.settings.settings()] == [
+        "business-development",
+        "default",
+    ]
 
 
 def test_a_gnome_is_set_and_recorded_as_set_by_the_caller() -> None:

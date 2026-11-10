@@ -1,6 +1,5 @@
 """A worker reviews by its own tenant's deployment in force and reads
-the settings of the gnomes that deployment holds, and no other
-tenant's (ADR 011).
+its own tenant's settings, and no other tenant's (ADR 011, ADR 012).
 
 Skipped unless DATABASE_URL names a Postgres server.
 """
@@ -50,12 +49,21 @@ SITE = {
     f"{REFERENCES.replace('prose', 'site')}/doctrine/01-voice.md": FILES[
         f"{REFERENCES}/doctrine/01-voice.md"
     ],
+    # A prose of its own, of the same id as default's (ADR 012).
+    "prose/reviewer.md": PROSE,
+    f"{REFERENCES}/policies/P-01-example.md": FILES[
+        f"{REFERENCES}/policies/P-01-example.md"
+    ],
+    f"{REFERENCES}/doctrine/01-voice.md": FILES[
+        f"{REFERENCES}/doctrine/01-voice.md"
+    ],
 }
 
 
 def two_tenants(database_url: str) -> None:
     """Default's deployment in force, with prose and security set on
-    widgets, and business development's, with site set on gadgets."""
+    widgets, and business development's, with site set on gadgets and
+    its own prose, which it holds too, set on gadgets."""
     put_in_force(database_url)
     deploying_over(database_url, None, CHECKS).deploy.execute(
         DeployPoliciesRequest(
@@ -69,16 +77,18 @@ def two_tenants(database_url: str) -> None:
             tenant="business-development",
         )
     )
-    SqlAlchemyGnomeSettings(database_url).save(
-        GnomeSetting(
-            forge=GADGETS[0],
-            repo=GADGETS[1],
-            gnome="site",
-            behaviour="observe",
-            set_by="a test",
-            set_at=datetime.now(UTC),
+    for gnome in ("site", "prose"):
+        SqlAlchemyGnomeSettings(database_url).save(
+            GnomeSetting(
+                forge=GADGETS[0],
+                repo=GADGETS[1],
+                gnome=gnome,
+                behaviour="observe",
+                tenant="business-development",
+                set_by="a test",
+                set_at=datetime.now(UTC),
+            )
         )
-    )
 
 
 def test_each_worker_watches_the_repositories_its_own_gnomes_judge(
@@ -92,7 +102,7 @@ def test_each_worker_watches_the_repositories_its_own_gnomes_judge(
     )
     assert ours is not None and theirs is not None
     assert set(ours.agents) == {"prose", "security"}
-    assert set(theirs.agents) == {"site"}
+    assert set(theirs.agents) == {"prose", "site"}
     assert watched_in(own_settings(database_url, ours)) == (
         f"{WIDGETS[0]}:{WIDGETS[1]}",
     )

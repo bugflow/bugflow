@@ -124,6 +124,9 @@ A skill folder is the agentskills.io format: <https://agentskills.io>.
 - **Tenant.** An area of responsibility with a worker of its own on a
   server, in a Temporal namespace of its own, and a policy deployment
   in force of its own, sent by its own binding; a server with one
-  tenant names none, and it is `default`. A reviewer's id is one
-  tenant's on a server. [ADR 010](ADRs/010-tenants.md) and
-  [ADR 011](ADRs/011-a-deployment-belongs-to-a-tenant.md).
+  tenant names none, and it is `default`. Two tenants may hold a gnome
+  of one id: each gnome's setting names its tenant, and another
+  tenant's gnome is named `tenant/id` beside the default tenant's.
+  [ADR 010](ADRs/010-tenants.md),
+  [ADR 011](ADRs/011-a-deployment-belongs-to-a-tenant.md) and
+  [ADR 012](ADRs/012-a-setting-belongs-to-a-tenant.md).

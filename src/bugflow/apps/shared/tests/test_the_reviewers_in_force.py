@@ -113,14 +113,22 @@ def test_the_reviewers_are_the_tenants_own() -> None:
 
     everyone = tenants_in_force(deployments, ())
     assert list(everyone.by_tenant) == ["business-development", "default"]
-    assert everyone.tenant_of == {
-        "prose": "default",
-        "site": "business-development",
+    assert everyone.gnomes == {
+        "prose": ("default", "prose"),
+        "business-development/site": ("business-development", "site"),
     }
-    assert set(everyone.profiles) == {"prose", "site"}
-    assert set(everyone.agents) == {"prose", "site"}
+    assert everyone.holders == {
+        "prose": ("default",),
+        "site": ("business-development",),
+    }
+    assert set(everyone.profiles) == {"prose", "business-development/site"}
+    assert set(everyone.agents) == {"prose", "business-development/site"}
+    assert everyone.profiles_of("business-development") == {
+        "site": ("default",)
+    }
+    assert everyone.profiles_of("nobody") == {}
     assert set(everyone.layers) == {"pull-request"}
-    assert set(everyone.layers_of("site")) == {"pull-request"}
+    assert set(everyone.layers_of("business-development")) == {"pull-request"}
     assert everyone.layers_of("nobody") == {}
     assert {t: d.commit for t, d in everyone.deployed.items()} == {
         "default": "c1",
@@ -140,3 +148,18 @@ def test_a_manifest_naming_a_check_the_server_lacks_is_refused() -> None:
     reviewers = reviewers_in_force(in_force(checked), ("em-dash",))
     assert reviewers is not None
     assert reviewers.agents["prose"].checks[0].check == "em-dash"
+
+
+def test_a_gnome_two_tenants_hold_is_named_for_each() -> None:
+    """Two tenants may hold a gnome of one id (ADR 012); the default
+    tenant's keeps the id and the other's is named ``tenant/id``."""
+    deployments = InMemoryPolicyDeployments()
+    deployments.deploy(deployment())
+    deployments.deploy(
+        replace(deployment(READ, "c2"), tenant="business-development")
+    )
+    everyone = tenants_in_force(deployments, ())
+    assert everyone.holders == {"prose": ("business-development", "default")}
+    assert everyone.tenants_of("prose") == ("business-development", "default")
+    assert everyone.tenants_of("site") == ()
+    assert set(everyone.gnomes) == {"prose", "business-development/prose"}

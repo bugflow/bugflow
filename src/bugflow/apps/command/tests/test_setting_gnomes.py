@@ -147,3 +147,61 @@ def test_a_gnome_or_profile_not_in_force_is_refused(
     assert status == 2
     assert problem in capsys.readouterr().err
     assert held(database_url) == []
+
+
+def test_a_gnome_two_tenants_hold_is_set_for_the_tenant_named(
+    tmp_path: Path, database_url: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two tenants hold prose (ADR 012). Unnamed, the tenant cannot be
+    told, so the setting is refused; named, it is that tenant's, and a
+    line names the gnome for its tenant."""
+    install(tmp_path, database_url, {"profiles.toml": PROFILES})
+    environ = {"DATABASE_URL": database_url}
+    assert (
+        run(
+            [
+                "install-policies",
+                str(laid_out(tmp_path)),
+                "--repository",
+                "example/site-policies",
+                "--commit",
+                "c1",
+                "--tenant",
+                "business-development",
+            ],
+            environ=environ,
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert run(["set", "example/widgets", "prose", "observe"], environ) == 2
+    assert (
+        "prose is held by business-development and default; name the tenant"
+        in capsys.readouterr().err
+    )
+    assert held(database_url) == []
+
+    assert (
+        run(
+            [
+                "set",
+                "example/widgets",
+                "prose",
+                "observe",
+                "--tenant",
+                "business-development",
+            ],
+            environ,
+        )
+        == 0
+    )
+    printed = capsys.readouterr().out
+    assert (
+        "github:example/widgets business-development/prose observe default, "
+        "set by host:" in printed
+    )
+    assert [
+        (one.tenant, one.gnome)
+        for one in SqlAlchemyGnomeSettings(database_url).settings()
+    ] == [("business-development", "prose")]
