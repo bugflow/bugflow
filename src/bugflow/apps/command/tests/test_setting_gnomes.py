@@ -120,6 +120,40 @@ def test_a_gnome_keeps_its_profile_when_only_its_behaviour_is_set(
     ]
 
 
+def test_a_gnome_set_on_again_whose_profile_is_gone_is_given_default(
+    tmp_path: Path, database_url: str
+) -> None:
+    """Switched off, the gnome held strict in place no longer, so a
+    deployment without it went in force (ADR 008)."""
+    install(tmp_path, database_url, {"profiles.toml": PROFILES})
+    environ = {"DATABASE_URL": database_url}
+    run(
+        ["set", "example/widgets", "prose", "observe", "--profile", "strict"],
+        environ,
+    )
+    assert run(["set", "example/widgets", "prose", "off"], environ) == 0
+    assert (
+        run(
+            [
+                "install-policies",
+                str(laid_out(tmp_path / "without-strict")),
+                "--repository",
+                "example/policies",
+                "--commit",
+                "c2",
+            ],
+            environ=environ,
+        )
+        == 0
+    )
+
+    assert run(["set", "example/widgets", "prose", "advise"], environ) == 0
+
+    assert held(database_url) == [
+        ("example/widgets", "prose", "advise", "default")
+    ]
+
+
 @pytest.mark.parametrize(
     ("args", "problem"),
     [

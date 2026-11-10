@@ -99,13 +99,14 @@ def test_a_deployment_that_drops_a_profile_in_use_is_refused(
         fixture.deploy("c2", check_only=check_only)
 
 
-def test_a_profile_a_gnome_set_off_names_is_kept_too() -> None:
-    """Set on again with no profile named, the gnome keeps the one it
-    has, so that profile must still be there."""
+def test_a_profile_only_a_gnome_set_off_names_may_be_dropped() -> None:
+    """A gnome switched off judges by nothing, so its setting holds no
+    profile in place, and a gnome switched off on every repository may
+    leave the binding. Set on again, the gnome is given default where
+    its profile is gone."""
     fixture = Fixture(prose("off"))
     fixture.deploy(files=STRICT)
-    with pytest.raises(PolicyDeploymentError, match="sets prose to strict"):
-        fixture.deploy("c2")
+    assert fixture.deploy("c2") == "deployed"
 
 
 def test_the_default_profile_is_never_dropped() -> None:

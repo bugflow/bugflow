@@ -5,18 +5,20 @@ the files.
 The use case is the method context's and the gnomes' settings are the
 review context's, so the two are joined here, where both may be
 imported. A deployment that drops a profile, or a gnome, that a setting
-names is refused (ADR 008), so a repository is never left set to a
-profile that is gone, even with its gnome off. So is one that gives a
-layer a cadence a declared boundary on it cannot take, which the
-ingress or the worker would raise on. On a server with several tenants
-(ADR 011), so is one that names a layer another tenant's deployment in
-force holds at a different cadence: a layer's cadence is one across the
-server, because a boundary is declared on the layer's name with no
-tenant. A reviewer's id is not one tenant's: a setting names its tenant
-(ADR 012), so two tenants may hold a reviewer of one id. The
-API's route and the command's ``install-policies`` run the same
-composition, so a deployment made on the host is checked and recorded
-as one a pipeline sends is.
+above ``off`` names is refused (ADR 008), so a repository is never left
+judged by a profile that is gone. A setting switched off holds nothing
+in place: a gnome switched off everywhere may leave the binding, and
+one switched on again whose profile is gone is given ``default``.
+Refused too is a deployment that gives a layer a cadence a declared
+boundary on it cannot take, which the ingress or the worker would raise
+on. On a server with several tenants (ADR 011), so is one that names a
+layer another tenant's deployment in force holds at a different
+cadence: a layer's cadence is one across the server, because a boundary
+is declared on the layer's name with no tenant. A reviewer's id is not
+one tenant's: a setting names its tenant (ADR 012), so two tenants may
+hold a reviewer of one id. The API's route and the command's
+``install-policies`` run the same composition, so a deployment made on
+the host is checked and recorded as one a pipeline sends is.
 """
 
 import sys
@@ -184,11 +186,13 @@ class SettledDeploymentCheck:
                 )
         if self._settings is None:
             return
-        # Another tenant's setting is that tenant's deployment to keep.
+        # Another tenant's setting is that tenant's deployment to keep,
+        # and a setting switched off judges by nothing.
         dropped = sorted(
             f"{one.forge}:{one.repo} sets {one.gnome} to {one.profile}"
             for one in self._settings.settings()
             if one.tenant == deployment.tenant
+            and one.behaviour != "off"
             and one.profile not in parsed.profiles.get(one.gnome, {})
         )
         if dropped:

@@ -84,9 +84,10 @@ def run_set(
     the repository afterwards.
 
     ``profile`` None keeps the gnome's profile there, or ``default``
-    where it had none. ``set_by`` None records the operating system's
-    user, as ``host:NAME``. ``tenant`` None is the one tenant that
-    holds the gnome; where two do, the setting is refused.
+    where it had none or the one it had is gone. ``set_by`` None
+    records the operating system's user, as ``host:NAME``. ``tenant``
+    None is the one tenant that holds the gnome; where two do, the
+    setting is refused.
     """
     console = _console(out, err)
     try:
@@ -115,6 +116,11 @@ def run_set(
         (one for one in held if (one.gnome, one.tenant) == (gnome, whose)),
         None,
     )
+    offered = reviewers.profiles_of(whose)
+    chosen = profile or (kept.profile if kept else "default")
+    if profile is None and chosen not in offered.get(gnome, ()):
+        # The profile it was set to is gone, as the API also allows.
+        chosen = "default"
     try:
         answered = _setter(database_url, settings, build).execute(
             SetGnomeRequest(
@@ -122,10 +128,10 @@ def run_set(
                 repo=repo,
                 gnome=gnome,
                 behaviour=behaviour,
-                profile=profile or (kept.profile if kept else "default"),
+                profile=chosen,
                 tenant=whose,
                 set_by=set_by or f"host:{getpass.getuser()}",
-                profiles=reviewers.profiles_of(whose),
+                profiles=offered,
             )
         )
     except (UnknownGnomeError, ValueError) as exc:

@@ -11,6 +11,8 @@ registered when `bugflow webhooks` runs. Accepted, 2026-10-29: the
 settings, the profiles, discovery and the settings page are released
 in v0.0.17 and v0.0.18, and a deployment carrying `declarations.toml`
 is refused. Amended, 2026-11-10: a setting names its tenant (ADR 012).
+Amended, 2026-11-11: a setting switched off holds no profile in place,
+so a gnome switched off everywhere may leave the binding.
 
 ## Context
 
@@ -76,8 +78,12 @@ every policy of the gnome that the server answers. A binding with one
 profile for each gnome is configured by behaviour alone, and a page
 or command offers no choice of profile.
 
-A deployment is refused if it drops a profile that a setting names,
-or if a profile names a policy that its gnome does not have.
+A deployment is refused if it drops a profile that a setting above
+`off` names, or if a profile names a policy that its gnome does not
+have. A setting switched off judges by nothing, so it holds no profile
+in place: a gnome switched off on every repository may leave the
+binding, and a gnome switched on again whose profile is gone is given
+`default`.
 
 ### The setting
 
