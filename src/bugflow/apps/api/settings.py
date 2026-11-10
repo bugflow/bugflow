@@ -4,11 +4,11 @@
 ``GET /api/settings`` lists every repository the server knows of, from
 its journal and from discovery, with what each gnome is set to there and
 whether it is private; each gnome's profiles, what it reads, the
-processes it runs and the policies its profiles name; and the policy
-deployment in force, where the profiles are defined. ``PUT
-/api/settings/{forge}/{owner}/{repo}/{gnome}`` sets one gnome on one
-repository, recorded as set by the caller. Both need the role
-``SETTINGS_ROLE`` names.
+processes it runs, the policies its profiles name and whose it is; and
+each tenant's policy deployment in force, where the profiles are
+defined (ADR 011). ``PUT /api/settings/{forge}/{owner}/{repo}/{gnome}``
+sets one gnome on one repository, recorded as set by the caller. Both
+need the role ``SETTINGS_ROLE`` names.
 
 ``GET /settings`` is the page, which signs the person in at the identity
 provider in the browser and calls the two routes with the token it is
@@ -26,10 +26,11 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
 from bugflow.apps.shared.boundaries import Defaulted, without_a_boundary
-from bugflow.apps.shared.policies import ReviewersInForce
+from bugflow.apps.shared.policies import TenantsInForce
 from bugflow.forge.domain.models.forge_repository import KnownRepository
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.method.domain.models.corpus import JUDGE_RUNNER
+from bugflow.method.domain.models.policy_deployment import DEFAULT_TENANT
 from bugflow.review.domain.models.gnome_setting import (
     DEFAULT_PROFILE,
     Behaviour,
@@ -73,8 +74,8 @@ class SettingsAdministration:
     set_gnome: Callable[[], SetGnomeUseCase]
     #: Every repository this server knows of.
     repositories: Callable[[], Collection[KnownRepository]]
-    #: The reviewers of the deployment in force, or None.
-    reviewers: Callable[[], ReviewersInForce | None]
+    #: Every tenant's reviewers, from its deployment in force.
+    reviewers: Callable[[], TenantsInForce]
     boundaries: LayerBoundariesService
     sign_in: PageSignIn | None = None
 
@@ -115,16 +116,19 @@ class GnomeAbout(BaseModel):
     #: Each of those policies' one-sentence rule, by policy id, where its
     #: policy file gives one.
     policies: dict[str, str]
+    #: The tenant whose deployment in force holds it.
+    tenant: str = DEFAULT_TENANT
 
 
 class DeploymentState(BaseModel):
-    """The policy deployment in force, whose profiles.toml defines the
-    profiles."""
+    """One tenant's policy deployment in force, whose profiles.toml
+    defines that tenant's gnomes' profiles."""
 
     model_config = ConfigDict(frozen=True)
 
     repository: str
     commit: str
+    tenant: str = DEFAULT_TENANT
 
 
 class SettingsState(BaseModel):
@@ -135,7 +139,8 @@ class SettingsState(BaseModel):
     repositories: list[RepositoryState]
     #: Each gnome, by gnome.
     gnomes: dict[str, GnomeAbout] = {}
-    deployment: DeploymentState | None = None
+    #: Each tenant's deployment in force, in tenant order.
+    deployments: list[DeploymentState] = []
 
 
 class SetGnomeBody(BaseModel):
@@ -167,14 +172,10 @@ def _state(
     )
 
 
-def _profiles(
-    reviewers: ReviewersInForce | None,
-) -> dict[str, list[str]]:
-    if reviewers is None:
-        return {}
+def _profiles(held: TenantsInForce) -> dict[str, list[str]]:
     return {
         gnome: sorted(named, key=lambda name: (name != DEFAULT_PROFILE, name))
-        for gnome, named in sorted(reviewers.profiles.items())
+        for gnome, named in sorted(held.profiles.items())
     }
 
 
@@ -182,15 +183,16 @@ def _when(cadence: str) -> str:
     return "each pull request" if cadence == "event" else cadence
 
 
-def _about(reviewers: ReviewersInForce | None) -> dict[str, GnomeAbout]:
-    if reviewers is None:
-        return {}
+def _about(held: TenantsInForce) -> dict[str, GnomeAbout]:
     about = {}
-    for gnome, named in _profiles(reviewers).items():
-        agent = reviewers.agents.get(gnome)
+    agents, policies, tenant_of = held.agents, held.policies, held.tenant_of
+    for gnome, named in _profiles(held).items():
+        agent = agents.get(gnome)
+        # The processes of the gnome's own tenant: another tenant's
+        # process never runs it.
         runs = [
             f"{process.name}, {_when(layer.cadence.name)}"
-            for _, layer in sorted(reviewers.layers.items())
+            for _, layer in sorted(held.layers_of(gnome).items())
             for process in layer.processes
             if process.reviewer == gnome
             or (
@@ -200,21 +202,20 @@ def _about(reviewers: ReviewersInForce | None) -> dict[str, GnomeAbout]:
                 and agent.runner == JUDGE_RUNNER
             )
         ]
-        profiles = {
-            name: list(reviewers.profiles[gnome][name]) for name in named
-        }
-        held = reviewers.policies.get(gnome, {})
+        profiles = {name: list(held.profiles[gnome][name]) for name in named}
+        texts = policies.get(gnome, {})
         about[gnome] = GnomeAbout(
             summary=agent.summary if agent is not None else "",
             runs=runs,
             profiles=profiles,
             policies={
-                policy: held[policy].summary
+                policy: texts[policy].summary
                 for policy in sorted(
                     {p for ps in profiles.values() for p in ps}
                 )
-                if policy in held
+                if policy in texts
             },
+            tenant=tenant_of.get(gnome, DEFAULT_TENANT),
         )
     return about
 
@@ -249,12 +250,14 @@ def settings_routes(
             profiles=_profiles(reviewers),
             repositories=[_state(known[key], held) for key in sorted(known)],
             gnomes=_about(reviewers),
-            deployment=DeploymentState(
-                repository=reviewers.deployed_from.repository,
-                commit=reviewers.deployed_from.commit,
-            )
-            if reviewers is not None
-            else None,
+            deployments=[
+                DeploymentState(
+                    repository=came_from.repository,
+                    commit=came_from.commit,
+                    tenant=tenant,
+                )
+                for tenant, came_from in sorted(reviewers.deployed.items())
+            ],
         )
 
     @app.put("/api/settings/{forge}/{owner}/{repo}/{gnome}")
@@ -276,16 +279,17 @@ def settings_routes(
                 422, f"{forge}:{name} is not a repository this server reads"
             ) from exc
         reviewers = admin.reviewers()
-        if reviewers is None and body.behaviour != "off":
+        if not reviewers.by_tenant and body.behaviour != "off":
             raise HTTPException(
                 409, "no policy deployment is in force, so no gnome can judge"
             )
-        if body.behaviour != "off" and reviewers is not None:
+        if body.behaviour != "off" and reviewers.by_tenant:
+            # The layers of the gnome's own tenant, whose worker is
+            # what would refuse to start.
+            layers = reviewers.layers_of(gnome)
             watched = f"{forge}:{name}" if forge != "github" else name
             missing = without_a_boundary(
-                reviewers.layers,
-                [watched],
-                Defaulted(admin.boundaries, reviewers.layers),
+                layers, [watched], Defaulted(admin.boundaries, layers)
             )
             if missing:
                 raise HTTPException(

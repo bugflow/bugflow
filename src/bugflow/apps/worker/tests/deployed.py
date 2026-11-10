@@ -93,10 +93,11 @@ def put_in_force(
     database_url: str,
     files: Mapping[str, str] = FILES,
     commit: str = "c" * 40,
+    tenant: str = "default",
 ) -> None:
     """Store the files as a deployment in the database, put it in
-    force, and set both reviewers to observe ``WIDGETS`` by their
-    default profiles."""
+    force for the tenant, and set both reviewers to observe ``WIDGETS``
+    by their default profiles."""
     deploying_over(database_url, None, CHECKS).deploy.execute(
         DeployPoliciesRequest(
             repository=REPOSITORY,
@@ -106,6 +107,7 @@ def put_in_force(
                 for path, text in sorted(files.items())
             ),
             sent_by="a test",
+            tenant=tenant,
         )
     )
     set_gnomes(database_url, "observe")

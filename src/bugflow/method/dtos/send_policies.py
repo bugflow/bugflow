@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict
 
+from bugflow.method.domain.models.policy_deployment import DEFAULT_TENANT
 from bugflow.method.domain.values.server_answer import Outcome
 
 
@@ -14,6 +15,8 @@ class SendPoliciesRequest(BaseModel):
     commit: str
     #: True to have the server parse the files and store nothing.
     check_only: bool = False
+    #: The tenant of the server the files are for.
+    tenant: str = DEFAULT_TENANT
 
 
 class DeploymentInForce(BaseModel):
@@ -22,6 +25,7 @@ class DeploymentInForce(BaseModel):
     repository: str
     commit: str
     content_hash: str
+    tenant: str = DEFAULT_TENANT
 
 
 class SendPoliciesResponse(BaseModel):

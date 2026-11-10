@@ -306,3 +306,9 @@ repository's own pipeline, or installed on the host by `bugflow
 install-policies`. Every problem in it is reported at once. With
 `--check` the server parses and stores nothing. `docs/deploying.md` says
 how a pipeline signs in.
+
+On a server with several tenants, each binding is one tenant's and its
+pipeline passes `--tenant`; the deployment is put in force for that
+tenant alone (ADR 011). The server refuses a deployment that holds a
+reviewer another tenant's deployment in force holds, or gives a layer
+a cadence another tenant's gives it otherwise.

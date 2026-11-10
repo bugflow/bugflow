@@ -62,13 +62,14 @@ class DeployPoliciesUseCase:
                 DeployedFile(path=one.path, text=one.text)
                 for one in request.files
             ),
+            tenant=request.tenant,
         )
         self._check.check(deployment)
         if request.check_only:
             return DeployPoliciesResponse(
                 outcome="checked",
                 content_hash=deployment.content_hash,
-                in_force=self._in_force(),
+                in_force=self._in_force(deployment.tenant),
             )
         changed = self._deployments.deploy(
             deployment,
@@ -79,17 +80,18 @@ class DeployPoliciesUseCase:
         return DeployPoliciesResponse(
             outcome="deployed" if changed else "already_in_force",
             content_hash=deployment.content_hash,
-            in_force=self._in_force(),
+            in_force=self._in_force(deployment.tenant),
         )
 
-    def _in_force(self) -> InForce | None:
-        latest = self._deployments.last_put_in_force()
+    def _in_force(self, tenant: str) -> InForce | None:
+        latest = self._deployments.last_put_in_force(tenant)
         if latest is None:
             return None
         return InForce(
             repository=latest.repository,
             commit=latest.commit,
             content_hash=latest.content_hash,
+            tenant=latest.tenant,
         )
 
     def _fact(
@@ -100,13 +102,18 @@ class DeployPoliciesUseCase:
     ) -> JournalEntry:
         now = self._clock.now()
         # The time is part of the fact's id, because the same commit can
-        # be put in force more than once and each time is a fact.
+        # be put in force more than once and each time is a fact. So is
+        # the tenant, because two tenants can be sent one commit.
         correlation = Correlation(
             workflow_id=WORKFLOW_ID,
             run_id=f"{deployment.repository}@{deployment.commit}",
         )
         return JournalEntry(
-            event_id=event_id(correlation, POLICIES_DEPLOYED, now.isoformat()),
+            event_id=event_id(
+                correlation,
+                POLICIES_DEPLOYED,
+                f"{deployment.tenant} {now.isoformat()}",
+            ),
             occurred_at=now,
             event_type=POLICIES_DEPLOYED,
             # A deployment is about no repository under review. Naming
@@ -125,8 +132,9 @@ class DeployPoliciesUseCase:
                 "content_hash": deployment.content_hash,
                 "files": len(deployment.files),
                 "sent_by": sent_by,
-                # The deployment that was in force before, or None if
-                # this is the server's first.
+                "tenant": deployment.tenant,
+                # The deployment that was in force before for the
+                # tenant, or None if this is its first.
                 "replaced": None
                 if replaced is None
                 else {

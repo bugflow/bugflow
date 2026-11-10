@@ -1,10 +1,11 @@
 """The deployments this server was sent, in Postgres.
 
 Three tables, which is this adapter's choice: a deployment by the names
-it was sent under, its files one row each, and one row for each time a
-deployment was put in force. The last of those is only added to, so
-what was in force on a day stays answerable. The table definitions
-mirror the script that creates them.
+it was sent under and the tenant it was sent for, its files one row
+each, and one row for each time a deployment was put in force. The last
+of those is only added to, so what was in force on a day stays
+answerable. Each tenant's rows are read apart (ADR 011). The table
+definitions mirror the script that creates them.
 """
 
 from collections.abc import Sequence
@@ -15,6 +16,7 @@ import sqlalchemy as sa
 
 from bugflow.method.domain.errors import PolicyDeploymentConflictError
 from bugflow.method.domain.models.policy_deployment import (
+    DEFAULT_TENANT,
     DeployedFile,
     PolicyDeployment,
     PutInForce,
@@ -27,9 +29,23 @@ from bugflow.shared.infrastructure.database import (
 
 metadata = sa.MetaData()
 
+
+def _tenant(primary_key: bool) -> sa.Column[str]:
+    # The default is the tenant of a server that names none, so a row
+    # written by a program older than the column is that tenant's.
+    return sa.Column(
+        "tenant",
+        sa.Text,
+        primary_key=primary_key,
+        nullable=False,
+        server_default=DEFAULT_TENANT,
+    )
+
+
 deployments = sa.Table(
     "policy_deployment",
     metadata,
+    _tenant(primary_key=True),
     sa.Column("repository", sa.Text, primary_key=True),
     sa.Column("commit", sa.Text, primary_key=True),
     sa.Column("content_hash", sa.Text, nullable=False),
@@ -44,13 +60,18 @@ deployments = sa.Table(
 files = sa.Table(
     "policy_deployment_file",
     metadata,
+    _tenant(primary_key=True),
     sa.Column("repository", sa.Text, primary_key=True),
     sa.Column("commit", sa.Text, primary_key=True),
     sa.Column("path", sa.Text, primary_key=True),
     sa.Column("text", sa.Text, nullable=False),
     sa.ForeignKeyConstraint(
-        ["repository", "commit"],
-        ["policy_deployment.repository", "policy_deployment.commit"],
+        ["tenant", "repository", "commit"],
+        [
+            "policy_deployment.tenant",
+            "policy_deployment.repository",
+            "policy_deployment.commit",
+        ],
     ),
 )
 
@@ -58,6 +79,7 @@ in_force = sa.Table(
     "policy_deployment_in_force",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    _tenant(primary_key=False),
     sa.Column("repository", sa.Text, nullable=False),
     sa.Column("commit", sa.Text, nullable=False),
     sa.Column(
@@ -67,8 +89,12 @@ in_force = sa.Table(
         server_default=sa.func.now(),
     ),
     sa.ForeignKeyConstraint(
-        ["repository", "commit"],
-        ["policy_deployment.repository", "policy_deployment.commit"],
+        ["tenant", "repository", "commit"],
+        [
+            "policy_deployment.tenant",
+            "policy_deployment.repository",
+            "policy_deployment.commit",
+        ],
     ),
 )
 
@@ -101,10 +127,12 @@ class SqlAlchemyPolicyDeployments:
         """Store, put in force and record in one transaction, so a
         deployment is never in force with only some of its files, or
         without the facts that record it."""
+        tenant = deployment.tenant
         repository, commit = deployment.repository, deployment.commit
         with self._engine.begin() as connection:
             earlier = connection.execute(
                 sa.select(deployments.c.content_hash).where(
+                    deployments.c.tenant == tenant,
                     deployments.c.repository == repository,
                     deployments.c.commit == commit,
                 )
@@ -112,6 +140,7 @@ class SqlAlchemyPolicyDeployments:
             if earlier is None:
                 connection.execute(
                     sa.insert(deployments).values(
+                        tenant=tenant,
                         repository=repository,
                         commit=commit,
                         content_hash=deployment.content_hash,
@@ -122,6 +151,7 @@ class SqlAlchemyPolicyDeployments:
                         sa.insert(files),
                         [
                             {
+                                "tenant": tenant,
                                 "repository": repository,
                                 "commit": commit,
                                 "path": one.path,
@@ -132,7 +162,9 @@ class SqlAlchemyPolicyDeployments:
                     )
             elif earlier != deployment.content_hash:
                 raise PolicyDeploymentConflictError(repository, commit)
-            latest = connection.execute(self._puts().limit(1)).one_or_none()
+            latest = connection.execute(
+                self._puts(tenant).limit(1)
+            ).one_or_none()
             replaced = None if latest is None else self._put(latest)
             if replaced and (replaced.repository, replaced.commit) == (
                 repository,
@@ -141,7 +173,7 @@ class SqlAlchemyPolicyDeployments:
                 return False
             connection.execute(
                 sa.insert(in_force).values(
-                    repository=repository, commit=commit
+                    tenant=tenant, repository=repository, commit=commit
                 )
             )
             recorded = facts(replaced)
@@ -154,67 +186,85 @@ class SqlAlchemyPolicyDeployments:
                 self._journal.append_on(connection, recorded)
             return True
 
-    def in_force(self) -> PolicyDeployment | None:
+    def in_force(
+        self, tenant: str = DEFAULT_TENANT
+    ) -> PolicyDeployment | None:
         with self._engine.connect() as connection:
-            latest = connection.execute(self._latest()).one_or_none()
+            latest = connection.execute(
+                self._puts(tenant).limit(1)
+            ).one_or_none()
             if latest is None:
                 return None
-            return self._read(connection, latest[0], latest[1])
+            return self._read(connection, tenant, latest[0], latest[1])
 
-    def last_put_in_force(self) -> PutInForce | None:
+    def last_put_in_force(
+        self, tenant: str = DEFAULT_TENANT
+    ) -> PutInForce | None:
         with self._engine.connect() as connection:
-            row = connection.execute(self._puts().limit(1)).one_or_none()
+            row = connection.execute(self._puts(tenant).limit(1)).one_or_none()
         return None if row is None else self._put(row)
 
+    def tenants(self) -> tuple[str, ...]:
+        with self._engine.connect() as connection:
+            return tuple(
+                connection.execute(
+                    sa.select(in_force.c.tenant)
+                    .distinct()
+                    .order_by(in_force.c.tenant)
+                ).scalars()
+            )
+
     @staticmethod
-    def _puts() -> sa.Select[str, str, str, datetime]:
-        """Each time a deployment was put in force, the latest first."""
+    def _puts(tenant: str) -> sa.Select[str, str, str, datetime, str]:
+        """Each time a deployment was put in force for the tenant, the
+        latest first."""
         return (
             sa.select(
                 in_force.c.repository,
                 in_force.c.commit,
                 deployments.c.content_hash,
                 in_force.c.put_at,
+                in_force.c.tenant,
             )
             .join(
                 deployments,
                 sa.and_(
+                    deployments.c.tenant == in_force.c.tenant,
                     deployments.c.repository == in_force.c.repository,
                     deployments.c.commit == in_force.c.commit,
                 ),
             )
+            .where(in_force.c.tenant == tenant)
             .order_by(in_force.c.id.desc())
         )
 
     @staticmethod
-    def _put(row: sa.Row[str, str, str, datetime]) -> PutInForce:
-        repository, commit, content_hash, at = row
+    def _put(row: sa.Row[str, str, str, datetime, str]) -> PutInForce:
+        repository, commit, content_hash, at, tenant = row
         return PutInForce(
             repository=repository,
             commit=commit,
             content_hash=content_hash,
             at=at,
-        )
-
-    @staticmethod
-    def _latest() -> sa.Select[str, str]:
-        return (
-            sa.select(in_force.c.repository, in_force.c.commit)
-            .order_by(in_force.c.id.desc())
-            .limit(1)
+            tenant=tenant,
         )
 
     @staticmethod
     def _read(
-        connection: sa.Connection, repository: str, commit: str
+        connection: sa.Connection, tenant: str, repository: str, commit: str
     ) -> PolicyDeployment:
         rows = connection.execute(
             sa.select(files.c.path, files.c.text)
-            .where(files.c.repository == repository, files.c.commit == commit)
+            .where(
+                files.c.tenant == tenant,
+                files.c.repository == repository,
+                files.c.commit == commit,
+            )
             .order_by(files.c.path)
         )
         return PolicyDeployment(
             repository=repository,
             commit=commit,
             files=tuple(DeployedFile(path=p, text=t) for p, t in rows),
+            tenant=tenant,
         )

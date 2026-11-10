@@ -71,6 +71,7 @@ def test_the_files_a_server_reads_are_posted_with_the_token(
             {"path": path, "text": text} for path, text in sorted(READ.items())
         ],
         "check_only": False,
+        "tenant": "default",
     }
     assert (answered.outcome, answered.files) == ("deployed", 4)
     assert answered.in_force == DeploymentInForce(

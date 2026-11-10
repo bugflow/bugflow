@@ -12,6 +12,7 @@ added too. And each of their services, and the API's, has a restart
 policy that starts a container again after it exits with status 0.
 """
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +58,7 @@ def test_the_programs_that_stop_themselves_are_the_ones_named_here() -> None:
         str(path.relative_to(APPS))
         for path in APPS.rglob("*.py")
         if "tests" not in path.parts
-        and "stop_on_new_deployment(" in path.read_text()
+        and re.search(r"stop_on_new_deployments?\(", path.read_text())
     }
     assert calling == set(STOPS_ITSELF)
 

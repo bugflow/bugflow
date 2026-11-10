@@ -5,6 +5,7 @@ The body is also what a policy repository's pipeline posts to an API.
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bugflow.method.domain.models.policy_deployment import DEFAULT_TENANT
 from bugflow.method.domain.values.server_answer import Outcome
 
 
@@ -37,6 +38,12 @@ class DeployPoliciesBody(BaseModel):
         default=False,
         description="parse the files and answer, storing nothing",
     )
+    tenant: str = Field(
+        default=DEFAULT_TENANT,
+        description="the tenant whose worker reviews by these files, "
+        "which has a deployment in force of its own; left out on a "
+        "server with one tenant",
+    )
 
 
 class DeployPoliciesRequest(DeployPoliciesBody):
@@ -48,13 +55,14 @@ class DeployPoliciesRequest(DeployPoliciesBody):
 
 
 class InForce(BaseModel):
-    """The deployment in force, by its names."""
+    """The deployment in force for one tenant, by its names."""
 
     model_config = ConfigDict(frozen=True)
 
     repository: str
     commit: str
     content_hash: str
+    tenant: str = DEFAULT_TENANT
 
 
 class DeployPoliciesResponse(BaseModel):
@@ -63,6 +71,6 @@ class DeployPoliciesResponse(BaseModel):
     outcome: Outcome
     #: The hash of the files that were sent.
     content_hash: str
-    #: The deployment in force after the call, or None on a server that
-    #: has never been sent one, after a check.
+    #: The tenant's deployment in force after the call, or None for a
+    #: tenant that has never been sent one, after a check.
     in_force: InForce | None

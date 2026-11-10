@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import TextIO
 
 from bugflow.apps.shared.journals import stamped_journal
-from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.apps.shared.policies import tenants_in_force
 from bugflow.archive.domain.models.binding import ArchiveBinding
 from bugflow.archive.dtos.bind_ledger import BindLedgerRequest
 from bugflow.archive.infrastructure.sqlalchemy_bindings import (
@@ -247,13 +247,14 @@ def _unfit(
     """Say why the layer's cadence cannot take the boundary, or return
     None when it can.
 
-    The cadence is the one the deployment in force gives the layer.
-    With no deployment in force, or none that holds the layer, there is
-    no cadence to check against: the deployment that brings the layer
-    is checked against the boundaries already declared.
+    The cadence is the one a deployment in force gives the layer, which
+    is one across the server's tenants (ADR 011). With no deployment in
+    force, or none that holds the layer, there is no cadence to check
+    against: the deployment that brings the layer is checked against the
+    boundaries already declared.
     """
     try:
-        reviewers = reviewers_in_force(
+        reviewers = tenants_in_force(
             SqlAlchemyPolicyDeployments(database_url), checks
         )
     except PolicyDeploymentError as exc:
@@ -261,7 +262,7 @@ def _unfit(
             "the deployment in force does not parse, so the cadence of "
             f"{layer!r} cannot be read: {exc}"
         )
-    held = reviewers.layers.get(layer) if reviewers else None
+    held = reviewers.layers.get(layer)
     if held is None:
         return None
     try:

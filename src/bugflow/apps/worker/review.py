@@ -1,15 +1,19 @@
 """The part of the worker that reviews pull requests, built from the
-environment and the policy deployment in force.
+environment and the policy deployment in force for this worker's
+tenant.
 
-A server that was never sent a deployment reviews nothing: the part is
+A tenant that was never sent a deployment reviews nothing: the part is
 then a watcher that stops the worker when one is put in force, so that
 the next start reads it. With a deployment in force the part holds the
-four review workflows and their activities.
+four review workflows and their activities, and reads the settings of
+the gnomes that deployment holds and no other tenant's (ADR 011).
 
 Settings, all optional:
 
 - ``DATABASE_URL``: the Postgres database the deployment, the journal
   and the review records are kept in. Not given, nothing is reviewed.
+- ``TENANT``, as ``apps/shared/tenancy.py`` reads it: whose deployment
+  in force this worker reviews by. Not given, ``default``'s.
 - ``POLICY_CHECKS``, as ``apps/shared/deploying.py`` reads it.
 - ``REVIEW_AGENTS``: the reviewers to run, by id, comma-separated. Not
   given, every reviewer the deployment holds.
@@ -57,6 +61,7 @@ from bugflow.apps.shared.forges import (
 )
 from bugflow.apps.shared.journals import build_sha, review_journal
 from bugflow.apps.shared.policies import ReviewersInForce, reviewers_in_force
+from bugflow.apps.shared.tenancy import tenant_from
 from bugflow.apps.shared.watching import watched
 from bugflow.apps.worker.activities import (
     BackfillActivities,
@@ -106,6 +111,7 @@ from bugflow.forge.infrastructure.sqlalchemy_snapshots import (
     SqlAlchemySnapshotStore,
 )
 from bugflow.method.domain.models.pace_layer import EVENT
+from bugflow.method.domain.models.policy_deployment import DEFAULT_TENANT
 from bugflow.method.infrastructure.deployment_watch import (
     stop_on_new_deployment,
 )
@@ -125,6 +131,7 @@ from bugflow.review.domain.services.gnome_settings import (
 )
 from bugflow.review.domain.services.grader import GraderService
 from bugflow.review.domain.services.judge import JudgeService
+from bugflow.review.infrastructure.gnomes_of import GnomesOf
 from bugflow.review.infrastructure.settled_review import (
     SettledEnforcement,
     SettledPolicies,
@@ -355,7 +362,9 @@ def activities_from_environment(
     layers = reviewers.layers
     # Each gnome's setting on each repository (ADR 008), read at every
     # question, so a setting changes the next review without a restart.
-    settings = SqlAlchemyGnomeSettings(database_url)
+    # Only the gnomes this tenant's deployment holds: another tenant's
+    # gnome on the repository is that tenant's worker's (ADR 011).
+    settings = own_settings(database_url, reviewers)
     named = agent.runner if agent else environ.get("REVIEW_RUNNER", "")
     dispatch, runner = reviewing_from_environment(
         environ,
@@ -391,7 +400,7 @@ def activities_from_environment(
             # only a stocktake runs, never decides a label.
             [agent_id for agent_id, agent in agents.items() if agent.governs],
         ),
-        boundaries=boundaries_from_environment(environ, reviewers),
+        boundaries=boundaries_from_environment(environ, reviewers.layers),
         # What each installed reviewer answers for, which is what its
         # verdict covers.
         agents=verdict_scope(agents, answered_policies(reviewers)),
@@ -473,8 +482,16 @@ def backfill_activities_from_environment(
         # cover it.
         SqlAlchemySpendBindings(database_url),
         SqlAlchemySpendRecord(database_url, spend_relation),
-        boundaries_from_environment(environ, reviewers),
+        boundaries_from_environment(environ, reviewers.layers),
     )
+
+
+def own_settings(
+    database_url: str, reviewers: ReviewersInForce
+) -> GnomeSettingsService:
+    """The settings of the gnomes this tenant's deployment holds, and
+    no other tenant's (ADR 011)."""
+    return GnomesOf(SqlAlchemyGnomeSettings(database_url), reviewers.held)
 
 
 def _warn(message: str) -> None:
@@ -639,21 +656,30 @@ def parts_from_environment(
     database_url = environ.get("DATABASE_URL", "")
     if not database_url:
         return WorkerParts(lines=("reviews nothing: DATABASE_URL is not set",))
+    tenant = tenant_from(environ)
     deployments = SqlAlchemyPolicyDeployments(database_url)
     reviewers = reviewers_in_force(
-        deployments, checks_from(environ), reviewer_names(environ)
+        deployments, checks_from(environ), reviewer_names(environ), tenant
     )
     started_with = reviewers.deployed_from if reviewers else None
 
     async def watch(stop: asyncio.Event) -> None:
         await stop_on_new_deployment(
-            stop.set, started_with, deployments, say=_say, stopping=stop
+            stop.set,
+            started_with,
+            deployments,
+            say=_say,
+            stopping=stop,
+            tenant=tenant,
         )
 
     if reviewers is None:
         return WorkerParts(
             watchers=(watch,),
-            lines=("reviews nothing: no policy deployment is in force",),
+            lines=(
+                "reviews nothing: no policy deployment is in force"
+                + ("" if tenant == DEFAULT_TENANT else f" for {tenant}"),
+            ),
         )
     activities = activities_from_environment(
         environ, reviewers, grader, agent, forge, judge, spend_relation
@@ -662,7 +688,7 @@ def parts_from_environment(
         environ, reviewers, spend_relation
     )
     layers = reviewers.layers
-    settings = SqlAlchemyGnomeSettings(database_url)
+    settings = own_settings(database_url, reviewers)
     watching = watched_in(settings)
     zone = periods_timezone(environ)
     boundaries = Defaulted(SqlAlchemyLayerBoundaries(database_url), layers)
@@ -757,9 +783,7 @@ def parts_from_environment(
 
     def a_forge_to_publish_to() -> None:
         if forge is None:
-            refuse_without_a_forge(
-                environ, SqlAlchemyGnomeSettings(database_url)
-            )
+            refuse_without_a_forge(environ, settings)
 
     def a_boundary_for_every_period() -> None:
         refuse_without_a_boundary(layers, watching, boundaries)
@@ -787,7 +811,8 @@ def parts_from_environment(
         watchers=(watch, follow_the_settings, discover_daily),
         lines=(
             f"reviews under {came_from.repository} at {came_from.commit}, "
-            f"content {came_from.content_hash[:12]}",
+            f"content {came_from.content_hash[:12]}"
+            + ("" if tenant == DEFAULT_TENANT else f", for {tenant}"),
             f"holds the layers {', '.join(layers)}"
             if layers
             else "holds no layer",

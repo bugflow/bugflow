@@ -26,7 +26,7 @@ from bugflow.shared.infrastructure.migrations import (
 from bugflow.shared.tests.postgres import scratch_database
 from bugflow.shared.tests.test_the_journal_in_postgres import entry, rows
 
-LAST = "0028"
+LAST = "0029"
 #: The last script before the journal gained its keys, at which a
 #: database built by an earlier program's scripts is seeded below.
 BEFORE_KEYS = "0009"
@@ -1247,6 +1247,62 @@ def test_a_deployments_own_table_keyed_to_the_policy_journal_holds_its_fact(
         assert row["payload"] is None
     finally:
         engine.dispose()
+
+
+def test_the_deployments_already_held_become_the_default_tenants(
+    empty: str,
+) -> None:
+    """A deployment stored before deployments had tenants is the
+    default tenant's after script 0029, and stays in force for it, so a
+    server with one tenant reviews as it did."""
+    upgrade(empty)
+    downgrade(empty, "0028")
+    engine = _engine(empty)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO policy_deployment (repository, commit, "
+                    "content_hash) VALUES ('o/policies', 'abc', 'h1')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO policy_deployment_file (repository, commit, "
+                    "path, text) VALUES ('o/policies', 'abc', "
+                    "'prose/reviewer.md', 'agent_id: prose')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO policy_deployment_in_force (repository, "
+                    "commit) VALUES ('o/policies', 'abc')"
+                )
+            )
+
+        upgrade(empty)
+
+        with engine.connect() as connection:
+            tenants = connection.execute(
+                sa.text(
+                    "SELECT (SELECT tenant FROM policy_deployment), "
+                    "(SELECT tenant FROM policy_deployment_file), "
+                    "(SELECT tenant FROM policy_deployment_in_force)"
+                )
+            ).one()
+            in_force = connection.execute(
+                sa.text(
+                    "SELECT f.text FROM policy_deployment_in_force i "
+                    "JOIN policy_deployment_file f ON f.tenant = i.tenant "
+                    "AND f.repository = i.repository AND f.commit = i.commit "
+                    "WHERE i.tenant = 'default'"
+                )
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert tuple(tenants) == ("default", "default", "default")
+    assert in_force == "agent_id: prose"
+    assert last_run(empty) == [LAST]
 
 
 def test_the_declarations_go_only_once_each_declaring_repository_is_set(

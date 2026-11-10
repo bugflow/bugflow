@@ -9,6 +9,10 @@ A managed agent's completion has a route too, verified the platform's
 own way rather than a forge's, and handed to the receive-completion use
 case, which signals the evaluation waiting for it.
 
+A server has one ingress and a worker for each tenant (ADR 011). A
+delivery is handed to the workflow of each tenant whose gnome judges
+the repository, in that tenant's namespace; ``fan_out`` chooses them.
+
 Run by uvicorn with ``--factory``, as ``app_from_environment``.
 """
 
@@ -29,6 +33,7 @@ from fastapi.responses import JSONResponse
 from standardwebhooks import Webhook, WebhookVerificationError
 from temporalio.client import Client
 
+from bugflow.apps.ingress.fan_out import TenantStarters
 from bugflow.apps.shared.boundaries import Defaulted, settling_for
 from bugflow.apps.shared.deploying import checks_from
 from bugflow.apps.shared.journals import (
@@ -37,7 +42,7 @@ from bugflow.apps.shared.journals import (
     dispatch_queries,
     stamped_journal,
 )
-from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.apps.shared.policies import ReviewersInForce, tenants_in_force
 from bugflow.apps.shared.telemetry import (
     client_interceptors,
     configure_telemetry,
@@ -49,6 +54,7 @@ from bugflow.apps.shared.temporal import (
     WorkerWorkflows,
 )
 from bugflow.apps.shared.temporal import connect as connect_temporal
+from bugflow.apps.shared.tenancy import tenant_from, tenants_from
 from bugflow.apps.worker import evaluate_pull_request, pull_request
 from bugflow.forge.domain.errors import EvaluationStartError
 from bugflow.forge.domain.models.delivery import Delivery
@@ -65,10 +71,13 @@ from bugflow.forge.infrastructure.signatures import (
 )
 from bugflow.forge.usecases.receive_delivery import ReceiveDeliveryUseCase
 from bugflow.method.infrastructure.deployment_watch import (
-    stop_on_new_deployment,
+    stop_on_new_deployments,
 )
 from bugflow.method.infrastructure.sqlalchemy_policy_deployments import (
     SqlAlchemyPolicyDeployments,
+)
+from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
+    SqlAlchemyGnomeSettings,
 )
 from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
     SqlAlchemyLayerBoundaries,
@@ -367,7 +376,11 @@ def app_from_environment(
       platform's console; unset, the ingress still starts and that route
       accepts nothing.
     - ``TEMPORAL_ADDRESS``, ``TEMPORAL_NAMESPACE``, ``TEMPORAL_TASK_QUEUE``
-      and ``TEMPORAL_UI_URL``, as ``TemporalSettings`` reads them.
+      and ``TEMPORAL_UI_URL``, as ``TemporalSettings`` reads them: where
+      the ingress's own tenant's worker is.
+    - ``TENANT`` and ``TENANTS``, as ``apps/shared/tenancy.py`` reads
+      them: the ingress's own tenant, and the other tenants whose
+      workers a delivery reaches, each in its own namespace (ADR 011).
     - ``BUILD_SHA``: the full git sha of the build, recorded with every
       journal entry.
     - ``POLICY_CHECKS``: the checks this server performs, as the API
@@ -375,7 +388,10 @@ def app_from_environment(
 
     A server that was never sent a deployment starts all the same: it
     receives deliveries, hands them to the worker, and stops to read the
-    first deployment put in force.
+    first deployment put in force. So does one whose other tenants have
+    none yet: a tenant listed is reached once a deployment is in force
+    for it, and one with a deployment in force that is not listed is
+    said and reached by nothing.
 
     - ``OTEL_EXPORTER_OTLP_ENDPOINT`` and ``LOG_FORMAT``, as
       ``bugflow.apps.shared.telemetry`` reads them.
@@ -397,6 +413,15 @@ def app_from_environment(
     database_url = environ["DATABASE_URL"]
     build = build_sha(environ)
     checks = checks_from(environ)
+    own = tenant_from(environ)
+    # Where each other tenant's worker is: its own namespace and queue,
+    # at the same Temporal server.
+    elsewhere = {
+        one.name: replace(
+            settings, namespace=one.namespace, task_queue=one.task_queue
+        )
+        for one in tenants_from(environ)
+    }
     if parts is None:
         configure_telemetry("ingress", environ)
         added = IngressParts(
@@ -411,26 +436,58 @@ def app_from_environment(
 
     connecting = connect or traced
 
+    def say(line: str) -> None:
+        print(line, flush=True)
+
+    def starter_for(
+        client: Client,
+        where: TemporalSettings,
+        loop: asyncio.AbstractEventLoop,
+        reviewers: ReviewersInForce | None,
+    ) -> TemporalEvaluationStarter:
+        # The pace layers of the tenant's deployment in force, read once:
+        # a tenant never sent one has no layers and no settling windows.
+        layers = reviewers.layers if reviewers else {}
+        return TemporalEvaluationStarter(
+            client,
+            where,
+            loop,
+            worker_workflows(),
+            settling_for(
+                layers,
+                Defaulted(SqlAlchemyLayerBoundaries(database_url), layers),
+            ),
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         client = await connecting(settings)
         loop = asyncio.get_running_loop()
         deployments = SqlAlchemyPolicyDeployments(database_url)
-        # The pace layers of the deployment in force, read once: a
-        # server never sent one has no layers and no settling windows.
-        reviewers = reviewers_in_force(deployments, checks)
-        starter = TemporalEvaluationStarter(
-            client,
-            settings,
-            loop,
-            worker_workflows(),
-            settling_for(
-                reviewers.layers if reviewers else {},
-                Defaulted(
-                    SqlAlchemyLayerBoundaries(database_url),
-                    reviewers.layers if reviewers else {},
-                ),
-            ),
+        held = tenants_in_force(deployments, checks)
+        starters = {
+            own: starter_for(client, settings, loop, held.by_tenant.get(own))
+        }
+        for tenant, where in elsewhere.items():
+            reviewers = held.by_tenant.get(tenant)
+            if reviewers is None:
+                # Reached once a deployment is in force for it, which
+                # the watch below sees and restarts the ingress on.
+                continue
+            starters[tenant] = starter_for(
+                await connecting(where), where, loop, reviewers
+            )
+        for tenant in held.by_tenant:
+            if tenant not in starters:
+                say(
+                    f"tenant {tenant} has a deployment in force and is not "
+                    "in TENANTS; its reviewers receive no delivery"
+                )
+        starter = TenantStarters(
+            starters,
+            own,
+            held.tenant_of,
+            SqlAlchemyGnomeSettings(database_url),
         )
         app.state.receive = ReceiveDeliveryUseCase(
             delivery_journal(database_url, build),
@@ -444,15 +501,16 @@ def app_from_environment(
             stamped_journal(database_url, build),
             SystemClock(),
         )
-        # When a different deployment is put in force, ask this process
-        # to shut down as SIGTERM does; the container's restart policy
-        # starts it again, and the new start reads the new deployment.
+        # When a different deployment is put in force for any tenant,
+        # ask this process to shut down as SIGTERM does; the container's
+        # restart policy starts it again, and the new start reads the
+        # new deployment.
         watching = asyncio.create_task(
-            stop_on_new_deployment(
+            stop_on_new_deployments(
                 lambda: os.kill(os.getpid(), signal.SIGTERM),
-                reviewers.deployed_from if reviewers else None,
+                held.deployed,
                 deployments,
-                say=lambda line: print(line, flush=True),
+                say=say,
             )
         )
         try:

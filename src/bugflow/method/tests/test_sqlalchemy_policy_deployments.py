@@ -10,6 +10,7 @@ what it put there itself and asserts nothing about what came before.
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -140,6 +141,29 @@ def test_the_last_put_in_force_names_the_deployment_in_force(
     assert latest is not None
     assert (latest.repository, latest.commit) == (name, "c2")
     assert latest.content_hash == deployment(name, "c2", "two\n").content_hash
+
+
+def test_each_tenant_has_a_deployment_in_force_of_its_own(
+    engine: sa.Engine, database_url: str
+) -> None:
+    """Two tenants may hold one commit of one repository, each with
+    files of its own, and each is read apart (ADR 011)."""
+    held = SqlAlchemyPolicyDeployments(database_url)
+    name = repository()
+    ours = deployment(name, "c1", "ours\n")
+    theirs = replace(deployment(name, "c1", "theirs\n"), tenant="their-area")
+    assert held.deploy(ours) is True
+    assert held.deploy(theirs) is True
+    assert held.in_force() == ours
+    assert held.in_force("their-area") == theirs
+    assert held.in_force("nobody") is None
+    assert "their-area" in held.tenants()
+    latest = held.last_put_in_force("their-area")
+    assert latest is not None and latest.tenant == "their-area"
+    # A deployment put in force for one tenant leaves the other's.
+    assert held.deploy(replace(theirs, commit="c2")) is True
+    assert held.in_force() == ours
+    assert puts(engine, name) == ["c1", "c1", "c2"]
 
 
 def fact(name: str, replaced: PutInForce | None) -> list[JournalEntry]:

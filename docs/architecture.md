@@ -71,6 +71,15 @@ On a pull request in the binding, the pipeline runs the same command
 with `--check`. The API parses the files and stores nothing, so a
 problem shows before the merge.
 
+A server with several tenants (ADR 010) has a binding for each, and
+each binding's pipeline sends its deployment with `--tenant`. Each
+tenant's deployment in force stands apart, each tenant's worker reads
+its own and the settings of the gnomes it holds, and the one ingress
+hands a delivery to each tenant whose gnome judges the repository, in
+that tenant's namespace (ADR 011). A gnome's id is one tenant's on a
+server, so the settings page sets every tenant's gnomes under one
+list, each named for its tenant.
+
 ## How a pull request is reviewed
 
 ```mermaid

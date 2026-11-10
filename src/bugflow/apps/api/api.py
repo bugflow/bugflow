@@ -20,6 +20,7 @@ from bugflow.apps.api.operations import (
 )
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
+    deployers_from,
 )
 from bugflow.apps.api.settings import (
     SettingsAdministration,
@@ -37,7 +38,7 @@ from bugflow.apps.shared.deploying import (
     deploying_over,
 )
 from bugflow.apps.shared.journals import build_sha, stamped_journal
-from bugflow.apps.shared.policies import reviewers_in_force
+from bugflow.apps.shared.policies import tenants_in_force
 from bugflow.apps.shared.submission_source import ForgeBoundedSubmissionSource
 from bugflow.apps.shared.telemetry import configure_telemetry, instrument_app
 from bugflow.forge.infrastructure.sqlalchemy_known_repositories import (
@@ -51,6 +52,7 @@ from bugflow.method.domain.errors import (
     PolicyDeploymentError,
 )
 from bugflow.method.domain.models.pace_layer import CADENCES
+from bugflow.method.domain.models.policy_deployment import DEFAULT_TENANT
 from bugflow.method.domain.services.policy_deployment_access import (
     PolicyDeploymentAccessService,
 )
@@ -171,18 +173,21 @@ def policy_deployment_routes(
     this with its own token check.
     """
 
-    def deployer(who: Annotated[Caller, Depends(caller)]) -> Caller:
-        if not deploying.access.may_deploy(who):
-            raise HTTPException(403, "this caller may not deploy policies")
+    def deployer_for(who: Caller, tenant: str) -> Caller:
+        if not deploying.access.may_deploy(who, tenant):
+            raise HTTPException(
+                403, f"this caller may not deploy policies for {tenant}"
+            )
         return who
 
     @app.post("/api/policy-deployments")
     def deploy_policies(
-        who: Annotated[Caller, Depends(deployer)],
+        who: Annotated[Caller, Depends(caller)],
         body: DeployPoliciesBody,
     ) -> DeployPoliciesResponse:
-        """Store the files as a policy deployment and put it in force,
-        or with check_only parse them and store nothing.
+        """Store the files as a policy deployment and put it in force
+        for the tenant the body names, or with check_only parse them and
+        store nothing.
 
         Sending the deployment already in force changes nothing and
         answers already_in_force, so a pipeline may repeat the call.
@@ -190,6 +195,7 @@ def policy_deployment_routes(
         every problem found. A commit already held with other content
         answers 409. In both cases the deployment in force is unchanged.
         """
+        deployer_for(who, body.tenant)
         try:
             return deploying.deploying.deploy.execute(
                 DeployPoliciesRequest(
@@ -204,17 +210,22 @@ def policy_deployment_routes(
 
     @app.get("/api/policy-deployments/in-force")
     def policy_deployment_in_force(
-        who: Annotated[Caller, Depends(deployer)],
+        who: Annotated[Caller, Depends(caller)],
+        tenant: str = DEFAULT_TENANT,
     ) -> InForce:
-        """The deployment in force, by its repository, commit and
-        content hash. 404 on a server that was never sent one."""
-        latest = deploying.deploying.deployments.last_put_in_force()
+        """The tenant's deployment in force, by its repository, commit
+        and content hash. 404 for a tenant that was never sent one."""
+        deployer_for(who, tenant)
+        latest = deploying.deploying.deployments.last_put_in_force(tenant)
         if latest is None:
-            raise HTTPException(404, "no policy deployment is in force")
+            raise HTTPException(
+                404, f"no policy deployment is in force for {tenant}"
+            )
         return InForce(
             repository=latest.repository,
             commit=latest.commit,
             content_hash=latest.content_hash,
+            tenant=latest.tenant,
         )
 
 
@@ -257,6 +268,9 @@ def api_from_environment(
 
     Optional:
 
+    - ``TENANT_DEPLOYERS``: the client that deploys each tenant's
+      policies, as ``tenant=client`` pairs separated by commas
+      (ADR 011). A tenant not named takes any caller with the role.
     - ``EVALUATION_ADMIN_ROLE``: a role allowed to read every evaluation.
       Unset, no role grants this access.
     - ``EVALUATION_IDENTITIES``: a JSON list of issuer, subject and commit
@@ -326,7 +340,10 @@ def api_from_environment(
             environ["API_ROLES_CLAIM"],
         ),
         PolicyDeploying(
-            access=RolePolicyDeploymentAccess(environ["POLICY_DEPLOYER_ROLE"]),
+            access=RolePolicyDeploymentAccess(
+                environ["POLICY_DEPLOYER_ROLE"],
+                deployers_from(environ.get("TENANT_DEPLOYERS", "")),
+            ),
             deploying=deploying_over(
                 environ["DATABASE_URL"],
                 build_sha(environ),
@@ -365,7 +382,7 @@ def administration_from(
             uuid.uuid4().hex,
         ),
         repositories=known.everything,
-        reviewers=lambda: reviewers_in_force(deployments, checks),
+        reviewers=lambda: tenants_in_force(deployments, checks),
         boundaries=SqlAlchemyLayerBoundaries(database_url),
         sign_in=sign_in_from(environ, issuer),
     )
@@ -378,7 +395,8 @@ def operations_from(
     ``SETTINGS_ROLE`` is not set.
 
     The periods an allowance is counted over are found as the worker
-    finds them, from the deployment in force when the page asks.
+    finds them, from every tenant's deployment in force when the page
+    asks.
     """
     role = environ.get("SETTINGS_ROLE", "")
     if not role:
@@ -390,10 +408,10 @@ def operations_from(
     checks = checks_from(environ)
 
     def boundaries() -> Boundaries:
-        reviewers = reviewers_in_force(deployments, checks)
-        if reviewers is None:
+        layers = tenants_in_force(deployments, checks).layers
+        if not layers:
             return Boundaries(layers={})
-        return boundaries_from_environment(environ, reviewers)
+        return boundaries_from_environment(environ, layers)
 
     def run() -> ReadRunOperationsUseCase:
         return ReadRunOperationsUseCase(
