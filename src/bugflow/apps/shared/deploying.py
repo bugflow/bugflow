@@ -9,10 +9,11 @@ names is refused (ADR 008), so a repository is never left set to a
 profile that is gone, even with its gnome off. So is one that gives a
 layer a cadence a declared boundary on it cannot take, which the
 ingress or the worker would raise on. On a server with several tenants
-(ADR 011), so is one that holds a reviewer another tenant's deployment
-in force holds, or names a layer another tenant's holds at a different
-cadence: a reviewer's id and a layer's cadence are one tenant's each,
-because the settings and the boundaries name them with no tenant. The
+(ADR 011), so is one that names a layer another tenant's deployment in
+force holds at a different cadence: a layer's cadence is one across the
+server, because a boundary is declared on the layer's name with no
+tenant. A reviewer's id is not one tenant's: a setting names its tenant
+(ADR 012), so two tenants may hold a reviewer of one id. The
 API's route and the command's ``install-policies`` run the same
 composition, so a deployment made on the host is checked and recorded
 as one a pipeline sends is.
@@ -89,11 +90,11 @@ def checks_from(environ: Mapping[str, str]) -> tuple[str, ...]:
 class SettledDeploymentCheck:
     """Implements ``PolicyDeploymentCheckService``: a retired file is
     refused, then the parse, told which checks this server has and which
-    subjects it renders, then what the other tenants' deployments in
-    force hold, which this one may not, then each setting of this
-    tenant's gnomes, which must name a gnome and a profile the
-    deployment holds, and then each declared boundary, which the
-    cadence the deployment gives its layer must take."""
+    subjects it renders, then the cadence the other tenants' deployments
+    in force give each layer, which this one may not give otherwise,
+    then each declared boundary, which the cadence the deployment gives
+    its layer must take, and then each of this tenant's settings, which
+    must name a gnome and a profile the deployment holds."""
 
     def __init__(
         self,
@@ -107,16 +108,12 @@ class SettledDeploymentCheck:
         self._boundaries = boundaries
         self._deployments = deployments
 
-    def _others(
-        self, tenant: str
-    ) -> tuple[dict[str, str], dict[str, tuple[str, PaceLayer]]]:
-        """What the other tenants' deployments in force hold: each
-        reviewer's tenant by reviewer id, and each layer's tenant and
-        layer by layer name."""
-        gnomes: dict[str, str] = {}
+    def _their_layers(self, tenant: str) -> dict[str, tuple[str, PaceLayer]]:
+        """The layers the other tenants' deployments in force hold: each
+        layer's tenant and layer, by layer name."""
         layers: dict[str, tuple[str, PaceLayer]] = {}
         if self._deployments is None:
-            return gnomes, layers
+            return layers
         for other in self._deployments.tenants():
             if other == tenant:
                 continue
@@ -131,31 +128,15 @@ class SettledDeploymentCheck:
                     f"so what it holds cannot be kept apart from this one: "
                     f"{exc}"
                 ) from exc
-            for gnome in theirs.agents:
-                gnomes.setdefault(gnome, other)
             for name, layer in theirs.layers.items():
                 layers.setdefault(name, (other, layer))
-        return gnomes, layers
+        return layers
 
-    def _refuse_what_another_tenant_holds(
+    def _refuse_a_layer_another_tenant_runs_otherwise(
         self,
         parsed: ParsedDeployment,
-        gnomes: Mapping[str, str],
         layers: Mapping[str, tuple[str, PaceLayer]],
     ) -> None:
-        taken = sorted(
-            f"{gnome} is {gnomes[gnome]}'s"
-            for gnome in parsed.agents
-            if gnome in gnomes
-        )
-        if taken:
-            raise PolicyDeploymentError(
-                "the deployment holds a reviewer another tenant's "
-                "deployment in force holds: "
-                + "; ".join(taken)
-                + ". A reviewer's id is one tenant's on a server, since a "
-                "setting names the reviewer and not its tenant"
-            )
         crossed = sorted(
             f"{name} runs at the {theirs[1].cadence.name} cadence for "
             f"{other} and at the {layer.cadence.name} cadence here"
@@ -176,8 +157,9 @@ class SettledDeploymentCheck:
     def check(self, deployment: PolicyDeployment) -> None:
         refuse_retired(deployment)
         parsed = parse_deployment(deployment, self._checks, JUDGED_SUBJECTS)
-        others, their_layers = self._others(deployment.tenant)
-        self._refuse_what_another_tenant_holds(parsed, others, their_layers)
+        self._refuse_a_layer_another_tenant_runs_otherwise(
+            parsed, self._their_layers(deployment.tenant)
+        )
         if self._boundaries is not None:
             unfit = []
             for one in self._boundaries.declarations():
@@ -202,11 +184,11 @@ class SettledDeploymentCheck:
                 )
         if self._settings is None:
             return
-        # A setting of another tenant's gnome is that tenant's to keep.
+        # Another tenant's setting is that tenant's deployment to keep.
         dropped = sorted(
             f"{one.forge}:{one.repo} sets {one.gnome} to {one.profile}"
             for one in self._settings.settings()
-            if one.gnome not in others
+            if one.tenant == deployment.tenant
             and one.profile not in parsed.profiles.get(one.gnome, {})
         )
         if dropped:

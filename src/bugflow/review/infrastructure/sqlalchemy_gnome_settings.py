@@ -1,8 +1,10 @@
 """What each gnome does on each repository, in Postgres (ADR 008).
 
-One row of ``gnome_setting`` for each repository and gnome, keyed by
-the repository's row (ADR 005), so a renamed repository keeps its
-settings. A repository and gnome with no row are ``off``.
+One row of ``gnome_setting`` for each repository, tenant and gnome,
+keyed by the repository's row (ADR 005), so a renamed repository keeps
+its settings. A repository and gnome with no row are ``off``. The tenant
+is the gnome's (ADR 012); a server with one tenant writes ``default``,
+which the column defaults to.
 
 Each change is a ``gnome.set`` fact in the policy journal, and its typed
 row is ``gnome_setting_change`` (ADR 007), which ``UNPACKERS`` writes in
@@ -19,6 +21,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.dialects.postgresql import insert
 
 from bugflow.review.domain.models.gnome_setting import (
+    DEFAULT_TENANT,
     Behaviour,
     GnomeSetting,
 )
@@ -42,6 +45,10 @@ gnome_setting = sa.Table(
         sa.BigInteger,
         sa.ForeignKey("repository.id"),
         primary_key=True,
+    ),
+    # Whose gnome it is.
+    sa.Column(
+        "tenant", sa.Text, primary_key=True, server_default=DEFAULT_TENANT
     ),
     # The reviewer's agent id.
     sa.Column("gnome", sa.Text, primary_key=True),
@@ -68,6 +75,9 @@ gnome_setting_change = sa.Table(
     sa.Column("behaviour", sa.Text, nullable=False),
     sa.Column("profile", sa.Text, nullable=False),
     sa.Column("set_by", sa.Text, nullable=False),
+    sa.Column(
+        "tenant", sa.Text, nullable=False, server_default=DEFAULT_TENANT
+    ),
     # What it replaced, null where the gnome had no setting.
     sa.Column("was_behaviour", sa.Text),
     sa.Column("was_profile", sa.Text),
@@ -81,6 +91,7 @@ def _setting(row: Any) -> GnomeSetting:
         gnome=row.gnome,
         behaviour=cast(Behaviour, row.behaviour),
         profile=row.profile,
+        tenant=row.tenant,
         set_by=row.set_by,
         set_at=row.set_at,
     )
@@ -90,6 +101,7 @@ _SELECT = (
     sa.select(
         forge.c.name.label("forge"),
         repository.c.name.label("repo"),
+        gnome_setting.c.tenant,
         gnome_setting.c.gnome,
         gnome_setting.c.behaviour,
         gnome_setting.c.profile,
@@ -101,7 +113,12 @@ _SELECT = (
             repository, repository.c.id == gnome_setting.c.repository_id
         ).join(forge, forge.c.id == repository.c.forge_id)
     )
-    .order_by(forge.c.name, repository.c.name, gnome_setting.c.gnome)
+    .order_by(
+        forge.c.name,
+        repository.c.name,
+        gnome_setting.c.tenant,
+        gnome_setting.c.gnome,
+    )
 )
 
 
@@ -138,10 +155,14 @@ class SqlAlchemyGnomeSettings:
             connection.execute(
                 insert(gnome_setting)
                 .values(
-                    repository_id=repository_id, gnome=setting.gnome, **values
+                    repository_id=repository_id,
+                    tenant=setting.tenant,
+                    gnome=setting.gnome,
+                    **values,
                 )
                 .on_conflict_do_update(
-                    index_elements=["repository_id", "gnome"], set_=values
+                    index_elements=["repository_id", "tenant", "gnome"],
+                    set_=values,
                 )
             )
 
@@ -156,6 +177,7 @@ def unpack_setting(connection: sa.Connection, entry: JournalEntry) -> None:
             behaviour=p["behaviour"],
             profile=p["profile"],
             set_by=p["set_by"],
+            tenant=p.get("tenant", DEFAULT_TENANT),
             was_behaviour=p.get("was_behaviour"),
             was_profile=p.get("was_profile"),
         )

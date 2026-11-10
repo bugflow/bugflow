@@ -100,21 +100,33 @@ function option(value, chosen) {
   return one;
 }
 
-function cell(repository, gnome) {
+// A column is one tenant's gnome, keyed by its qualified name: the
+// gnome's id for the default tenant, tenant/id for another. The about
+// entry says which tenant and gnome to send.
+function whose(column) {
+  const about = (held.gnomes || {})[column];
+  if (about && about.gnome) return { tenant: about.tenant, gnome: about.gnome };
+  const slash = column.indexOf("/");
+  return slash < 0 ? { tenant: null, gnome: column }
+    : { tenant: column.slice(0, slash), gnome: column.slice(slash + 1) };
+}
+
+function cell(repository, column) {
   const td = document.createElement("td");
   const box = document.createElement("div");
   box.className = "cell";
-  let now = repository.gnomes[gnome] ||
-    { behaviour: "off", profile: held.profiles[gnome][0] };
+  const { tenant, gnome } = whose(column);
+  let now = repository.gnomes[column] ||
+    { behaviour: "off", profile: held.profiles[column][0] };
   const behaviour = document.createElement("select");
-  behaviour.setAttribute("aria-label", repository.name + " " + gnome);
+  behaviour.setAttribute("aria-label", repository.name + " " + column);
   BEHAVIOURS.forEach(b => behaviour.append(option(b, now.behaviour)));
   box.append(behaviour);
   let profile = null;
-  if (held.profiles[gnome].length > 1) {
+  if (held.profiles[column].length > 1) {
     profile = document.createElement("select");
-    profile.setAttribute("aria-label", repository.name + " " + gnome + " profile");
-    held.profiles[gnome].forEach(p => profile.append(option(p, now.profile)));
+    profile.setAttribute("aria-label", repository.name + " " + column + " profile");
+    held.profiles[column].forEach(p => profile.append(option(p, now.profile)));
     box.append(profile);
   }
   const state = document.createElement("span");
@@ -129,9 +141,10 @@ function cell(repository, gnome) {
         `api/settings/${encodeURIComponent(repository.forge)}/` +
         `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/` +
         `${encodeURIComponent(gnome)}`,
-        { behaviour: behaviour.value, profile: profile ? profile.value : null });
+        { behaviour: behaviour.value, profile: profile ? profile.value : null,
+          tenant: tenant });
       Object.assign(repository, updated);
-      now = repository.gnomes[gnome] || now;
+      now = repository.gnomes[column] || now;
       state.textContent = "saved"; state.className = "state ok";
       say("");
     } catch (error) {
@@ -159,10 +172,10 @@ function element(tag, className, text) {
   return made;
 }
 
-function gnomeHeading(gnome) {
+function gnomeHeading(column) {
   const th = element("th", "gnome");
-  th.append(element("div", "", gnome));
-  const about = (held.gnomes || {})[gnome];
+  th.append(element("div", "", whose(column).gnome));
+  const about = (held.gnomes || {})[column];
   if (!about) return th;
   if ((held.deployments || []).length > 1) {
     th.append(element("div", "tenant", about.tenant + "'s"));
@@ -219,11 +232,11 @@ function render() {
   const grid = document.getElementById("grid");
   const filter = document.getElementById("filter").value.trim().toLowerCase();
   const showArchived = document.getElementById("archived").checked;
-  const gnomes = Object.keys(held.profiles);
+  const columns = Object.keys(held.profiles);
   grid.replaceChildren();
   const head = grid.createTHead().insertRow();
   head.append(element("th", "", "Repository"));
-  gnomes.forEach(gnome => head.append(gnomeHeading(gnome)));
+  columns.forEach(column => head.append(gnomeHeading(column)));
   const body = grid.createTBody();
   const rows = held.repositories
     .filter(r => showArchived || !r.archived)
@@ -244,7 +257,7 @@ function render() {
       name.append(element("span", "tag", "public"));
     }
     if (repository.archived) name.append(element("span", "tag", "archived"));
-    gnomes.forEach(gnome => row.append(cell(repository, gnome)));
+    columns.forEach(column => row.append(cell(repository, column)));
   });
 }
 

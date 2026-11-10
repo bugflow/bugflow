@@ -5,8 +5,8 @@ tenant.
 A tenant that was never sent a deployment reviews nothing: the part is
 then a watcher that stops the worker when one is put in force, so that
 the next start reads it. With a deployment in force the part holds the
-four review workflows and their activities, and reads the settings of
-the gnomes that deployment holds and no other tenant's (ADR 011).
+four review workflows and their activities, and reads its own tenant's
+settings and no other tenant's (ADR 011, ADR 012).
 
 Settings, all optional:
 
@@ -131,7 +131,6 @@ from bugflow.review.domain.services.gnome_settings import (
 )
 from bugflow.review.domain.services.grader import GraderService
 from bugflow.review.domain.services.judge import JudgeService
-from bugflow.review.infrastructure.gnomes_of import GnomesOf
 from bugflow.review.infrastructure.settled_review import (
     SettledEnforcement,
     SettledPolicies,
@@ -158,6 +157,7 @@ from bugflow.review.infrastructure.sqlalchemy_withholding import (
 from bugflow.review.infrastructure.sqlalchemy_write_up_archive import (
     SqlAlchemyWriteUpArchive,
 )
+from bugflow.review.infrastructure.tenant_settings import TenantSettings
 from bugflow.shared.domain.services.object_store import ObjectStoreService
 from bugflow.shared.infrastructure.null_object_store import NullObjectStore
 from bugflow.shared.infrastructure.s3_object_store import S3ObjectStore
@@ -362,8 +362,8 @@ def activities_from_environment(
     layers = reviewers.layers
     # Each gnome's setting on each repository (ADR 008), read at every
     # question, so a setting changes the next review without a restart.
-    # Only the gnomes this tenant's deployment holds: another tenant's
-    # gnome on the repository is that tenant's worker's (ADR 011).
+    # Only this tenant's settings: another tenant's gnome on the
+    # repository is that tenant's worker's (ADR 012).
     settings = own_settings(database_url, reviewers)
     named = agent.runner if agent else environ.get("REVIEW_RUNNER", "")
     dispatch, runner = reviewing_from_environment(
@@ -381,6 +381,7 @@ def activities_from_environment(
     objects = object_store_from_environment(environ)
     return ReviewActivities(
         forge=forge,
+        tenant=reviewers.tenant,
         repository_endpoints=repository_endpoints(environ),
         # The same forges answer for a closed conversation.
         conversation=forge,
@@ -489,9 +490,10 @@ def backfill_activities_from_environment(
 def own_settings(
     database_url: str, reviewers: ReviewersInForce
 ) -> GnomeSettingsService:
-    """The settings of the gnomes this tenant's deployment holds, and
-    no other tenant's (ADR 011)."""
-    return GnomesOf(SqlAlchemyGnomeSettings(database_url), reviewers.held)
+    """This tenant's settings, and no other tenant's (ADR 012)."""
+    return TenantSettings(
+        SqlAlchemyGnomeSettings(database_url), reviewers.tenant
+    )
 
 
 def _warn(message: str) -> None:

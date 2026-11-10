@@ -94,15 +94,17 @@ def gnome_set_id(
     setting: tuple[str, str],
     was: tuple[str, str] | None,
     when: datetime,
+    tenant: str = "default",
 ) -> UUID:
-    """The id of a "gnome set" fact, made from the repository, the gnome,
-    the behaviour and profile it was set to and from, and the time.
-    Setting it again later is a new fact, and so is a second change in
-    the same instant."""
+    """The id of a "gnome set" fact, made from the repository, the
+    tenant, the gnome, the behaviour and profile it was set to and from,
+    and the time. Setting it again later is a new fact, and so is a
+    second change in the same instant."""
     return fact_id(
         "gnome-set",
         forge,
         repo,
+        tenant,
         gnome,
         *setting,
         *(was or ("", "")),

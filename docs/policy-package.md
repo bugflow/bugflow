@@ -309,6 +309,6 @@ how a pipeline signs in.
 
 On a server with several tenants, each binding is one tenant's and its
 pipeline passes `--tenant`; the deployment is put in force for that
-tenant alone (ADR 011). The server refuses a deployment that holds a
-reviewer another tenant's deployment in force holds, or gives a layer
-a cadence another tenant's gives it otherwise.
+tenant alone (ADR 011). The server refuses a deployment that gives a
+layer a cadence another tenant's deployment in force gives it
+otherwise. Two tenants may hold a reviewer of one id (ADR 012).

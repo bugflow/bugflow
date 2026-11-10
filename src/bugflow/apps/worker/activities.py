@@ -99,6 +99,7 @@ from bugflow.method.domain.repositories.doctrine import DoctrineRepository
 from bugflow.review.domain.errors import JudgeTemporarilyUnavailableError
 from bugflow.review.domain.models.delegation import Handle, Run
 from bugflow.review.domain.models.evaluation import Answerable
+from bugflow.review.domain.models.gnome_setting import DEFAULT_TENANT
 from bugflow.review.domain.repositories.judge_archive import (
     JudgeArchiveRepository,
 )
@@ -387,6 +388,9 @@ class ReviewActivities:
         # needs no model.
         checked: Mapping[str, Checked] | None = None,
         repository_endpoints: Mapping[str, str] | None = None,
+        # Whose reviewers these are (ADR 012), which names each commit
+        # status they set.
+        tenant: str = DEFAULT_TENANT,
     ) -> None:
         # The judge itself, not the activity that calls it. Startup
         # asks it which policies have no model and drops them. The
@@ -495,6 +499,7 @@ class ReviewActivities:
             submissions=submissions,
             sites=sites,
             editor=editor,
+            tenant=tenant,
         )
         # Asked directly and not through a use case: whether a pull
         # request is still open is one call to the forge with no
