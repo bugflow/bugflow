@@ -284,6 +284,10 @@ text = "Each reviewer sets a commit status on the head commit, named by its id."
 
 [[requirement]]
 group = "Verdict"
+text = "Another tenant's reviewer names its status tenant/id, so two tenants' reviewers of one id set two statuses."
+
+[[requirement]]
+group = "Verdict"
 text = "The commit status is failure when one of the reviewer's findings fails, and success otherwise."
 
 [[requirement]]

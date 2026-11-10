@@ -5,7 +5,7 @@ from bugflow.review.domain.models.gnome_setting import GnomeSetting
 
 class InMemoryGnomeSettings:
     def __init__(self, *settings: GnomeSetting) -> None:
-        self._held: dict[tuple[str, str, str], GnomeSetting] = {}
+        self._held: dict[tuple[str, str, str, str], GnomeSetting] = {}
         for one in settings:
             self.save(one)
 
@@ -20,4 +20,6 @@ class InMemoryGnomeSettings:
         return tuple(self._held[key] for key in sorted(self._held))
 
     def save(self, setting: GnomeSetting) -> None:
-        self._held[(setting.forge, setting.repo, setting.gnome)] = setting
+        self._held[
+            (setting.forge, setting.repo, setting.tenant, setting.gnome)
+        ] = setting

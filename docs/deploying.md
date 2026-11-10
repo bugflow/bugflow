@@ -116,10 +116,11 @@ gnomes it holds (ADR 011). A server with one tenant sets none of these.
 | `bugflow_tenant_deployers` | `api` | The client that deploys each tenant's policies, as `tenant=client` pairs separated by commas, so one tenant's pipeline cannot put a deployment in force for another. A tenant not named takes any caller with `bugflow_policy_deployer_role`. Not written if empty |
 
 A tenant's pipeline passes `--tenant` to `bugflow deploy-policies`. A
-reviewer's id is one tenant's on a server, and a layer's name has one
-cadence: a deployment that holds a reviewer, or gives a layer a
-cadence, that another tenant's deployment in force holds otherwise is
-refused.
+layer's name has one cadence on a server: a deployment that gives a
+layer a cadence another tenant's deployment in force gives it otherwise
+is refused. Two tenants may hold a reviewer of one id; each tenant's
+setting of it names the tenant, and `bugflow set --tenant` says whose
+setting is made where two hold the gnome (ADR 012).
 
 ### The forge
 

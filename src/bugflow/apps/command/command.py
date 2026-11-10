@@ -22,6 +22,7 @@ Its subcommands include::
     bugflow revoke [REPOSITORY] [--layer LAYER] [--agent REVIEWER]
         --per CADENCE
     bugflow set REPOSITORY GNOME BEHAVIOUR [--profile PROFILE]
+        [--tenant TENANT]
     bugflow settings [REPOSITORY]
     bugflow webhooks
     bugflow worker
@@ -72,7 +73,9 @@ Exit status: 0 if every owner was listed. 1 if any could not be. 2 if a
 setting is missing.
 
 ``set`` and ``settings`` write and read what each gnome does on each
-repository (ADR 008), in the database ``DATABASE_URL`` names. ``set``
+repository (ADR 008), in the database ``DATABASE_URL`` names. A setting
+is one tenant's (ADR 012): ``--tenant`` names it where two tenants hold
+the gnome, and a line names another tenant's gnome ``tenant/id``. ``set``
 sets one gnome on one repository to a BEHAVIOUR, ``off``, ``observe``,
 ``advise`` or ``gate``, judging by a PROFILE of the deployment in
 force, and records who set it. ``settings`` prints what is set. A
@@ -475,6 +478,11 @@ def _declaring_parsers(
         help="a profile of the gnome the deployment in force holds. "
         "Omitted, the gnome keeps its profile there, or default",
     )
+    set_gnome.add_argument(
+        "--tenant",
+        help="the tenant whose gnome it is. Omitted, the one tenant whose "
+        "deployment in force holds the gnome; where two do, name one",
+    )
     settings = commands.add_parser(
         "settings", help="print what each gnome is set to on each repository"
     )
@@ -870,6 +878,7 @@ def _declaring(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
             args.profile,
             checks_from(environ),
             build,
+            tenant=args.tenant,
         )
 
     return run_declare(

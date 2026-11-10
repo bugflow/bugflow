@@ -6,9 +6,13 @@ its journal and from discovery, with what each gnome is set to there and
 whether it is private; each gnome's profiles, what it reads, the
 processes it runs, the policies its profiles name and whose it is; and
 each tenant's policy deployment in force, where the profiles are
-defined (ADR 011). ``PUT /api/settings/{forge}/{owner}/{repo}/{gnome}``
-sets one gnome on one repository, recorded as set by the caller. Both
-need the role ``SETTINGS_ROLE`` names.
+defined (ADR 011). Each gnome is keyed by its qualified name: its id
+for the default tenant's, and ``tenant/id`` for another tenant's, since
+two tenants may hold a gnome of one id (ADR 012).
+``PUT /api/settings/{forge}/{owner}/{repo}/{gnome}`` sets one gnome on
+one repository, recorded as set by the caller; the body names the
+tenant where two hold the gnome. Both need the role ``SETTINGS_ROLE``
+names.
 
 ``GET /settings`` is the page, which signs the person in at the identity
 provider in the browser and calls the two routes with the token it is
@@ -16,7 +20,7 @@ given. ``GET /settings/config`` tells the page where to sign in. Neither
 needs a token: the page holds no data until the routes give it some.
 """
 
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from importlib.resources import files
 from typing import Annotated, Any
@@ -27,6 +31,7 @@ from pydantic import BaseModel, ConfigDict
 
 from bugflow.apps.shared.boundaries import Defaulted, without_a_boundary
 from bugflow.apps.shared.policies import TenantsInForce
+from bugflow.apps.shared.setting_tenant import tenant_of_setting
 from bugflow.forge.domain.models.forge_repository import KnownRepository
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.method.domain.models.corpus import JUDGE_RUNNER
@@ -97,7 +102,8 @@ class RepositoryState(BaseModel):
     archived: bool
     #: None where discovery has not listed it.
     private: bool | None = None
-    #: By gnome. A gnome missing is off and was never set here.
+    #: By the gnome's qualified name. A gnome missing is off and was
+    #: never set here.
     gnomes: dict[str, GnomeState]
 
 
@@ -118,6 +124,8 @@ class GnomeAbout(BaseModel):
     policies: dict[str, str]
     #: The tenant whose deployment in force holds it.
     tenant: str = DEFAULT_TENANT
+    #: Its id, which the page sends to set it.
+    gnome: str = ""
 
 
 class DeploymentState(BaseModel):
@@ -134,10 +142,10 @@ class DeploymentState(BaseModel):
 class SettingsState(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    #: Each gnome's profiles, by gnome.
+    #: Each gnome's profiles, by qualified name.
     profiles: dict[str, list[str]]
     repositories: list[RepositoryState]
-    #: Each gnome, by gnome.
+    #: Each gnome, by qualified name.
     gnomes: dict[str, GnomeAbout] = {}
     #: Each tenant's deployment in force, in tenant order.
     deployments: list[DeploymentState] = []
@@ -149,6 +157,9 @@ class SetGnomeBody(BaseModel):
     behaviour: Behaviour
     #: Omitted, the gnome keeps its profile there, or ``default``.
     profile: str | None = None
+    #: Whose gnome it is. Omitted, the one tenant that holds the gnome;
+    #: where two do, the setting is refused until one is named.
+    tenant: str | None = None
 
 
 def _state(
@@ -160,7 +171,7 @@ def _state(
         archived=one.archived,
         private=one.private,
         gnomes={
-            held.gnome: GnomeState(
+            held.qualified: GnomeState(
                 behaviour=held.behaviour,
                 profile=held.profile,
                 set_by=held.set_by,
@@ -172,10 +183,13 @@ def _state(
     )
 
 
+def _offered(named: Iterable[str]) -> list[str]:
+    return sorted(named, key=lambda name: (name != DEFAULT_PROFILE, name))
+
+
 def _profiles(held: TenantsInForce) -> dict[str, list[str]]:
     return {
-        gnome: sorted(named, key=lambda name: (name != DEFAULT_PROFILE, name))
-        for gnome, named in sorted(held.profiles.items())
+        name: _offered(named) for name, named in sorted(held.profiles.items())
     }
 
 
@@ -185,14 +199,15 @@ def _when(cadence: str) -> str:
 
 def _about(held: TenantsInForce) -> dict[str, GnomeAbout]:
     about = {}
-    agents, policies, tenant_of = held.agents, held.policies, held.tenant_of
-    for gnome, named in _profiles(held).items():
-        agent = agents.get(gnome)
+    agents, policies, whose = held.agents, held.policies, held.gnomes
+    for name, named in _profiles(held).items():
+        tenant, gnome = whose[name]
+        agent = agents.get(name)
         # The processes of the gnome's own tenant: another tenant's
         # process never runs it.
         runs = [
             f"{process.name}, {_when(layer.cadence.name)}"
-            for _, layer in sorted(held.layers_of(gnome).items())
+            for _, layer in sorted(held.layers_of(tenant).items())
             for process in layer.processes
             if process.reviewer == gnome
             or (
@@ -202,9 +217,9 @@ def _about(held: TenantsInForce) -> dict[str, GnomeAbout]:
                 and agent.runner == JUDGE_RUNNER
             )
         ]
-        profiles = {name: list(held.profiles[gnome][name]) for name in named}
-        texts = policies.get(gnome, {})
-        about[gnome] = GnomeAbout(
+        profiles = {one: list(held.profiles[name][one]) for one in named}
+        texts = policies.get(name, {})
+        about[name] = GnomeAbout(
             summary=agent.summary if agent is not None else "",
             runs=runs,
             profiles=profiles,
@@ -215,7 +230,8 @@ def _about(held: TenantsInForce) -> dict[str, GnomeAbout]:
                 )
                 if policy in texts
             },
-            tenant=tenant_of.get(gnome, DEFAULT_TENANT),
+            tenant=tenant,
+            gnome=gnome,
         )
     return about
 
@@ -283,10 +299,15 @@ def settings_routes(
             raise HTTPException(
                 409, "no policy deployment is in force, so no gnome can judge"
             )
+        held = admin.settings.settings_of(forge, name)
+        try:
+            tenant = tenant_of_setting(reviewers, gnome, held, body.tenant)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
         if body.behaviour != "off" and reviewers.by_tenant:
             # The layers of the gnome's own tenant, whose worker is
             # what would refuse to start.
-            layers = reviewers.layers_of(gnome)
+            layers = reviewers.layers_of(tenant)
             watched = f"{forge}:{name}" if forge != "github" else name
             missing = without_a_boundary(
                 layers, [watched], Defaulted(admin.boundaries, layers)
@@ -302,14 +323,14 @@ def settings_routes(
         kept = next(
             (
                 one
-                for one in admin.settings.settings_of(forge, name)
-                if one.gnome == gnome
+                for one in held
+                if (one.gnome, one.tenant) == (gnome, tenant)
             ),
             None,
         )
-        offered = _profiles(reviewers)
+        offered = reviewers.profiles_of(tenant)
         profile = body.profile or (kept.profile if kept else DEFAULT_PROFILE)
-        if body.profile is None and profile not in offered.get(gnome, []):
+        if body.profile is None and profile not in offered.get(gnome, ()):
             # The profile it was set to is gone, and the page offers no
             # choice where a gnome has one profile.
             profile = DEFAULT_PROFILE
@@ -321,10 +342,9 @@ def settings_routes(
                     gnome=gnome,
                     behaviour=body.behaviour,
                     profile=profile,
+                    tenant=tenant,
                     set_by=who.subject,
-                    profiles={
-                        one: tuple(named) for one, named in offered.items()
-                    },
+                    profiles=offered,
                 )
             )
         except (UnknownGnomeError, ValueError) as exc:

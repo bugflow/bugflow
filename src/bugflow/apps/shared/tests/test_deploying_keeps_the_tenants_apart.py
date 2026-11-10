@@ -1,7 +1,7 @@
 """Deploying keeps what one tenant holds from another (ADR 011): a
-reviewer's id is one tenant's on a server, a layer's name has one
-cadence, and a setting of another tenant's gnome is that tenant's to
-keep."""
+layer's name has one cadence, and a setting of another tenant's gnome
+is that tenant's to keep. A reviewer's id is not one tenant's (ADR
+012)."""
 
 import pytest
 
@@ -67,13 +67,14 @@ class Fixture:
         ).outcome
 
 
-@pytest.mark.parametrize("check_only", [False, True])
-def test_a_reviewer_another_tenant_holds_is_refused(check_only: bool) -> None:
+def test_a_reviewer_another_tenant_holds_is_taken_too() -> None:
+    """Each tenant's setting of the reviewer names its tenant, so the
+    two reviewers of one id stand apart (ADR 012)."""
     fixture = Fixture()
     fixture.deploy("default", READ)
-    with pytest.raises(PolicyDeploymentError, match="prose is default's"):
-        fixture.deploy("business-development", READ, check_only=check_only)
-    assert fixture.deployments.in_force("business-development") is None
+    assert fixture.deploy("business-development", READ) == "deployed"
+    theirs = fixture.deployments.in_force("business-development")
+    assert theirs is not None and theirs.repository == THEIRS
 
 
 def test_a_reviewer_of_its_own_is_taken() -> None:
@@ -103,8 +104,8 @@ def test_a_setting_of_another_tenants_gnome_does_not_hold_a_deployment() -> (
     None
 ):
     """The check that a deployment drops no profile a setting names is
-    about this tenant's gnomes; another tenant's setting is kept by
-    that tenant's deployment."""
+    about this tenant's settings; another tenant's setting of a gnome
+    of the same id is kept by that tenant's deployment."""
     fixture = Fixture(
         GnomeSetting(
             forge="github",
@@ -115,7 +116,7 @@ def test_a_setting_of_another_tenants_gnome_does_not_hold_a_deployment() -> (
         )
     )
     fixture.deploy("default", STRICT)
-    assert fixture.deploy("business-development", SITE) == "deployed"
+    assert fixture.deploy("business-development", READ) == "deployed"
     with pytest.raises(PolicyDeploymentError, match="sets prose to strict"):
         fixture.deploy("default", READ, commit="c2")
 

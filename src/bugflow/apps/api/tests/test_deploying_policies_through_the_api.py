@@ -168,22 +168,13 @@ def test_a_tenant_that_names_its_deployer_takes_that_client_alone() -> None:
 
 
 def test_a_deployment_for_another_tenant_stands_apart() -> None:
+    """Each tenant's deployment in force is read apart (ADR 011), and a
+    tenant may hold a reviewer of the same id as another's (ADR
+    012)."""
     server = Server()
     server.client.post(ROUTE, json=body(), headers=bearer(DEPLOYER))
     # The same reviewer id as the deployment in force for default.
-    taken = server.client.post(
-        ROUTE,
-        json=body(commit="c9", tenant="business-development"),
-        headers=bearer(DEPLOYER),
-    )
-    assert taken.status_code == 422
-    assert "prose is default's" in taken.text
-    # A reviewer of its own.
-    site = {
-        path.replace("prose", "site"): text.replace("prose", "site")
-        for path, text in READ.items()
-    }
-    theirs = body(commit="c9", files=site, tenant="business-development")
+    theirs = body(commit="c9", tenant="business-development")
     posted = server.client.post(ROUTE, json=theirs, headers=bearer(DEPLOYER))
     assert posted.status_code == 200, posted.text
     assert posted.json()["in_force"]["tenant"] == "business-development"

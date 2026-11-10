@@ -486,7 +486,7 @@ def app_from_environment(
         starter = TenantStarters(
             starters,
             own,
-            held.tenant_of,
+            held.holders,
             SqlAlchemyGnomeSettings(database_url),
         )
         app.state.receive = ReceiveDeliveryUseCase(

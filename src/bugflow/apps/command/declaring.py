@@ -699,8 +699,8 @@ def run_declared(
         )
 
     lines = [
-        f"{one.forge}:{one.repo} {one.gnome} is {one.behaviour}, judging "
-        f"by {one.profile}"
+        f"{one.forge}:{one.repo} {one.qualified} is {one.behaviour}, "
+        f"judging by {one.profile}"
         for one in SqlAlchemyGnomeSettings(database_url).settings()
         if wanted(one.forge, one.repo)
     ]

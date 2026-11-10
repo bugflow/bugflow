@@ -141,6 +141,7 @@ def discover(
                     gnome=one.gnome,
                     behaviour="off",
                     profile=one.profile,
+                    tenant=one.tenant,
                     set_by=DISCOVERY,
                     profiles=profiles or {},
                 )

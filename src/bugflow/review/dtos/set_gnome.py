@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from bugflow.review.domain.models.gnome_setting import (
     DEFAULT_PROFILE,
+    DEFAULT_TENANT,
     Behaviour,
 )
 
@@ -21,11 +22,13 @@ class SetGnomeRequest(BaseModel):
     gnome: str
     behaviour: Behaviour
     profile: str = DEFAULT_PROFILE
+    #: Whose gnome it is (ADR 012).
+    tenant: str = DEFAULT_TENANT
     #: Who asked: an identity at the identity provider, or the program.
     set_by: str
-    #: The profiles of each gnome the deployment in force holds, by
-    #: agent id. A setting naming a gnome or a profile not here is
-    #: refused.
+    #: The profiles of each gnome the tenant's deployment in force
+    #: holds, by agent id. A setting naming a gnome or a profile not
+    #: here is refused.
     profiles: Mapping[str, tuple[str, ...]]
 
 
@@ -37,6 +40,7 @@ class SetGnomeResponse(BaseModel):
     gnome: str
     behaviour: Behaviour
     profile: str
+    tenant: str = DEFAULT_TENANT
     #: False if the gnome was already so, and nothing was recorded.
     changed: bool
     #: What it was before, or None where it had no setting.

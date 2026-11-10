@@ -615,6 +615,35 @@ def test_publishing_sets_the_commit_status_on_the_head_commit() -> None:
     )
 
 
+@pytest.mark.model(
+    "Verdict",
+    "Another tenant's reviewer names its status tenant/id, so two "
+    "tenants' reviewers of one id set two statuses.",
+)
+def test_another_tenants_reviewer_names_its_status_for_its_tenant() -> None:
+    forge = RecordingForge()
+    journal = QueryableJournal()
+    publish = PublishFindingsUseCase(
+        forge,
+        journal,
+        FixedClock(),
+        enforcement=BoundTo(gate()),
+        agents=AGENTS,
+        tenant="business-development",
+    )
+    publish.execute(request(finding("fail")))
+    assert forge.statuses == [
+        (HEAD, "business-development/prose", "failure", "1 failing finding")
+    ]
+    (status,) = [
+        entry
+        for entry in journal.entries
+        if entry.payload.get("action") == "commit_status"
+    ]
+    assert status.payload["context"] == "business-development/prose"
+    assert status.payload["agent_id"] == PROSE
+
+
 def test_a_dismissed_policy_does_not_fail_the_commit_status() -> None:
     forge = RecordingForge()
     journal = QueryableJournal()

@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed, 2026-11-10.
+Proposed, 2026-11-10. Amended, 2026-11-10: ADR 012 gives each setting
+a tenant and lifts the rule that a reviewer's id is one tenant's.
 
 ## Context
 

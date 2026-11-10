@@ -86,6 +86,10 @@ from bugflow.review.domain.models.comment_edit import (
 from bugflow.review.domain.models.doctrine import DoctrineText
 from bugflow.review.domain.models.enforcement import Enforcement, fails
 from bugflow.review.domain.models.finding import Finding
+from bugflow.review.domain.models.gnome_setting import (
+    DEFAULT_TENANT,
+    qualified,
+)
 from bugflow.review.domain.models.journal_facts import (
     CommentEdit,
     ReviewAction,
@@ -399,6 +403,7 @@ class PublishFindingsUseCase:
         submissions: SubmissionSourceRepository | None = None,
         sites: Mapping[str, str] | None = None,
         editor: CommentEditorService | None = None,
+        tenant: str = DEFAULT_TENANT,
     ) -> None:
         """``forge`` writes to the pull request. ``enforcement`` says which
         reviewers publish on a repository, and which of them gate and so
@@ -411,8 +416,13 @@ class PublishFindingsUseCase:
         address each reviewer's gnome publishes its pages at, by agent
         id, which a comment links each clause it cites to. ``editor``
         writes the comment from the draft of the reviewers' parts;
-        with none, the draft is the comment.
+        with none, the draft is the comment. ``tenant`` is whose the
+        reviewers are (ADR 012), which names each commit status: the
+        reviewer's id for the default tenant, and ``tenant/id`` for
+        any other, so two tenants' reviewers of one id set two
+        statuses.
         """
+        self._tenant = tenant
         self._editor = editor
         self._forge = forge
         self._journal = journal
@@ -958,7 +968,7 @@ class PublishFindingsUseCase:
                         "agent_id": one.agent_id,
                         "performed": statuses[one.agent_id] == "published",
                         "status": statuses[one.agent_id],
-                        "context": one.agent_id,
+                        "context": qualified(self._tenant, one.agent_id),
                         "state": one.state,
                         "description": one.description,
                     },
@@ -1038,7 +1048,7 @@ class PublishFindingsUseCase:
             self._forge.set_commit_status(
                 request.ref,
                 request.head_sha,
-                one.agent_id,
+                qualified(self._tenant, one.agent_id),
                 one.state,
                 one.description,
             )
