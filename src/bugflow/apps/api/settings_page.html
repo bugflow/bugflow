@@ -4,63 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gnome settings</title>
-<style>
-  :root {
-    --bg: #ffffff; --fg: #1d1f23; --muted: #5d6470; --line: #d9dde3;
-    --row: #f6f7f9; --accent: #2f5bd3; --ok: #1f7a43; --bad: #b3261e;
-    --new: #fff4d6;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #15171b; --fg: #e6e8eb; --muted: #9aa3ae; --line: #2c3038;
-      --row: #1c1f24; --accent: #7fa2ff; --ok: #6fd39b; --bad: #ff8a80;
-      --new: #3a3220;
-    }
-  }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 14px/1.45 system-ui, sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 20px; margin: 8px 0 4px; }
-  p.lede { color: var(--muted); margin: 0 0 16px; }
-  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-         margin-bottom: 12px; }
-  input[type=search] { padding: 6px 8px; border: 1px solid var(--line);
-         border-radius: 6px; background: var(--bg); color: var(--fg);
-         min-width: 220px; }
-  button { padding: 6px 12px; border: 1px solid var(--accent);
-           background: var(--accent); color: var(--bg); border-radius: 6px;
-           cursor: pointer; }
-  .wrap { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; padding: 6px 8px;
-           border-bottom: 1px solid var(--line); vertical-align: middle; }
-  th { font-weight: 600; white-space: nowrap; }
-  tr:nth-child(even) td { background: var(--row); }
-  tr.unset td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-  td.name { font-family: ui-monospace, monospace; white-space: nowrap; }
-  .tag { font-size: 12px; color: var(--muted); margin-left: 6px; }
-  select { padding: 3px 4px; border: 1px solid var(--line);
-           border-radius: 4px; background: var(--bg); color: var(--fg); }
-  .cell { display: flex; gap: 4px; align-items: center; }
-  .state { font-size: 12px; min-width: 3em; }
-  .state.ok { color: var(--ok); } .state.bad { color: var(--bad); }
-  #message { color: var(--bad); margin: 8px 0; }
-  .legend { color: var(--muted); font-size: 13px; margin-top: 12px; }
-  .tag.private { color: var(--accent); }
-  th.gnome { white-space: normal; min-width: 200px; vertical-align: top; }
-  th.gnome .about, th.gnome .runs { font-weight: 400; font-size: 12px;
-         color: var(--muted); margin-top: 2px; }
-  th.gnome details { font-weight: 400; font-size: 12px; margin-top: 4px; }
-  th.gnome summary { cursor: pointer; color: var(--accent); }
-  th.gnome dl { margin: 4px 0 0; }
-  th.gnome dt { font-weight: 600; margin-top: 4px; }
-  th.gnome dd { margin: 0 0 0 8px; }
-  .defined { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-  .defined a { color: var(--accent); }
-</style>
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <main>
+  <nav><!-- brand --><a href="settings" aria-current="page">Settings</a><a
+    href="operations/">Overview</a><a href="operations/layers">Layers</a><a
+    href="operations/agents">Agents</a><a
+    href="operations/allowances">Allowances</a></nav>
   <h1>Gnome settings</h1>
   <div id="signedout" hidden>
     <p class="lede">Sign in to see and set what each gnome does on each

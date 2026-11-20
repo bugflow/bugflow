@@ -53,6 +53,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict
 
+from bugflow.apps.api.pages import PLAIN, PageLook, page
 from bugflow.review.domain.errors import RunNotFoundError
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
@@ -104,9 +105,9 @@ SPEND_LIST_PAGE = "operations_spend_list_page.html"
 SPEND_PAGE = "operations_spend_page.html"
 #: Each dimension's name, and its name for every one of it.
 DIMENSIONS: dict[Dimension, str] = {"layer": "layers", "agent": "agents"}
-#: What every page shares: its script and its style.
+#: The script every operations page shares. Their style is every
+#: page's (``bugflow.apps.api.pages``).
 PAGES_SCRIPT = "operations_pages.js"
-PAGES_STYLE = "operations_pages.css"
 #: The period a repository's spend is read over when none is named.
 DEFAULT_PERIOD = timedelta(days=30)
 
@@ -356,9 +357,9 @@ def _source(binding: SpendBinding | None) -> Source | None:
     return Source(scope=_scope(binding.scope), per=binding.per)
 
 
-def _page(name: str) -> str:
-    """One of the files the pages are made of, kept beside this module."""
-    return files("bugflow.apps.api").joinpath(name).read_text()
+def _script() -> str:
+    """The script the pages share, kept beside this module."""
+    return files("bugflow.apps.api").joinpath(PAGES_SCRIPT).read_text()
 
 
 def _period(
@@ -404,11 +405,15 @@ def _allowance(check: AllowanceCheck) -> Allowance:
     )
 
 
-def _spend_pages(app: FastAPI, by: str, every: str) -> None:
+def _spend_pages(app: FastAPI, by: str, every: str, look: PageLook) -> None:
     """Serve the pages of every layer or agent and of one."""
 
     def made(name: str) -> str:
-        return _page(name).replace("__BY__", by).replace("__EVERY__", every)
+        # Each is in the navigation's place of every one of them.
+        text = page(name, look).replace(
+            f'href="{every}">', f'href="{every}" aria-current="page">'
+        )
+        return text.replace("__BY__", by).replace("__EVERY__", every)
 
     @app.get(f"/operations/{every}", response_class=HTMLResponse)
     def list_page() -> str:
@@ -423,8 +428,10 @@ def operations_routes(
     app: FastAPI,
     caller: Callable[..., Caller],
     reading: OperationsReading,
+    look: PageLook = PLAIN,
 ) -> None:
-    """Add the operations routes and pages to ``app``."""
+    """Add the operations routes and pages to ``app``, the pages
+    dressed as ``look`` says."""
 
     def operator(who: Annotated[Caller, Depends(caller)]) -> Caller:
         if reading.role not in who.roles:
@@ -711,27 +718,23 @@ def operations_routes(
 
     @app.get("/operations/", response_class=HTMLResponse)
     def overview_page() -> str:
-        return _page(OVERVIEW_PAGE)
+        return page(OVERVIEW_PAGE, look)
 
     @app.get("/operations/allowances", response_class=HTMLResponse)
     def allowances_page() -> str:
-        return _page(ALLOWANCES_PAGE)
+        return page(ALLOWANCES_PAGE, look)
 
     for by, every in DIMENSIONS.items():
-        _spend_pages(app, by, every)
+        _spend_pages(app, by, every, look)
 
     @app.get("/operations/pages.js")
     def pages_script() -> Response:
-        return Response(_page(PAGES_SCRIPT), media_type="text/javascript")
-
-    @app.get("/operations/pages.css")
-    def pages_style() -> Response:
-        return Response(_page(PAGES_STYLE), media_type="text/css")
+        return Response(_script(), media_type="text/javascript")
 
     @app.get("/operations/run", response_class=HTMLResponse)
     def run_page() -> str:
-        return _page(RUN_PAGE)
+        return page(RUN_PAGE, look)
 
     @app.get("/operations/repository", response_class=HTMLResponse)
     def repository_page() -> str:
-        return _page(REPOSITORY_PAGE)
+        return page(REPOSITORY_PAGE, look)
