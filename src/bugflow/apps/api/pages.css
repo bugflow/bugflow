@@ -1,3 +1,5 @@
+/* Every page's style. An operator's theme (PAGES_THEME) is loaded after
+   it, at theme.css, and overrides it. */
 :root {
   --bg: #ffffff; --fg: #1d1f23; --muted: #5d6470; --line: #d9dde3;
   --row: #f6f7f9; --accent: #2f5bd3; --ok: #1f7a43; --bad: #b3261e;
@@ -13,6 +15,8 @@ body { margin: 0; background: var(--bg); color: var(--fg);
 main { max-width: 1100px; margin: 0 auto; padding: 16px; }
 nav { margin: 0 0 8px; color: var(--muted); }
 nav a { margin-right: 12px; }
+nav a[aria-current="page"] { font-weight: 600; text-decoration: none; }
+nav .brand { margin-right: 16px; font-weight: 700; color: var(--fg); }
 h1 { font-size: 20px; margin: 8px 0 4px; }
 h2 { font-size: 16px; margin: 20px 0 6px; }
 p.lede { color: var(--muted); margin: 0 0 16px; }
@@ -45,3 +49,26 @@ dl.facts dd { margin: 0; font-family: ui-monospace, monospace;
               overflow-wrap: anywhere; }
 #message { color: var(--bad); margin: 8px 0; }
 a { color: var(--accent); }
+
+/* The settings page's grid. */
+.bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+       margin-bottom: 12px; }
+.bar input[type=search] { padding: 6px 8px; min-width: 220px; }
+#grid th, #grid td { vertical-align: middle; }
+#grid select { padding: 3px 4px; border-radius: 4px; }
+tr.unset td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+td.name { font-family: ui-monospace, monospace; white-space: nowrap; }
+.tag { font-size: 12px; color: var(--muted); margin-left: 6px; }
+.tag.private { color: var(--accent); }
+.cell { display: flex; gap: 4px; align-items: center; }
+.state { font-size: 12px; min-width: 3em; }
+.legend { color: var(--muted); font-size: 13px; margin-top: 12px; }
+#grid th.gnome { white-space: normal; min-width: 200px; vertical-align: top; }
+th.gnome .about, th.gnome .runs { font-weight: 400; font-size: 12px;
+       color: var(--muted); margin-top: 2px; }
+th.gnome details { font-weight: 400; font-size: 12px; margin-top: 4px; }
+th.gnome summary { cursor: pointer; color: var(--accent); }
+th.gnome dl { margin: 4px 0 0; }
+th.gnome dt { font-weight: 600; margin-top: 4px; }
+th.gnome dd { margin: 0 0 0 8px; }
+.defined { color: var(--muted); font-size: 13px; margin: 0 0 12px; }

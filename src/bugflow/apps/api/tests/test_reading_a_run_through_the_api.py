@@ -122,9 +122,9 @@ def test_every_page_loads_the_script_and_style_the_pages_share() -> None:
     for page in ("/operations/run", "/operations/repository"):
         text = server.client.get(page).text
         assert '<script src="pages.js"></script>' in text
-        assert '<link rel="stylesheet" href="pages.css">' in text
+        assert '<link rel="stylesheet" href="../pages.css">' in text
     script = server.client.get("/operations/pages.js")
     assert script.headers["content-type"].startswith("text/javascript")
     assert "function renderAllowances(" in script.text
-    style = server.client.get("/operations/pages.css")
+    style = server.client.get("/pages.css")
     assert style.headers["content-type"].startswith("text/css")

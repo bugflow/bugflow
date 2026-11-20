@@ -18,6 +18,7 @@ from bugflow.apps.api.operations import (
     OperationsReading,
     operations_routes,
 )
+from bugflow.apps.api.pages import PLAIN, PageLook, look_from, page_routes
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
     deployers_from,
@@ -129,8 +130,10 @@ def create_api(
     reading: EvaluationReading | None = None,
     administration: SettingsAdministration | None = None,
     operations: OperationsReading | None = None,
+    look: PageLook = PLAIN,
 ) -> FastAPI:
-    """Build the API over the token check and what deploys."""
+    """Build the API over the token check and what deploys, its pages
+    dressed as ``look`` says."""
     app = FastAPI(title="bugflow API")
 
     def caller(
@@ -154,10 +157,11 @@ def create_api(
     if reading is not None:
         evaluation_routes(app, caller, reading)
     sign_in_route(app)
+    page_routes(app, look)
     if administration is not None:
-        settings_routes(app, caller, administration)
+        settings_routes(app, caller, administration, look)
     if operations is not None:
-        operations_routes(app, caller, operations)
+        operations_routes(app, caller, operations, look)
     return app
 
 
@@ -287,6 +291,12 @@ def api_from_environment(
       client serve the operations routes under ``/api/operations`` and
       their pages under ``/operations``, and ``PERIODS_TIMEZONE`` says
       where their periods begin, as it does for the worker.
+    - ``PAGES_THEME``: a stylesheet every page loads after its own, so
+      its rules override the pages' (``bugflow.apps.api.pages``). Read
+      when the API starts, which it does not if the file cannot be read.
+      Unset, the pages look as the package makes them.
+    - ``PAGES_BRAND``: the name each page's navigation begins with.
+      Unset, it begins with none.
     - ``BUILD_SHA``: the full git sha of the build, recorded with every
       journal entry.
     - ``POLICY_CHECKS``: the checks this server performs, comma-separated.
@@ -353,6 +363,7 @@ def api_from_environment(
         reading=reading,
         administration=administration_from(environ, issuer),
         operations=operations_from(environ, history),
+        look=look_from(environ),
     )
     instrument_app(app, environ)
     return app

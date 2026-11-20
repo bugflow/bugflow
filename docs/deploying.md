@@ -193,6 +193,8 @@ before the first deployment, even if two roles share one.
 | `bugflow_settings_role` | `api` | The role that may read and change what each gnome does on each repository. Not written if not defined, and then neither the settings routes nor their page is served |
 | `bugflow_settings_client_id` | `api` | The public client the settings page signs a person in as, with authorisation code and PKCE, its redirect address the API's `/settings`. Default the client registered as `settings-page`, and not written if there is neither. Added to the clients the API accepts, unless `bugflow_api_clients` is given, and then it must be one of them |
 | `bugflow_settings_scope` | `api` | The scopes the page asks for. Default `openid profile`. They must give a token for the audience that carries the person's roles: at Zitadel, add `urn:zitadel:iam:org:project:id:{project}:aud` and `urn:zitadel:iam:org:projects:roles` |
+| `bugflow_pages_theme` | `api` | A stylesheet's path inside the container, which every page loads after its own, at `/theme.css`, so its rules override the pages'. The API does not start if it cannot read it. Not written if empty, and then the pages look as the package makes them |
+| `bugflow_pages_brand` | `api` | The name each page's navigation begins with. Not written if empty, and then none |
 
 The API does not start until its settings hold an issuer, an audience,
 a client, a roles claim and a deployer role. Compose starts it again

@@ -22,13 +22,13 @@ needs a token: the page holds no data until the routes give it some.
 
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
-from importlib.resources import files
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
+from bugflow.apps.api.pages import PLAIN, PageLook, page
 from bugflow.apps.shared.boundaries import Defaulted, without_a_boundary
 from bugflow.apps.shared.policies import TenantsInForce
 from bugflow.apps.shared.setting_tenant import tenant_of_setting
@@ -240,8 +240,10 @@ def settings_routes(
     app: FastAPI,
     caller: Callable[..., Caller],
     admin: SettingsAdministration,
+    look: PageLook = PLAIN,
 ) -> None:
-    """Add the settings routes and the page to ``app``."""
+    """Add the settings routes and the page to ``app``, the page
+    dressed as ``look`` says."""
 
     def administrator(who: Annotated[Caller, Depends(caller)]) -> Caller:
         if admin.role not in who.roles:
@@ -371,8 +373,8 @@ def settings_routes(
         }
 
     @app.get("/settings", response_class=HTMLResponse)
-    def page() -> str:
-        return files("bugflow.apps.api").joinpath(PAGE).read_text()
+    def settings_page() -> str:
+        return page(PAGE, look)
 
 
 def sign_in_from(environ: Mapping[str, str], issuer: str) -> PageSignIn | None:
