@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from bugflow.apps.api.api import PolicyDeploying, create_api
 from bugflow.apps.api.operations import OperationsReading
+from bugflow.apps.api.pages import PLAIN, PageLook
 from bugflow.apps.api.role_policy_deployment_access import (
     RolePolicyDeploymentAccess,
 )
@@ -110,7 +111,7 @@ class RunEntries:
 class Server:
     """The API over in-memory stores, each store readable by a test."""
 
-    def __init__(self) -> None:
+    def __init__(self, look: PageLook = PLAIN) -> None:
         self.journal = InMemoryJournal()
         self.deployments = InMemoryPolicyDeployments(journal=self.journal)
         self.settings = InMemoryGnomeSettings()
@@ -180,6 +181,7 @@ class Server:
                     cadences=("event", "week"),
                     clock=Clock(),
                 ),
+                look=look,
             )
         )
 
