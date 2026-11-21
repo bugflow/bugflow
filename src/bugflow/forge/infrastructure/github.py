@@ -41,6 +41,7 @@ from bugflow.forge.domain.models.webhook import Webhook
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
 from bugflow.forge.infrastructure.github_app import API_URL, InstallationTokens
+from bugflow.forge.infrastructure.moved import moved, repository_of
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_origin import RepositoryOrigin
 
@@ -288,8 +289,10 @@ class GitHubForge:
             # GitHub answers a request for a renamed repository with a redirect
             # to its new name: 301 for a read, 307 for a write. Redirects are
             # followed, keeping the method. The host stays the same, so the
-            # token is sent on. Snapshot reads override this to refuse
-            # redirects that could attach content to the old origin.
+            # token is sent on. Snapshot reads and the poller's listings
+            # override this to refuse redirects that could attach content to
+            # the old origin; a refused one raises ForgeRepositoryMovedError,
+            # naming the repository's new name where GitHub gives it.
             follow_redirects=True,
         )
 
@@ -593,6 +596,14 @@ class GitHubForge:
             )
             if missing_ok and response.status_code == 404:
                 return None
+            named = repository_of(path)
+            if response.is_redirect and named is not None:
+                raise moved(
+                    "GitHub",
+                    self._client,
+                    *named,
+                    {"Authorization": f"Bearer {token}"},
+                )
             response.raise_for_status()
         except httpx2.HTTPStatusError as exc:
             raise classify(exc.response, path) from exc
