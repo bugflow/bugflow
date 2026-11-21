@@ -7,9 +7,17 @@
 // client and its address, the one redirect address the operator
 // registers, and the settings page sends the person back to the page
 // they started from.
+//
+// While the person holds a token, the page's nav ends with a link that
+// signs them out: it forgets the token and ends their session at the
+// identity provider, which sends them back to the settings page, the
+// address the operator registers for after a sign-out. Signing in again
+// then asks the provider afresh, so a token taken out before a role was
+// granted is replaced by one that carries it.
 
 const ROOT = new URL(".", document.currentScript.src);
 const TOKEN = "bugflow.settings.token";
+const ID_TOKEN = "bugflow.settings.id_token";
 const VERIFIER = "bugflow.settings.verifier";
 const STATE = "bugflow.settings.state";
 const RETURN = "bugflow.settings.return";
@@ -94,7 +102,10 @@ async function finishSignIn(params) {
     }),
   });
   if (!answered.ok) throw new Error("the identity provider refused the sign-in");
-  store(TOKEN, (await answered.json()).access_token);
+  const tokens = await answered.json();
+  store(TOKEN, tokens.access_token);
+  store(ID_TOKEN, tokens.id_token || null);
+  showSignOut();
   store(VERIFIER, null);
   store(STATE, null);
   const back = fetched(RETURN);
@@ -118,6 +129,7 @@ async function api(method, path, body) {
   });
   if (answered.status === 401) {
     store(TOKEN, null);
+    showSignOut();
     showSignIn();
     throw new Error("sign in again: the token was not accepted");
   }
@@ -127,3 +139,48 @@ async function api(method, path, body) {
   }
   return answered.json();
 }
+
+// Forget the token and end the person's session at the identity
+// provider, which sends them back to the settings page. A provider that
+// names no end of session is skipped: the token is forgotten all the
+// same, and the settings page offers to sign in.
+async function signOut() {
+  const hint = fetched(ID_TOKEN);
+  store(TOKEN, null);
+  store(ID_TOKEN, null);
+  showSignOut();
+  const { config, discovery } = await provider();
+  if (!discovery.end_session_endpoint) {
+    location.assign(redirectUri());
+    return;
+  }
+  const query = new URLSearchParams({
+    client_id: config.client_id,
+    post_logout_redirect_uri: redirectUri(),
+  });
+  if (hint) query.set("id_token_hint", hint);
+  location.assign(discovery.end_session_endpoint + "?" + query);
+}
+
+// End the page's nav with the sign-out link while a token is held, and
+// take it away when none is.
+function showSignOut() {
+  let link = document.getElementById("signout");
+  if (!fetched(TOKEN)) {
+    if (link) link.remove();
+    return;
+  }
+  const nav = document.querySelector("nav");
+  if (link || !nav) return;
+  link = document.createElement("a");
+  link.id = "signout";
+  link.href = redirectUri();
+  link.textContent = "Sign out";
+  link.addEventListener("click", event => {
+    event.preventDefault();
+    signOut().catch(error => say(error.message));
+  });
+  nav.append(link);
+}
+
+showSignOut();

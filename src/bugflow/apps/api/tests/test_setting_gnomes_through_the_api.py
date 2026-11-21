@@ -269,6 +269,13 @@ def test_the_settings_page_signs_in_with_the_shared_script() -> None:
     assert "async function signIn()" in script.text
 
 
+def test_the_shared_script_offers_a_sign_out() -> None:
+    script = Server().client.get("/sign-in.js").text
+    assert "async function signOut()" in script
+    assert "end_session_endpoint" in script
+    assert "post_logout_redirect_uri: redirectUri()" in script
+
+
 def test_a_repository_this_server_does_not_read_is_refused() -> None:
     server = Server()
     for path in (

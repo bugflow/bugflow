@@ -215,6 +215,13 @@ or by the layer's default, is refused. Setting a gnome there allows
 nothing to spend: the repository is judged only once an allowance
 covers it, as step 3 of "Before the first review" says.
 
+Each page's nav ends with a "Sign out" link while the person is signed
+in. It forgets the token and ends the person's session at the identity
+provider, which sends them back to `/settings`, so the page's client
+needs `/settings` registered as an address to return to after a sign-out
+as well as after a sign-in. A person granted a role after signing in
+signs out and in again to get a token that carries it.
+
 ### Archives
 
 | Variable | Read by | Is |
