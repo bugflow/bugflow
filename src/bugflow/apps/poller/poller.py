@@ -16,10 +16,19 @@ Configured from the environment: ``DATABASE_URL``,
 ``FORGE_TOKEN``, ``FORGE_TOKENS_BY_OWNER`` or a GitHub App's
 ``FORGE_APP_ID`` for repositories on github.com, and ``FORGEJO_URL`` and
 ``FORGEJO_TOKEN`` for repositories on a Forgejo.
+
+A repository the forge says was renamed, keeping its owner, has its
+gnomes' settings, its boundaries and its withheld share moved to the
+new name, which is polled at once; the move is logged as a warning.
+One moved to another owner, or whose new name the forge would not
+give, is a failure, logged as a warning, and its settings stay where
+they are until an operator moves them.
 """
 
+import logging
 import signal
 import threading
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -29,10 +38,15 @@ from bugflow.apps.shared.forges import (
     forge_tokens,
     forgejo_settings,
 )
+from bugflow.apps.shared.journals import build_sha, stamped_journal
 from bugflow.apps.shared.watching import watched_names
+from bugflow.archive.infrastructure.sqlalchemy_bindings import (
+    SqlAlchemyBindings,
+)
 from bugflow.forge.domain.services.polling import PullRequestFeedService
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.dtos.poll_pull_requests import (
+    MovedRepository,
     PollPullRequestsRequest,
     PollPullRequestsResponse,
 )
@@ -40,13 +54,33 @@ from bugflow.forge.infrastructure.forgejo import ForgejoForge
 from bugflow.forge.infrastructure.github import GitHubForge, GitHubTokens
 from bugflow.forge.infrastructure.webhook_sink import SignedWebhookSink
 from bugflow.forge.usecases.poll_pull_requests import PollPullRequestsUseCase
+from bugflow.review.dtos.move_repository_settings import (
+    MoveRepositorySettingsRequest,
+)
 from bugflow.review.infrastructure.sqlalchemy_gnome_settings import (
     SqlAlchemyGnomeSettings,
 )
+from bugflow.review.infrastructure.sqlalchemy_layer_boundaries import (
+    SqlAlchemyLayerBoundaries,
+)
+from bugflow.review.infrastructure.sqlalchemy_spend_bindings import (
+    SqlAlchemySpendBindings,
+)
+from bugflow.review.infrastructure.sqlalchemy_withholding import (
+    SqlAlchemyWithholding,
+)
+from bugflow.review.usecases.move_repository_settings import (
+    MoveRepositorySettingsUseCase,
+)
+from bugflow.review.usecases.set_gnome import SetGnomeUseCase
 from bugflow.shared.infrastructure.system_clock import SystemClock
 
 DEFAULT_INTERVAL_SECONDS = 60.0
 DEFAULT_INGRESS_URL = "http://localhost:8000"
+#: Who the journal says moved a renamed repository's settings.
+MOVED_BY = "bugflow poll"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -60,6 +94,8 @@ class PollerSettings:
     token: GitHubTokens | None
     # The Forgejo's URL and token, when a repository there is watched.
     forgejo: tuple[str, str] | None = None
+    #: The build stamped on the journal rows a moved setting writes.
+    build: str | None = None
 
     @property
     def forges(self) -> frozenset[str]:
@@ -115,6 +151,7 @@ class PollerSettings:
             secret=secret,
             token=token,
             forgejo=forgejo,
+            build=build_sha(environ),
         )
 
 
@@ -159,18 +196,22 @@ def run_poller(
     failures.
 
     ``watching`` says which repositories to poll, asked before each
-    poll; by default, each a gnome judges in the settings."""
+    poll; by default, each a gnome judges in the settings, where a
+    renamed repository's settings are moved to its new name."""
+    move: Callable[[str, str], str] | None = None
     if watching is None:
         held = SqlAlchemyGnomeSettings(settings.database_url)
 
         def watching() -> tuple[str, ...]:
             return watched_names(held)
 
+        move = settings_mover(held, settings)
+
     stop = threading.Event()
     if not once:
         for signal_number in (signal.SIGINT, signal.SIGTERM):
             signal.signal(signal_number, lambda *_: stop.set())
-    polls = Polls(poller, settings.forges, watching, out)
+    polls = Polls(poller, settings.forges, watching, out, move)
     while True:
         failed = polls.poll()
         if once:
@@ -194,11 +235,16 @@ class Polls:
         forges: frozenset[str],
         watching: Callable[[], tuple[str, ...]],
         out: Callable[[str], None],
+        move: Callable[[str, str], str] | None = None,
     ) -> None:
+        """``move`` moves the settings of a repository renamed under the
+        same owner, from its old name to its new, and says what it
+        moved. Without it, every moved repository is a failure."""
         self._poller = poller
         self._forges = forges
         self._watching = watching
         self._out = out
+        self._move = move
         self._since: datetime | None = None
         self._read: set[str] = set()
         self._unpolled: tuple[str, ...] = ()
@@ -226,17 +272,148 @@ class Polls:
                 )
             )
         if new or not old:
-            fresh = self._poller.execute(
-                PollPullRequestsRequest(repositories=new, since=None)
+            fresh = self._followed(
+                self._poller.execute(
+                    PollPullRequestsRequest(repositories=new, since=None)
+                )
             )
             responses.append(fresh)
             if not fresh.failures:
                 self._read.update(new)
+        if old:
+            responses[0] = self._followed(responses[0])
+        renamed = tuple(
+            one.moved_to
+            for response in responses
+            for one in response.moved
+            if one.moved_to and self._renamed(one)
+        )
+        if renamed:
+            # The new names are polled now, in full, so a deploy's poll
+            # misses nothing for the rename.
+            again = self._followed(
+                self._poller.execute(
+                    PollPullRequestsRequest(repositories=renamed, since=None)
+                )
+            )
+            responses.append(again)
+            if not again.failures:
+                self._read.update(renamed)
         for response in responses:
             for line in render(response):
                 self._out(line)
         self._since = responses[0].next_since
         return any(response.failures for response in responses)
+
+    def _renamed(self, one: MovedRepository) -> bool:
+        """Whether the repository was renamed under its own owner, on its
+        own forge, and its settings can be moved."""
+        if self._move is None or one.moved_to is None:
+            return False
+        try:
+            was = WatchedRepository.parse(one.repository)
+            now = WatchedRepository.parse(one.moved_to)
+        except ValueError:
+            return False
+        return (
+            was.forge == now.forge and was.owner.lower() == now.owner.lower()
+        )
+
+    def _followed(
+        self, response: PollPullRequestsResponse
+    ) -> PollPullRequestsResponse:
+        """The response, with each renamed repository's settings moved
+        to its new name, and each other moved repository a failure."""
+        failures = list(response.failures)
+        for one in response.moved:
+            if self._renamed(one):
+                assert self._move is not None and one.moved_to is not None
+                said = self._move(one.repository, one.moved_to)
+                logger.warning(
+                    "%s was renamed %s; %s",
+                    one.repository,
+                    one.moved_to,
+                    said,
+                )
+                self._out(
+                    f"renamed: {one.repository} is now {one.moved_to}; {said}"
+                )
+                continue
+            failure = f"{one.repository}: {one.reason}"
+            if one.moved_to is not None and self._move is not None:
+                failure += (
+                    "; it has another owner now, so its settings were not "
+                    "moved"
+                )
+            logger.warning("%s", failure)
+            failures.append(failure)
+        return response.model_copy(update={"failures": tuple(failures)})
+
+
+def settings_mover(
+    held: SqlAlchemyGnomeSettings, settings: PollerSettings
+) -> Callable[[str, str], str]:
+    """Move a renamed repository's settings and declarations, each name
+    as watched, and say what was moved. Each change is recorded in the
+    journal."""
+    journal = stamped_journal(settings.database_url, settings.build)
+    clock = SystemClock()
+    run_id = uuid.uuid4().hex
+    allowances = SqlAlchemySpendBindings(settings.database_url)
+    ledgers = SqlAlchemyBindings(settings.database_url)
+
+    def left_behind(forge: str, repo: str) -> list[str]:
+        """What names the old name and is not moved: an allowance of the
+        repository's own, and an archive ledger bound to it."""
+        left = []
+        if any(
+            (one.scope.forge, one.scope.repo) == (forge, repo)
+            for one in allowances.bindings()
+        ):
+            left.append("allowances")
+        if any(
+            (one.forge, one.repo) == (forge, repo)
+            for one in ledgers.bindings()
+        ):
+            left.append("archive ledgers")
+        return left
+
+    mover = MoveRepositorySettingsUseCase(
+        held,
+        SetGnomeUseCase(held, journal, clock, run_id),
+        SqlAlchemyLayerBoundaries(settings.database_url),
+        SqlAlchemyWithholding(settings.database_url),
+        journal,
+        clock,
+        run_id,
+    )
+
+    def move(was: str, now: str) -> str:
+        old, new = WatchedRepository.parse(was), WatchedRepository.parse(now)
+        done = mover.execute(
+            MoveRepositorySettingsRequest(
+                forge=old.forge,
+                repo=f"{old.owner}/{old.repo}",
+                to=f"{new.owner}/{new.repo}",
+                set_by=MOVED_BY,
+            )
+        )
+        said = [f"moved {', '.join(done.moved)}"] if done.moved else []
+        if done.kept:
+            said.append(f"kept the new name's own {', '.join(done.kept)}")
+        if done.boundaries:
+            said.append(f"moved its boundary on {', '.join(done.boundaries)}")
+        if done.withholding:
+            said.append("moved its withheld share")
+        left = left_behind(old.forge, f"{old.owner}/{old.repo}")
+        if left:
+            said.append(
+                f"its {' and '.join(left)} stay on the old name; move them "
+                "with bugflow allow and bugflow declare --archive"
+            )
+        return "; ".join(said) or "nothing was set on it"
+
+    return move
 
 
 def _forge_of(name: str) -> str:
