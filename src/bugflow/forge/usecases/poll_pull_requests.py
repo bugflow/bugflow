@@ -14,6 +14,11 @@ The poll returns the time the next poll should read from. That time moves
 forward only if every delivery of this poll was accepted. Otherwise the
 next poll reads the same period again.
 
+A repository the forge answers for with a redirect was renamed or moved.
+It is not read under its new name, since what is read there is not the
+old name's to record, and the poll returns it among ``moved`` with the
+name the forge gives it now, for the caller to decide what to watch.
+
 Comments are read too, for ``/dismiss`` commands. A comment that starts
 with one is posted as a delivery whose id is made from the comment's id, so
 reading it again, or an edit to it, does not dismiss twice. The first poll,
@@ -24,7 +29,11 @@ import hashlib
 from collections.abc import Mapping
 from datetime import timedelta
 
-from bugflow.forge.domain.errors import DeliveryNotAcceptedError, ForgeError
+from bugflow.forge.domain.errors import (
+    DeliveryNotAcceptedError,
+    ForgeError,
+    ForgeRepositoryMovedError,
+)
 from bugflow.forge.domain.models.delivery import Delivery, DeliveryComment
 from bugflow.forge.domain.models.polling import (
     POLLED_DELIVERY_PREFIX,
@@ -37,6 +46,7 @@ from bugflow.forge.domain.services.polling import (
 )
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.dtos.poll_pull_requests import (
+    MovedRepository,
     PollPullRequestsRequest,
     PollPullRequestsResponse,
     SentDelivery,
@@ -132,6 +142,7 @@ class PollPullRequestsUseCase:
         comments_since = request.since or started - COMMENT_LOOKBACK
         sent: list[SentDelivery] = []
         failures: list[str] = []
+        moved: list[MovedRepository] = []
         for entry in request.repositories:
             try:
                 repository = WatchedRepository.parse(entry)
@@ -148,6 +159,9 @@ class PollPullRequestsUseCase:
             try:
                 pulls = feed.updated_pull_requests(owner, repo, request.since)
                 comments = feed.updated_comments(owner, repo, comments_since)
+            except ForgeRepositoryMovedError as exc:
+                moved.append(_moved(repository, exc))
+                continue
             except ForgeError as exc:
                 failures.append(f"{repository}: {exc}")
                 continue
@@ -167,5 +181,24 @@ class PollPullRequestsUseCase:
         return PollPullRequestsResponse(
             sent=tuple(sent),
             failures=tuple(failures),
-            next_since=request.since if failures else started - OVERLAP,
+            moved=tuple(moved),
+            next_since=(
+                request.since if failures or moved else started - OVERLAP
+            ),
         )
+
+
+def _moved(
+    repository: WatchedRepository, error: ForgeRepositoryMovedError
+) -> MovedRepository:
+    """The repository the forge redirected, and its new name in the
+    form it was watched by, where the forge said."""
+    moved_to = None
+    if error.moved_to is not None:
+        owner, _, repo = error.moved_to.partition("/")
+        moved_to = str(
+            WatchedRepository(forge=repository.forge, owner=owner, repo=repo)
+        )
+    return MovedRepository(
+        repository=str(repository), moved_to=moved_to, reason=str(error)
+    )

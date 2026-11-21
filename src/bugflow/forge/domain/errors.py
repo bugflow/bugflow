@@ -13,6 +13,26 @@ class ForgeRejectedError(ForgeError):
     the token."""
 
 
+class ForgeRepositoryMovedError(ForgeRejectedError):
+    """The forge answered a request for a repository with a redirect:
+    the repository was renamed, or moved to another owner. The request
+    is refused, not followed, so nothing read under the new name is
+    taken as the old name's.
+
+    ``repository`` is the name asked for and ``moved_to`` the name the
+    forge gives the repository now, each as ``owner/name``.
+    ``moved_to`` is None where the forge would not say, or said a name
+    on another host.
+    """
+
+    def __init__(
+        self, message: str, repository: str, moved_to: str | None
+    ) -> None:
+        super().__init__(message)
+        self.repository = repository
+        self.moved_to = moved_to
+
+
 class ForgeUnavailableError(ForgeError):
     """The request failed for a reason that may pass: a network failure,
     an error inside the forge, or a rate limit. The same request may
