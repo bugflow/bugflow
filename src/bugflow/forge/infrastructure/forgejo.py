@@ -46,6 +46,7 @@ from bugflow.forge.domain.models.pull_request import (
 )
 from bugflow.forge.domain.services.forge import CommitState
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
+from bugflow.forge.infrastructure.moved import moved, repository_of
 from bugflow.shared.domain.values.pull_request_ref import PullRequestRef
 from bugflow.shared.domain.values.repository_origin import (
     RepositoryOrigin,
@@ -248,8 +249,11 @@ class ForgejoForge:
             # Forgejo answers a request for a renamed repository with a
             # redirect to its new name: 301 for a read, 307 for a write.
             # Redirects are followed, keeping the method. The host stays the
-            # same, so the token is sent on. Snapshot reads override this
-            # to refuse redirects that could attach content to the old origin.
+            # same, so the token is sent on. Snapshot reads and the poller's
+            # listings override this to refuse redirects that could attach
+            # content to the old origin; a refused one raises
+            # ForgeRepositoryMovedError, naming the new name where Forgejo
+            # gives it.
             follow_redirects=True,
         )
 
@@ -465,6 +469,9 @@ class ForgejoForge:
                 json=json,
                 follow_redirects=follow_redirects,
             )
+            named = repository_of(path)
+            if response.is_redirect and named is not None:
+                raise moved("Forgejo", self._client, *named, {})
             response.raise_for_status()
         except httpx2.HTTPStatusError as exc:
             raise classify(exc.response, path) from exc

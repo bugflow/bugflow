@@ -80,7 +80,10 @@ def test_feed_refuses_redirects_on_every_page(
             forge.updated_comments("o", "r", NOW)
         else:
             forge.updated_pull_requests("o", "r", None)
-    assert len(seen) == page
+    # One more request asks the forge for the repository's name now; it
+    # too stays on the forge.
+    assert len(seen) == page + 1
+    assert seen[-1].endswith("/repos/o/r")
     assert all("other.test" not in url for url in seen)
 
 

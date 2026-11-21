@@ -11,7 +11,10 @@ from typing import Any
 import httpx2
 import pytest
 
-from bugflow.forge.domain.errors import ForgeRejectedError
+from bugflow.forge.domain.errors import (
+    ForgeRejectedError,
+    ForgeRepositoryMovedError,
+)
 from bugflow.forge.domain.values.conversation import PullRequestState, Reaction
 from bugflow.forge.infrastructure.forgejo import ForgejoForge
 from bugflow.forge.infrastructure.github import GitHubForge
@@ -114,13 +117,21 @@ def test_close_reads_refuse_redirects(kind: str, operation: str) -> None:
         if kind == "github"
         else ForgejoForge("https://forge.test", "token", transport=transport)
     )
-    with pytest.raises(ForgeRejectedError):
+    with pytest.raises(ForgeRepositoryMovedError) as refused:
         if operation == "state":
             forge.state(REF)
         else:
             forge.reactions(REF, 42)
-    assert len(seen) == 1
-    assert "other.test" not in seen[0]
+    # The one other request asks the forge itself for the repository's
+    # name now, and does not follow the redirect off the forge either.
+    root = (
+        "https://api.github.com"
+        if kind == "github"
+        else "https://forge.test/api/v1"
+    )
+    assert seen[1:] == [f"{root}/repos/o/r"]
+    assert all("other.test" not in url for url in seen)
+    assert refused.value.moved_to is None
 
 
 @pytest.mark.parametrize(
