@@ -175,12 +175,13 @@ watched repositories, and the boundary and allowance in the database,
 must each be given the new name. The poller does the first two for a
 repository renamed under the same owner: GitHub and Forgejo redirect a
 request for the old name, and the poller refuses the redirect, asks the
-forge for the new name, and moves the gnomes' settings, the boundaries
-and the withheld share to it, logging a warning. A repository moved to
+forge for the new name, and moves the gnomes' settings, the boundaries,
+the withheld share and each archive ledger whose origin is unresolved
+to it, logging a warning. A repository moved to
 another owner, or whose new name the forge does not give, is a failure
 of the poll, logged as a warning, and keeps its settings until an
-operator moves them. Allowances and archive ledgers stay on the old
-name either way.
+operator moves them. Allowances, and ledgers with an origin, stay on
+the old name either way.
 
 ## The things, and who enforces each
 

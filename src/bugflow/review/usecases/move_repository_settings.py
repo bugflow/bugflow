@@ -20,9 +20,9 @@ recorded as ``bugflow declare`` records one. Without its boundary, a
 repository watched on a layer stops the worker at its next start. The
 old name keeps its own, since it is no longer watched.
 
-Allowances and archive ledgers are not moved. An allowance may name an
-owner, which a rename under the owner does not change, and a ledger's
-binding carries an origin that a rename does not carry over.
+Allowances are not moved: an allowance may name an owner, which a rename
+under the owner does not change. Archive ledgers are the archive's, and
+``MoveLedgersUseCase`` moves them.
 """
 
 import json
