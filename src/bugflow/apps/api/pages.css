@@ -17,6 +17,27 @@ nav { margin: 0 0 8px; color: var(--muted); }
 nav a { margin-right: 12px; }
 nav a[aria-current="page"] { font-weight: 600; text-decoration: none; }
 nav .brand { margin-right: 16px; font-weight: 700; color: var(--fg); }
+
+/* The signed-in person's account, at the end of the nav, and the panel
+   it opens: centred over the page, in the top layer. */
+nav .account { display: inline-block; }
+.account-button { display: inline-flex; align-items: center; gap: 6px;
+                  padding: 2px 8px 2px 2px; border: 1px solid var(--line);
+                  background: transparent; color: var(--fg);
+                  border-radius: 999px; }
+.avatar { display: inline-grid; place-items: center; flex: none;
+          width: 24px; height: 24px; border-radius: 50%;
+          background: var(--accent); color: var(--bg);
+          font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+.account-panel { box-sizing: border-box; width: min(420px, calc(100vw - 32px));
+                 padding: 16px;
+                 border: 1px solid var(--line); border-radius: 10px;
+                 background: var(--bg); color: var(--fg); }
+.account-panel::backdrop { background: rgb(0 0 0 / 0.3); }
+.account-head { display: flex; align-items: center; gap: 10px;
+                margin: 0 0 12px; font-size: 16px; }
+.account-head .avatar { width: 40px; height: 40px; font-size: 15px; }
+.account-signout { display: inline-block; margin-top: 8px; }
 h1 { font-size: 20px; margin: 8px 0 4px; }
 h2 { font-size: 16px; margin: 20px 0 6px; }
 p.lede { color: var(--muted); margin: 0 0 16px; }

@@ -215,12 +215,18 @@ or by the layer's default, is refused. Setting a gnome there allows
 nothing to spend: the repository is judged only once an allowance
 covers it, as step 3 of "Before the first review" says.
 
-Each page's nav ends with a "Sign out" link while the person is signed
-in. It forgets the token and ends the person's session at the identity
-provider, which sends them back to `/settings`, so the page's client
-needs `/settings` registered as an address to return to after a sign-out
-as well as after a sign-in. A person granted a role after signing in
-signs out and in again to get a token that carries it.
+While the person is signed in, each page's nav ends with their account:
+their initials and name, from the ID token. It opens a panel that says
+who the tokens name, when the access token expires and which roles this
+server reads from it, as `GET /api/me` answers, which is where to look
+when a page refuses someone. The panel's "Sign out" forgets the tokens
+and ends the person's session at the identity provider, which sends
+them back to `/settings`, so the page's client needs `/settings`
+registered as an address to return to after a sign-out as well as after
+a sign-in. A person granted a role after signing in signs out and in
+again to get a token that carries it. A theme places the account with
+`nav .account`, styles its button as `.account-button` and its panel as
+`.account-panel`; the panel is the body's, not the nav's.
 
 ### Archives
 

@@ -8,12 +8,15 @@
 // registers, and the settings page sends the person back to the page
 // they started from.
 //
-// While the person holds a token, the page's nav ends with a link that
-// signs them out: it forgets the token and ends their session at the
-// identity provider, which sends them back to the settings page, the
-// address the operator registers for after a sign-out. Signing in again
-// then asks the provider afresh, so a token taken out before a role was
-// granted is replaced by one that carries it.
+// While the person holds a token, the page's nav ends with their
+// account: a button with their initials and name, which opens a panel
+// saying who the tokens name, when the token expires and which roles
+// this server finds in it, as GET api/me answers. The panel's link signs
+// them out: it forgets the tokens and ends their session at the identity
+// provider, which sends them back to the settings page, the address the
+// operator registers for after a sign-out. Signing in again then asks
+// the provider afresh, so a token taken out before a role was granted
+// is replaced by one that carries it.
 
 const ROOT = new URL(".", document.currentScript.src);
 const TOKEN = "bugflow.settings.token";
@@ -105,7 +108,7 @@ async function finishSignIn(params) {
   const tokens = await answered.json();
   store(TOKEN, tokens.access_token);
   store(ID_TOKEN, tokens.id_token || null);
-  showSignOut();
+  showAccount();
   store(VERIFIER, null);
   store(STATE, null);
   const back = fetched(RETURN);
@@ -129,7 +132,7 @@ async function api(method, path, body) {
   });
   if (answered.status === 401) {
     store(TOKEN, null);
-    showSignOut();
+    showAccount();
     showSignIn();
     throw new Error("sign in again: the token was not accepted");
   }
@@ -148,7 +151,7 @@ async function signOut() {
   const hint = fetched(ID_TOKEN);
   store(TOKEN, null);
   store(ID_TOKEN, null);
-  showSignOut();
+  showAccount();
   const { config, discovery } = await provider();
   if (!discovery.end_session_endpoint) {
     location.assign(redirectUri());
@@ -162,25 +165,113 @@ async function signOut() {
   location.assign(discovery.end_session_endpoint + "?" + query);
 }
 
-// End the page's nav with the sign-out link while a token is held, and
-// take it away when none is.
-function showSignOut() {
-  let link = document.getElementById("signout");
+// The claims a token carries, or none where it is not a JWT.
+function claimsOf(token) {
+  try {
+    const part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(part + "=".repeat((4 - part.length % 4) % 4));
+    const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+// The person's name, from the ID token where it says, then their
+// username, then the access token's subject.
+function nameOf(id, access) {
+  const given = [id.given_name, id.family_name].filter(Boolean).join(" ");
+  return id.name || given || id.preferred_username || access.sub || "Signed in";
+}
+
+// Up to two initials: the first letters of the name's first and last
+// words.
+function initialsOf(name) {
+  const words = name.split(/[\s@._-]+/).filter(Boolean);
+  if (!words.length) return "?";
+  const first = Array.from(words[0])[0];
+  const last = words.length > 1 ? Array.from(words[words.length - 1])[0] : "";
+  return (first + last).toUpperCase();
+}
+
+function part(tag, className, text) {
+  const one = document.createElement(tag);
+  if (className) one.className = className;
+  if (text !== undefined) one.textContent = text;
+  return one;
+}
+
+// Fill the panel's facts: what the tokens say at once, then what the
+// server reads from the access token when it answers.
+async function fillAccount(facts) {
+  const access = claimsOf(fetched(TOKEN) || "");
+  const id = claimsOf(fetched(ID_TOKEN) || "");
+  const fact = (term, value) => {
+    facts.append(part("dt", "", term), part("dd", "", value));
+  };
+  facts.replaceChildren();
+  if (id.preferred_username) fact("Username", id.preferred_username);
+  if (access.iss || id.iss) fact("Issuer", access.iss || id.iss);
+  if (access.exp) fact("Expires", new Date(access.exp * 1000).toLocaleString());
+  const roles = part("dd", "", "reading…");
+  facts.append(part("dt", "", "Roles here"), roles);
+  try {
+    const me = await api("GET", "api/me");
+    fact("Subject", me.subject);
+    fact("Client", me.client);
+    roles.textContent = me.roles.length ? me.roles.join(", ")
+                                        : "none this server reads";
+  } catch (error) {
+    roles.textContent = error.message;
+  }
+}
+
+// End the page's nav with the person's account while a token is held,
+// and take it and its panel away when none is.
+function showAccount() {
+  let account = document.getElementById("account");
   if (!fetched(TOKEN)) {
-    if (link) link.remove();
+    if (account) account.remove();
+    document.getElementById("account-panel")?.remove();
     return;
   }
   const nav = document.querySelector("nav");
-  if (link || !nav) return;
-  link = document.createElement("a");
-  link.id = "signout";
-  link.href = redirectUri();
-  link.textContent = "Sign out";
-  link.addEventListener("click", event => {
+  if (account || !nav) return;
+  const access = claimsOf(fetched(TOKEN));
+  const id = claimsOf(fetched(ID_TOKEN) || "");
+  const name = nameOf(id, access);
+  account = part("div", "account");
+  account.id = "account";
+  const button = part("button", "account-button");
+  button.type = "button";
+  button.setAttribute("popovertarget", "account-panel");
+  button.setAttribute("aria-label", "Account: " + name);
+  button.append(part("span", "avatar", initialsOf(name)),
+                part("span", "account-name", name));
+  const panel = part("div", "account-panel");
+  panel.id = "account-panel";
+  panel.setAttribute("popover", "");
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", "Account");
+  const head = part("div", "account-head");
+  head.append(part("span", "avatar", initialsOf(name)), part("strong", "", name));
+  const facts = part("dl", "facts");
+  const signOutLink = part("a", "account-signout", "Sign out");
+  signOutLink.id = "signout";
+  signOutLink.href = redirectUri();
+  signOutLink.addEventListener("click", event => {
     event.preventDefault();
     signOut().catch(error => say(error.message));
   });
-  nav.append(link);
+  panel.append(head, facts, signOutLink);
+  panel.addEventListener("toggle", event => {
+    if (event.newState === "open") fillAccount(facts);
+  });
+  // The panel is the body's, not the nav's, so a theme's rules for the
+  // nav's links do not reach it.
+  account.append(button);
+  nav.append(account);
+  document.body.append(panel);
 }
 
-showSignOut();
+showAccount();
