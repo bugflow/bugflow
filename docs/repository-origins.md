@@ -217,7 +217,9 @@ for the repository's name now, without following a redirect to another
 host, and is reported as a moved repository. Nothing read under the new
 name is recorded under the old: a repository renamed under the same
 owner has its settings moved to the new name, which is then polled as
-a repository watched for the first time. Its signed webhook body carries this
+a repository watched for the first time. Its archive ledgers move too
+where their origin is unresolved; a ledger with an origin keeps it and
+stays on the old name. Its signed webhook body carries this
 origin in `_bugflow_origin`. The ingress reads that field only for delivery
 ids with the existing `poll-` prefix, and rejects a non-null origin that
 differs from its configured endpoint. Missing or null metadata remains
