@@ -153,6 +153,19 @@ def create_api(
         """Up or not; it reads nothing and needs no token."""
         return {"ok": True}
 
+    @app.get("/api/me")
+    def read_me(
+        who: Annotated[Caller, Depends(caller)],
+    ) -> dict[str, str | list[str]]:
+        """Who the token names, as this server reads it: the person's
+        id at the provider, the client it was issued to, and the roles
+        this server finds in it. Any accepted token may read its own."""
+        return {
+            "subject": who.subject,
+            "client": who.client,
+            "roles": sorted(who.roles),
+        }
+
     policy_deployment_routes(app, caller, deploying)
     if reading is not None:
         evaluation_routes(app, caller, reading)
