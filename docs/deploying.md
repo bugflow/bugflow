@@ -219,7 +219,8 @@ While the person is signed in, each page's nav ends with their account:
 their initials and name, from the ID token. It opens a panel that says
 who the tokens name, when the access token expires and which roles this
 server reads from it, as `GET /api/me` answers, which is where to look
-when a page refuses someone. The panel's "Sign out" forgets the tokens
+when a page refuses someone. Its close button, top right, shuts it
+without signing out. Its "Sign out" button forgets the tokens
 and ends the person's session at the identity provider, which sends
 them back to `/settings`, so the page's client needs `/settings`
 registered as an address to return to after a sign-out as well as after

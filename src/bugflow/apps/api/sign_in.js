@@ -11,12 +11,13 @@
 // While the person holds a token, the page's nav ends with their
 // account: a button with their initials and name, which opens a panel
 // saying who the tokens name, when the token expires and which roles
-// this server finds in it, as GET api/me answers. The panel's link signs
-// them out: it forgets the tokens and ends their session at the identity
-// provider, which sends them back to the settings page, the address the
-// operator registers for after a sign-out. Signing in again then asks
-// the provider afresh, so a token taken out before a role was granted
-// is replaced by one that carries it.
+// this server finds in it, as GET api/me answers. The panel's close
+// button (top right) shuts it. Its "Sign out" button forgets the tokens
+// and ends the person's session at the identity provider, which sends
+// them back to the settings page, the address the operator registers
+// for after a sign-out. Signing in again then asks the provider afresh,
+// so a token taken out before a role was granted is replaced by one
+// that carries it.
 
 const ROOT = new URL(".", document.currentScript.src);
 const TOKEN = "bugflow.settings.token";
@@ -254,16 +255,20 @@ function showAccount() {
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "Account");
   const head = part("div", "account-head");
-  head.append(part("span", "avatar", initialsOf(name)), part("strong", "", name));
+  const close = part("button", "account-close", "\u00d7");
+  close.type = "button";
+  close.setAttribute("popovertarget", "account-panel");
+  close.setAttribute("popovertargetaction", "hide");
+  close.setAttribute("aria-label", "Close");
+  head.append(part("span", "avatar", initialsOf(name)), part("strong", "", name),
+              close);
   const facts = part("dl", "facts");
-  const signOutLink = part("a", "account-signout", "Sign out");
-  signOutLink.id = "signout";
-  signOutLink.href = redirectUri();
-  signOutLink.addEventListener("click", event => {
-    event.preventDefault();
-    signOut().catch(error => say(error.message));
-  });
-  panel.append(head, facts, signOutLink);
+  const signOutButton = part("button", "account-signout", "Sign out");
+  signOutButton.type = "button";
+  signOutButton.id = "signout";
+  signOutButton.addEventListener("click", () =>
+    signOut().catch(error => say(error.message)));
+  panel.append(head, facts, signOutButton);
   panel.addEventListener("toggle", event => {
     if (event.newState === "open") fillAccount(facts);
   });

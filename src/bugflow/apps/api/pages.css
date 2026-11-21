@@ -37,7 +37,13 @@ nav .account { display: inline-block; }
 .account-head { display: flex; align-items: center; gap: 10px;
                 margin: 0 0 12px; font-size: 16px; }
 .account-head .avatar { width: 40px; height: 40px; font-size: 15px; }
-.account-signout { display: inline-block; margin-top: 8px; }
+.account-panel .account-close { margin-left: auto; align-self: flex-start;
+                                width: 28px; height: 28px; padding: 0;
+                                border: 0; border-radius: 6px;
+                                background: transparent; color: var(--muted);
+                                font-size: 20px; line-height: 1; }
+.account-panel .account-close:hover { background: var(--row); color: var(--fg); }
+.account-signout { margin-top: 8px; }
 h1 { font-size: 20px; margin: 8px 0 4px; }
 h2 { font-size: 16px; margin: 20px 0 6px; }
 p.lede { color: var(--muted); margin: 0 0 16px; }
