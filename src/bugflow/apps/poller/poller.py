@@ -18,8 +18,9 @@ Configured from the environment: ``DATABASE_URL``,
 ``FORGEJO_TOKEN`` for repositories on a Forgejo.
 
 A repository the forge says was renamed, keeping its owner, has its
-gnomes' settings, its boundaries and its withheld share moved to the
-new name, which is polled at once; the move is logged as a warning.
+gnomes' settings, its boundaries, its withheld share and each of its
+archive ledgers whose origin is unresolved moved to the new name, which
+is polled at once; the move is logged as a warning.
 One moved to another owner, or whose new name the forge would not
 give, is a failure, logged as a warning, and its settings stay where
 they are until an operator moves them.
@@ -40,9 +41,12 @@ from bugflow.apps.shared.forges import (
 )
 from bugflow.apps.shared.journals import build_sha, stamped_journal
 from bugflow.apps.shared.watching import watched_names
+from bugflow.archive.dtos.move_ledgers import MoveLedgersRequest
 from bugflow.archive.infrastructure.sqlalchemy_bindings import (
     SqlAlchemyBindings,
 )
+from bugflow.archive.usecases.bind_ledger import BindLedgerUseCase
+from bugflow.archive.usecases.move_ledgers import MoveLedgersUseCase
 from bugflow.forge.domain.services.polling import PullRequestFeedService
 from bugflow.forge.domain.values.watched_repository import WatchedRepository
 from bugflow.forge.dtos.poll_pull_requests import (
@@ -353,31 +357,14 @@ class Polls:
 def settings_mover(
     held: SqlAlchemyGnomeSettings, settings: PollerSettings
 ) -> Callable[[str, str], str]:
-    """Move a renamed repository's settings and declarations, each name
-    as watched, and say what was moved. Each change is recorded in the
-    journal."""
+    """Move a renamed repository's settings, declarations and unresolved
+    archive ledgers, each name as watched, and say what was moved. Each
+    change is recorded in the journal."""
     journal = stamped_journal(settings.database_url, settings.build)
     clock = SystemClock()
     run_id = uuid.uuid4().hex
     allowances = SqlAlchemySpendBindings(settings.database_url)
     ledgers = SqlAlchemyBindings(settings.database_url)
-
-    def left_behind(forge: str, repo: str) -> list[str]:
-        """What names the old name and is not moved: an allowance of the
-        repository's own, and an archive ledger bound to it."""
-        left = []
-        if any(
-            (one.scope.forge, one.scope.repo) == (forge, repo)
-            for one in allowances.bindings()
-        ):
-            left.append("allowances")
-        if any(
-            (one.forge, one.repo) == (forge, repo)
-            for one in ledgers.bindings()
-        ):
-            left.append("archive ledgers")
-        return left
-
     mover = MoveRepositorySettingsUseCase(
         held,
         SetGnomeUseCase(held, journal, clock, run_id),
@@ -387,16 +374,20 @@ def settings_mover(
         clock,
         run_id,
     )
+    ledger_mover = MoveLedgersUseCase(
+        ledgers, BindLedgerUseCase(ledgers, journal, clock, run_id)
+    )
 
     def move(was: str, now: str) -> str:
         old, new = WatchedRepository.parse(was), WatchedRepository.parse(now)
+        repo, to = f"{old.owner}/{old.repo}", f"{new.owner}/{new.repo}"
         done = mover.execute(
             MoveRepositorySettingsRequest(
-                forge=old.forge,
-                repo=f"{old.owner}/{old.repo}",
-                to=f"{new.owner}/{new.repo}",
-                set_by=MOVED_BY,
+                forge=old.forge, repo=repo, to=to, set_by=MOVED_BY
             )
+        )
+        archived = ledger_mover.execute(
+            MoveLedgersRequest(forge=old.forge, repo=repo, to=to)
         )
         said = [f"moved {', '.join(done.moved)}"] if done.moved else []
         if done.kept:
@@ -405,11 +396,20 @@ def settings_mover(
             said.append(f"moved its boundary on {', '.join(done.boundaries)}")
         if done.withholding:
             said.append("moved its withheld share")
-        left = left_behind(old.forge, f"{old.owner}/{old.repo}")
-        if left:
+        if archived.moved:
+            said.append(f"moved its ledgers {', '.join(archived.moved)}")
+        if archived.stayed:
             said.append(
-                f"its {' and '.join(left)} stay on the old name; move them "
-                "with bugflow allow and bugflow declare --archive"
+                f"its ledgers {', '.join(archived.stayed)} have an origin, "
+                "so they stay on the old name"
+            )
+        if any(
+            (one.scope.forge, one.scope.repo) == (old.forge, repo)
+            for one in allowances.bindings()
+        ):
+            said.append(
+                "its allowances stay on the old name; move them with "
+                "bugflow allow"
             )
         return "; ".join(said) or "nothing was set on it"
 
