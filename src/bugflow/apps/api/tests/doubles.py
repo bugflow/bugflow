@@ -129,6 +129,49 @@ class Server:
         self.boundaries = InMemoryLayerBoundaries()
         self.spend = InMemorySpendRecord()
         self.ceilings = InMemorySpendBindings()
+        self.administration = SettingsAdministration(
+            role=ADMINISTRATOR,
+            settings=self.settings,
+            set_gnome=lambda: SetGnomeUseCase(
+                self.settings, self.journal, Clock(), "run-1"
+            ),
+            repositories=self.repositories.everything,
+            reviewers=lambda: tenants_in_force(self.deployments, CHECKS),
+            boundaries=self.boundaries,
+            sign_in=PageSignIn(
+                issuer="https://issuer.example",
+                client_id="settings-page",
+            ),
+        )
+        self.operations = OperationsReading(
+            role=ADMINISTRATOR,
+            run=lambda: ReadRunOperationsUseCase(
+                RunEntries(self.journal),
+                self.spend,
+                self.ceilings,
+                lambda binding, now: None,
+            ),
+            repository=lambda: ReadRepositoryOperationsUseCase(
+                self.settings,
+                self.spend,
+                self.ceilings,
+                lambda binding, now: None,
+            ),
+            spend=lambda: ReadSpendOperationsUseCase(
+                self.spend, self.ceilings, lambda binding, now: None
+            ),
+            allowances=lambda: ReadAllowancesUseCase(
+                self.ceilings, self.spend, lambda binding, now: None
+            ),
+            overview=lambda: ReadOperationsOverviewUseCase(
+                self.spend, self.ceilings, lambda binding, now: None
+            ),
+            declare=lambda: DeclareAllowanceUseCase(
+                self.ceilings, self.journal, Clock(), "run-1"
+            ),
+            cadences=("event", "week"),
+            clock=Clock(),
+        )
         self.client = TestClient(
             create_api(
                 Tokens(),
@@ -136,51 +179,8 @@ class Server:
                     access=RolePolicyDeploymentAccess(DEPLOYER),
                     deploying=self.deploying,
                 ),
-                administration=SettingsAdministration(
-                    role=ADMINISTRATOR,
-                    settings=self.settings,
-                    set_gnome=lambda: SetGnomeUseCase(
-                        self.settings, self.journal, Clock(), "run-1"
-                    ),
-                    repositories=self.repositories.everything,
-                    reviewers=lambda: tenants_in_force(
-                        self.deployments, CHECKS
-                    ),
-                    boundaries=self.boundaries,
-                    sign_in=PageSignIn(
-                        issuer="https://issuer.example",
-                        client_id="settings-page",
-                    ),
-                ),
-                operations=OperationsReading(
-                    role=ADMINISTRATOR,
-                    run=lambda: ReadRunOperationsUseCase(
-                        RunEntries(self.journal),
-                        self.spend,
-                        self.ceilings,
-                        lambda binding, now: None,
-                    ),
-                    repository=lambda: ReadRepositoryOperationsUseCase(
-                        self.settings,
-                        self.spend,
-                        self.ceilings,
-                        lambda binding, now: None,
-                    ),
-                    spend=lambda: ReadSpendOperationsUseCase(
-                        self.spend, self.ceilings, lambda binding, now: None
-                    ),
-                    allowances=lambda: ReadAllowancesUseCase(
-                        self.ceilings, self.spend, lambda binding, now: None
-                    ),
-                    overview=lambda: ReadOperationsOverviewUseCase(
-                        self.spend, self.ceilings, lambda binding, now: None
-                    ),
-                    declare=lambda: DeclareAllowanceUseCase(
-                        self.ceilings, self.journal, Clock(), "run-1"
-                    ),
-                    cadences=("event", "week"),
-                    clock=Clock(),
-                ),
+                administration=self.administration,
+                operations=self.operations,
                 look=look,
             )
         )

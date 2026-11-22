@@ -53,7 +53,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict
 
-from bugflow.apps.api.pages import PLAIN, PageLook, page
+from bugflow.apps.api.pages import PLAIN, PageLook, page, page_routes
 from bugflow.review.domain.errors import RunNotFoundError
 from bugflow.review.domain.models.spend_binding import (
     SpendBinding,
@@ -431,7 +431,8 @@ def operations_routes(
     look: PageLook = PLAIN,
 ) -> None:
     """Add the operations routes and pages to ``app``, the pages
-    dressed as ``look`` says."""
+    dressed as ``look`` says, with what every page loads."""
+    page_routes(app, caller, look)
 
     def operator(who: Annotated[Caller, Depends(caller)]) -> Caller:
         if reading.role not in who.roles:

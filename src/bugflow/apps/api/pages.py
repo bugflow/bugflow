@@ -12,7 +12,7 @@ pages without changing them.
 where it is not set. Neither needs a token: neither holds data.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from html import escape
 from importlib.resources import files
@@ -20,6 +20,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import Response
+
+from bugflow.apps.api.sign_in import sign_in_routes
+from bugflow.shared.domain.values.caller import Caller
 
 #: The stylesheet every page loads, kept beside this module.
 STYLE = "pages.css"
@@ -61,8 +64,20 @@ def page(name: str, look: PageLook) -> str:
     return text.replace(BRAND_MARK, brand)
 
 
-def page_routes(app: FastAPI, look: PageLook) -> None:
-    """Serve the stylesheet and the theme every page loads."""
+def page_routes(
+    app: FastAPI, caller: Callable[..., Caller], look: PageLook
+) -> None:
+    """Serve what every page loads: the stylesheet, the theme, the
+    sign-in script and who a token names.
+
+    Each set of routes that serves a page adds these, so an API built of
+    some of the package's routes, as a tenant's may be, serves its pages
+    whole. They are added once, by the first set that asks, dressed as
+    that set's ``look`` says.
+    """
+    if any(getattr(one, "path", None) == "/pages.css" for one in app.routes):
+        return
+    sign_in_routes(app, caller)
 
     @app.get("/pages.css")
     def pages_style() -> Response:

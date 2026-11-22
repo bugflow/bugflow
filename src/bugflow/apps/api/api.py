@@ -28,7 +28,6 @@ from bugflow.apps.api.settings import (
     settings_routes,
     sign_in_from,
 )
-from bugflow.apps.api.sign_in import sign_in_route
 from bugflow.apps.shared.boundaries import (
     Boundaries,
     boundaries_from_environment,
@@ -153,24 +152,10 @@ def create_api(
         """Up or not; it reads nothing and needs no token."""
         return {"ok": True}
 
-    @app.get("/api/me")
-    def read_me(
-        who: Annotated[Caller, Depends(caller)],
-    ) -> dict[str, str | list[str]]:
-        """Who the token names, as this server reads it: the person's
-        id at the provider, the client it was issued to, and the roles
-        this server finds in it. Any accepted token may read its own."""
-        return {
-            "subject": who.subject,
-            "client": who.client,
-            "roles": sorted(who.roles),
-        }
-
     policy_deployment_routes(app, caller, deploying)
     if reading is not None:
         evaluation_routes(app, caller, reading)
-    sign_in_route(app)
-    page_routes(app, look)
+    page_routes(app, caller, look)
     if administration is not None:
         settings_routes(app, caller, administration, look)
     if operations is not None:

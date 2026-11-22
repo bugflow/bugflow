@@ -28,7 +28,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
-from bugflow.apps.api.pages import PLAIN, PageLook, page
+from bugflow.apps.api.pages import PLAIN, PageLook, page, page_routes
 from bugflow.apps.shared.boundaries import Defaulted, without_a_boundary
 from bugflow.apps.shared.policies import TenantsInForce
 from bugflow.apps.shared.setting_tenant import tenant_of_setting
@@ -243,7 +243,8 @@ def settings_routes(
     look: PageLook = PLAIN,
 ) -> None:
     """Add the settings routes and the page to ``app``, the page
-    dressed as ``look`` says."""
+    dressed as ``look`` says, with what every page loads."""
+    page_routes(app, caller, look)
 
     def administrator(who: Annotated[Caller, Depends(caller)]) -> Caller:
         if admin.role not in who.roles:
