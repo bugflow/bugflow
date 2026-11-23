@@ -20,8 +20,8 @@ The rule comes from the shape of three records. Each worker's facts are
 journalled under its own workflow run, in its own namespace, stamped
 with its own deployment, so two workers reviewing one repository with
 reviewers of one id corrupt nothing. The refusal reaches into another
-tenant's binding: the website gnome had to leave quality assurance's
-binding before brand's could hold it.
+tenant's binding: a website gnome had to leave the first tenant's
+binding before the second tenant's could hold it.
 
 ## Decision
 
@@ -82,11 +82,10 @@ tenants' settings.
 
 ## Consequences
 
-At Acme, brand's binding may pin the website gnome
-while quality assurance's binding still holds it. The two stand
-apart on the settings page as `website` and
-`brand/website`, and each tenant's setting switches on
-its own.
+A second tenant's binding may pin the website gnome while the first
+tenant's binding still holds it. With a second tenant named `brand`,
+the two stand apart on the settings page as `website` and
+`brand/website`, and each tenant's setting switches on its own.
 
 The label a pull request carries is decided by each worker from its own
 gnomes' verdicts, as ADR 011 records: two tenants whose gnomes publish

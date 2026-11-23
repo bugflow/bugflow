@@ -112,7 +112,7 @@ gnomes it holds (ADR 011). A server with one tenant sets none of these.
 | Variable | Read by | Is |
 |---|---|---|
 | `bugflow_tenant` | `worker`, `ingress` | The tenant this worker reviews for, and the ingress's own tenant: lower case letters, digits and hyphens. Default `default` |
-| `bugflow_tenants` | `ingress` | The other tenants a delivery reaches, each as `tenant=namespace/task-queue`, comma-separated: `brand=brand/bugflow-bd`. A delivery is handed to each tenant whose gnome judges the repository, in that tenant's namespace. Not written if empty |
+| `bugflow_tenants` | `ingress` | The other tenants a delivery reaches, each as `tenant=namespace/task-queue`, comma-separated: `brand=brand/bugflow-brand`. A delivery is handed to each tenant whose gnome judges the repository, in that tenant's namespace. Not written if empty |
 | `bugflow_tenant_deployers` | `api` | The client that deploys each tenant's policies, as `tenant=client` pairs separated by commas, so one tenant's pipeline cannot put a deployment in force for another. A tenant not named takes any caller with `bugflow_policy_deployer_role`. Not written if empty |
 
 A tenant's pipeline passes `--tenant` to `bugflow deploy-policies`. A

@@ -8,11 +8,10 @@ a tenant and lifts the rule that a reviewer's id is one tenant's.
 ## Context
 
 ADR 010 makes a server a platform and its tenants, and places the
-review part in one tenant's worker: at Acme, capability
-assurance's. Brand's tenant runs an empty worker, and
-the website gnome, which is brand's standard, is
-judged by quality assurance's worker because that is the only
-worker that reviews.
+review part in one tenant's worker. On a server with a second tenant,
+that tenant may run an empty worker while a gnome that is its own
+standard, such as a website gnome, is judged by the first tenant's
+worker, because that is the only worker that reviews.
 
 A second worker composing the review part cannot run beside the first
 on one database. The deployment in force is the latest row of
@@ -99,11 +98,11 @@ over the settings of other tenants' gnomes, which are theirs to keep.
 
 ## Consequences
 
-At Acme, brand's tenant composes the review part
-as quality assurance's does, with a binding of its own that pins
-the website gnome, in the one database and with no further container.
-The website gnome leaves quality assurance's binding first, since
-one tenant's deployment may not hold what another's holds.
+A second tenant composes the review part as the first does, with a
+binding of its own that pins its own gnome, such as the website gnome,
+in the one database and with no further container. That gnome leaves
+the first tenant's binding first, since one tenant's deployment may not
+hold what another's holds.
 
 PMI's server and the example change nothing: their one tenant is
 `default`, the migration carries what they hold to it, and no setting

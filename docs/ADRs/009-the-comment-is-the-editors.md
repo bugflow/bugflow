@@ -10,7 +10,7 @@ A review comment is assembled from findings. Each finding is one
 folded line naming the clause it breaks and where, and under the fold
 the passage quoted and what the judge said is wrong with it. Every
 finding is shown at the same weight, in the order the policies answered.
-On a pull request of the Acme web site the two gnomes raised
+On a pull request of a web site the two gnomes raised
 twenty-six findings. Half of pr-gnome's were noise: a quoted heading
 judged as the author's register, two findings whose own reason said the
 passage complied, a garden path the judge conceded resolves. The author

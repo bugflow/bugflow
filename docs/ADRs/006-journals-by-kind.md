@@ -41,7 +41,7 @@ Every table has the journal's columns, its two keys to `pull_request`
 and `workflow_run`, its indexes under names of its own, and its two
 triggers, so a row of any journal is never updated or deleted. On 24
 October 2026 the five held 1,394, 10,527, 48,426, 53 and 80 of PMI's
-60,480 rows, and 19, 4,360, 5,451, 0 and 36 of Acme's 9,866.
+60,480 rows, and 19, 4,360, 5,451, 0 and 36 of a second server's 9,866.
 
 ### Which journal a fact goes to
 

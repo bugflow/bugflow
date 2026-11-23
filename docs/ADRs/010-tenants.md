@@ -19,15 +19,13 @@ namespace. pmi-bugflow is also where the package came from, and
 milestone M8 of its `todo.org` moves the rest of the product code into
 the package.
 
-acme-bugflow is the second server. Its first worker beside the review
-product is acme-crm's (acme-crm `docs/workflow-worker.md`; acme/acme-bugflow
-#43 and #44). That design gives the worker its own image on GHCR, the
-namespace `acme-crm`, a dependency on `temporalio` alone, and an ingress
-of its own beside the worker. Acme has five areas of
+A second server serves an organisation with several areas of
 responsibility, each in a repository with its own CI, and each is to
-own workflows: HQ, brand, operations, business
-management and quality assurance. Workers partition as the
-organisation does.
+own workflows. Its first worker beside the review product is another
+product's, designed to have its own image on GHCR, a namespace named
+for that product, a dependency on `temporalio` alone, and an ingress
+of its own beside the worker. Workers partition as the organisation
+does.
 
 Three things stand between the package and that shape. Nothing creates
 a namespace: `temporalio/auto-setup` makes `default` and the templates
@@ -35,9 +33,9 @@ set no other. The ingress has one client, one secret and fixed routes,
 and its pipeline (`Delivery`, `ReceiveDeliveryUseCase`,
 `PullRequestRef`, the starter) knows only pull requests. And nothing
 says what a worker owes the platform: the settings it reads, how it
-fails, what it serves, what it emits. acme-crm's worker answered each
-for itself, in about 170 lines, and the next tenant would answer them
-again.
+fails, what it serves, what it emits. That product's worker answered
+each for itself, in about 170 lines, and the next tenant would answer
+them again.
 
 ## Decision
 
@@ -58,12 +56,11 @@ pinned by image tag, moved by commit. A tenant may run programs beside
 its worker: an API, an MCP server, a poller, the archive host.
 
 The platform's repository is the parent area's, and it deploys the
-platform and every tenant. At Acme that is HQ's, `acme-bugflow`.
-HQ's own workflows, when it has them, run from that repository in a
-namespace of HQ's, `hq`. Each other area has a repository of its own,
-named for the server and the area, `acme-bugflow-bd`, `acme-bugflow-ca`,
-`acme-bugflow-bm` and `acme-bugflow-da`, and each publishes an image of
-the same name. What a tenant's worker imports is its own affair: one
+platform and every tenant. The parent area's own workflows, when it
+has them, run from that repository in a namespace of its own. Each
+other area has a repository of its own, named for the server and the
+area, `<server>-<area>`, and each publishes an image of the same
+name. What a tenant's worker imports is its own affair: one
 may compose the package's parts and another depend on `temporalio`
 alone, and the platform treats them alike.
 
@@ -72,10 +69,10 @@ alone, and the platform treats them alike.
 The package's review workflows and stocktake, and its archive host and
 archive index, are parts in the sense of ADR 002: a tenant composes
 them into its worker with `WorkerParts`, and runs their programs beside
-it. At PMI both compose into PMI's worker. At Acme review and the
-stocktake compose into quality assurance's, because quality
-assurance of delivery is that area's, and the archive into business
-management's, because records and compliance are that area's. No
+it. At PMI both compose into PMI's worker. On a server with several
+areas, review and the stocktake compose into the worker of the area
+responsible for quality assurance, and the archive into the worker of
+the area responsible for records and compliance. No
 platform program runs either, and a server with no tenant that
 composes review reviews nothing. The code of both stays in the
 package: ownership of the free software and responsibility for running
@@ -101,11 +98,10 @@ The front door is the proxy and its routes, and it belongs to the
 platform. A route names a service, never the tenant that runs it, and
 a service that moves between tenants keeps its route. A person or a
 garden that uses a service does not know, and need not know, which
-area is responsible for it. Acme's routes today, the server's
-host name for the ingress, the API's, and the archive's wildcard, stay
-as they are when the archive host becomes records's; the
-ledgers that HQ's and operations's `.clanka/config.yml` name
-go on resolving.
+area is responsible for it. A server's routes, its host name for the
+ingress, the API's, and the archive's wildcard, stay as they are when
+the archive host moves to another tenant, and the ledgers that the
+gardens' `.clanka/config.yml` name go on resolving.
 
 ### The tenant contract
 
@@ -140,7 +136,8 @@ server, so review judges its pull requests against them, and a garden
 that declares the gnome installs its skills for whoever writes a
 worker.
 
-Brand's worker is the template the next tenant copies. A tenant may
+The first tenant that composes none of the package's parts is the
+template the next tenant copies. A tenant may
 import the package's `TemporalSettings` or `WorkerParts` if it wants
 them; this record makes no promise about them.
 
@@ -163,8 +160,8 @@ The review part's `Receive` workflow normalises a forge body, checks
 the journal for a pull-request event it has seen, and signals the
 pull-request workflow, as the ingress does today. The managed agent's
 completion goes the same way. `bugflow webhooks` registers hooks at
-the tenant's path, and the poller posts to it. acme-crm's application
-posts to `/hooks/brand/acme-crm`, signed with that
+the tenant's path, and the poller posts to it. Another product's
+application posts to `/hooks/{namespace}/{product}`, signed with that
 source's secret.
 
 ### Provisioning
@@ -198,7 +195,7 @@ Postgres keeps its tables as a branch of the package's scripts (ADR
 program reads a tenant's records. The review part's journal, API
 routes and MCP tools remain the review part's, so a record that names
 a run by workflow id and run id alone stays as it is. The archives
-that other areas' gardens keep are records's to hold and
+that other areas' gardens keep are the archive tenant's to hold and
 theirs to read, through the remote archive protocol, as now.
 
 The tenants that compose the package's parts share one database. The
@@ -241,36 +238,33 @@ it through Temporal Nexus, when the need arises.
 
 ## Consequences
 
-The first step is the split of Acme's one worker into two tenants.
-`acme-bugflow-ca` holds the composition root that serves review and the
-stocktake, with the API, the poller and the MCP server beside it, in
-the namespace `quality-assurance`. `acme-bugflow-bm` holds the
-composition root that serves the archive index, with the archive host
-beside it, in the namespace `records`. Each publishes its
-image, and `acme-bugflow` pulls both. It needs the two repositories, the
+On a server with several areas, the first step is the split of its one
+worker into two tenants. One tenant's repository holds the composition
+root that serves review and the stocktake, with the API, the poller and
+the MCP server beside it, in that tenant's namespace. The other's holds
+the composition root that serves the archive index, with the archive
+host beside it, in its own namespace. Each publishes its image, and the
+server's repository pulls both. It needs the two repositories, the
 `namespaces` service, two tenant entries in the register, one drain
 for review's pull-request runs, and two changes in the package:
 the archive host reads `TemporalSettings` in place of its own
 `TemporalAddress`, so the host and the index share one setting and the
-host starts the index in records's namespace; and `bugflow
+host starts the index in the archive tenant's namespace; and `bugflow
 declare --archive`, which binds a ledger to a repository, is run
 against the shared database by either tenant. It needs nothing from
-the ingress and nothing from acme-crm, and it proves provisioning, the
-register layout and the drain before another area's worker arrives.
+the ingress and nothing from another product, and it proves
+provisioning, the register layout and the drain before another area's
+worker arrives.
 
-acme-bugflow becomes a platform composition plus one compose entry per
-tenant, each with its own env template, vault prefix and image pin,
-and gains a GHCR pull credential and a provisioning step.
-acme/acme-bugflow#43 becomes the entry for brand's
-tenant, `acme-bugflow-bd`, in the namespace `brand`,
-pulling `ghcr.io/acme/acme-bugflow-bd`. Decision 1 of acme-crm's
-`docs/workflow-worker.md` changes with it: the worker's code moves
-from acme-crm's `workflow/` to that repository, since the tenant is the
-area and acme-crm is one of its products. The empty worker on acme-crm's
-unmerged branch moves there rather than merging where it is. #44
-changes from running acme-crm's ingress to adding the tenant's namespace
-and secret to the platform's, and decision 5 changes with it. Decision
-7, a dependency on `temporalio` alone, stands, and the worker gains a
+The server's repository becomes a platform composition plus one
+compose entry per tenant, each with its own env template, vault prefix
+and image pin, and gains a GHCR pull credential and a provisioning
+step. A product that planned a worker and an ingress of its own instead
+gets a tenant entry for its area: the worker's code moves to the area's
+tenant repository, since the tenant is the area and the product is one
+of its products, and the product's webhooks reach the platform's
+ingress under the tenant's namespace and a secret of their own. A
+worker that depends on `temporalio` alone keeps doing so, and gains a
 `Receive` workflow and the conformance harness in its CI.
 
 The platform's repository gains the contract document, the harness and
@@ -279,19 +273,19 @@ it is extracted or republished for tenants.
 
 The archive host leaves the platform composition. Its compose entry,
 its bucket, its credential and its `bugflow_archive_*` settings move to
-records's tenant entry in the register, and the archive
-index runs in the `records` namespace. Business
-management's first tenant entry is the archive alone, with no workflow
-of its own beyond the index. `acme-bugflow-bm` holds the composition
-root and the archive's configuration: the ledgers kept, the bucket,
+the archive tenant's entry in the register, and the archive index runs
+in that tenant's namespace. The archive tenant's first entry is the
+archive alone, with no workflow of its own beyond the index. Its
+repository holds the composition root and the archive's configuration: the ledgers kept, the bucket,
 retention and who may read which. The roles
 `bugflow-archive-reader` and `bugflow-archive-writer` and the archive's
 route stay as they are, under the front-door rule.
 
 With review and the archive both tenants' parts, the platform holds no
 product program but the ingress. A deployment is then a tenancy with
-N tenants at every server: Acme's five, PMI's one composing both
-sets of parts, bugflow.org's one composing review.
+N tenants at every server: one per area at an organisation with
+several, PMI's one composing both sets of parts, bugflow.org's one
+composing review.
 
 pmi-bugflow becomes PMI's tenant. Its namespace is named, and the
 platform programs separate from its worker in compose. Its joins with
@@ -300,22 +294,17 @@ corpus refresh) stay in process, as parts of one tenant worker, and M8
 continues as written. The corpus refresh leaves `IngressParts` and
 starts from a `Receive` in PMI's parts.
 
-The review part leaves `default` once at each server: PMI's,
-Acme's and bugflow.org. `PullRequestWorkflow` lives for days and
+The review part leaves `default` once at each server.
+`PullRequestWorkflow` lives for days and
 Temporal 1.25 does not pin workers, so each server drains before the
 move, as a scheduled deployment. A new tenant's namespace starts
 empty and needs none.
 
 The tenant list, and with it each tenant's image pin, lives in the
-hosting platform's register, so it moves when the hosting moves to
-Acme.
+hosting platform's register, so it moves when the hosting moves.
 
-Five workers and the platform on acme-dev-cg, 4 vCPU and 8 GB shared
-with the identity provider, acme-mastermind and monitoring, with no
-container limits, is sized before the second tenant runs. acme-crm's
-design places bugflow on AWS; quality assurance's canon has no
-hosting plan beyond the handover to Acme's hosting. The two are
-reconciled before that handover changes shape.
+A server's host is sized for its tenants' workers, and its composition
+sets container limits, before the second tenant runs.
 
 ## Open questions
 
@@ -331,8 +320,8 @@ reconciled before that handover changes shape.
    has not read.
 5. Where the platform composition, the contract, the harness and the
    gnome live: in the package's `deployments/`, as the composition
-   does now, or in a repository of their own that acme-bugflow and
-   pmi-bugflow both take. With the archive a tenant's, the package has
+   does now, or in a repository of their own that each server's
+   repository takes. With the archive a tenant's, the package has
    nothing on the platform but the ingress.
 6. Which fields the telemetry clause names, and the grace period the
    shutdown clause allows.
