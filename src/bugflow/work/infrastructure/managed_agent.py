@@ -269,23 +269,7 @@ class ManagedAgent:
                         "checkout": {"type": "commit", "sha": task.commit},
                     }
                 ],
-                initial_events=[
-                    {
-                        "type": "user.message",
-                        "content": [
-                            {"type": "text", "text": task.instructions}
-                        ],
-                    },
-                    # The second message says which commit to review.
-                    # The repository is mounted at the base commit.
-                    {
-                        "type": "user.message",
-                        "content": [
-                            {"type": "text", "text": _head_message(task)}
-                        ],
-                    },
-                    *_answer_message(task),
-                ],
+                initial_events=[_opening(task)],
             )
         except Exception as exc:
             raise _as_port_error(exc) from exc
@@ -727,28 +711,38 @@ def _last_message(events: list[dict[str, Any]]) -> str:
     return ""
 
 
-def _answer_message(task: AgentTask) -> list[dict[str, Any]]:
-    """The message that gives the task's JSON schema and asks for the
-    answer through ``submit``. Empty if the task has no schema.
+def _opening(task: AgentTask) -> dict[str, Any]:
+    """The session's one opening message: the task's instructions, then
+    which commits to review, then, where the task has a schema, the shape
+    of the answer, each a text block of its own, in that order.
+
+    They are one message, not three, because the platform starts work on
+    the first message a session is created with. Further messages are
+    queued behind it, and a session that answers before they are
+    delivered never reads them: on 22 November 2026 the weekly security
+    review of bugflow/bugflow read its instructions but not the commits
+    or the shape, and submitted "test".
+    """
+    texts = [task.instructions, _head_message(task)]
+    if (asked := _answer_text(task)) is not None:
+        texts.append(asked)
+    return {
+        "type": "user.message",
+        "content": [{"type": "text", "text": text} for text in texts],
+    }
+
+
+def _answer_text(task: AgentTask) -> str | None:
+    """The text that gives the task's JSON schema and asks for the answer
+    through ``submit``. None if the task has no schema.
     """
     if task.artifact_schema is None:
-        return []
+        return None
     shape = json.dumps(task.artifact_schema, indent=2, sort_keys=True)
-    return [
-        {
-            "type": "user.message",
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        "When the work is done, call the submit tool with "
-                        "your answer. The answer must match this JSON "
-                        f"schema:\n\n{shape}"
-                    ),
-                }
-            ],
-        }
-    ]
+    return (
+        "When the work is done, call the submit tool with your answer. The "
+        f"answer must match this JSON schema:\n\n{shape}"
+    )
 
 
 def _errors(answer: Any, schema: dict[str, Any]) -> str:

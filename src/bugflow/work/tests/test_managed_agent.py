@@ -338,21 +338,34 @@ def test_the_budget_reaches_the_platform_in_its_own_currency() -> None:
     }
 
 
-def test_the_instruction_is_the_first_message() -> None:
+def opening(sessions: FakeSessions) -> list[str]:
+    """The texts of the one message a session was created with, in order."""
+    (only,) = sessions.created[0]["initial_events"]
+    assert only["type"] == "user.message"
+    return [block["text"] for block in only["content"]]
+
+
+def test_a_session_is_created_with_one_message() -> None:
+    # The platform starts on the first message a session is created with
+    # and may answer before reading a second, so everything the session
+    # needs to start is in one message.
+    sessions = FakeSessions()
+    agent(sessions).dispatch(replace(TASK, artifact_schema=SCHEMA))
+    assert len(sessions.created[0]["initial_events"]) == 1
+
+
+def test_the_instruction_opens_the_message() -> None:
     sessions = FakeSessions()
     agent(sessions).dispatch(TASK)
-    first = sessions.created[0]["initial_events"][0]
-    assert first["type"] == "user.message"
-    assert first["content"][0]["text"] == "Review this change."
+    assert opening(sessions)[0] == "Review this change."
 
 
 def test_the_head_commit_follows_the_instruction() -> None:
     sessions = FakeSessions()
     agent(sessions).dispatch(TASK)
-    second = sessions.created[0]["initial_events"][1]
-    assert second["type"] == "user.message"
-    assert HEAD in second["content"][0]["text"]
-    assert BASE in second["content"][0]["text"]
+    second = opening(sessions)[1]
+    assert HEAD in second
+    assert BASE in second
 
 
 def idle(stop: str) -> Thing:
@@ -601,16 +614,16 @@ def sent(sessions: FakeSessions) -> list[dict[str, Any]]:
 def test_the_answers_shape_follows_the_head_commit() -> None:
     sessions = FakeSessions()
     agent(sessions).dispatch(replace(TASK, artifact_schema=SCHEMA))
-    events = sessions.created[0]["initial_events"]
-    assert len(events) == 3
-    assert "submit" in events[2]["content"][0]["text"]
-    assert '"write_up"' in events[2]["content"][0]["text"]
+    texts = opening(sessions)
+    assert len(texts) == 3
+    assert "submit" in texts[2]
+    assert '"write_up"' in texts[2]
 
 
 def test_a_task_with_no_shape_is_asked_for_none() -> None:
     sessions = FakeSessions()
     agent(sessions).dispatch(TASK)
-    assert len(sessions.created[0]["initial_events"]) == 2
+    assert len(opening(sessions)) == 2
 
 
 def test_the_handle_carries_the_shape_and_the_attempts() -> None:
