@@ -151,10 +151,12 @@ def test_a_tenant_that_names_its_deployer_takes_that_client_alone() -> None:
     """One tenant's pipeline cannot put a deployment in force for
     another (ADR 011); a tenant that names none takes any deployer."""
     access = RolePolicyDeploymentAccess(
-        "may-deploy", deployers_from("brand=bd-pipeline")
+        "may-deploy", deployers_from("brand=brand-pipeline")
     )
     theirs = Caller(
-        subject="s", client="bd-pipeline", roles=frozenset({"may-deploy"})
+        subject="s",
+        client="brand-pipeline",
+        roles=frozenset({"may-deploy"}),
     )
     ours = Caller(
         subject="s", client="ca-pipeline", roles=frozenset({"may-deploy"})

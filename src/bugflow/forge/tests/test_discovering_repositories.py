@@ -93,9 +93,7 @@ def test_a_repository_whose_key_has_a_new_name_is_renamed() -> None:
             was_name="acme/before",
         )
     ]
-    assert [one.name for one in held.known("github", "acme")] == [
-        "acme/after"
-    ]
+    assert [one.name for one in held.known("github", "acme")] == ["acme/after"]
 
 
 def test_archiving_is_found_both_ways() -> None:

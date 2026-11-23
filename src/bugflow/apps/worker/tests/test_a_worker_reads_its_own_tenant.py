@@ -97,9 +97,7 @@ def test_each_worker_watches_the_repositories_its_own_gnomes_judge(
     two_tenants(database_url)
     deployments = SqlAlchemyPolicyDeployments(database_url)
     ours = reviewers_in_force(deployments, CHECKS)
-    theirs = reviewers_in_force(
-        deployments, CHECKS, tenant="brand"
-    )
+    theirs = reviewers_in_force(deployments, CHECKS, tenant="brand")
     assert ours is not None and theirs is not None
     assert set(ours.agents) == {"prose", "security"}
     assert set(theirs.agents) == {"prose", "site"}
@@ -142,6 +140,5 @@ def test_a_tenant_with_no_deployment_reviews_nothing_and_says_whose(
     )
     assert parts.workflows == ()
     assert parts.lines == (
-        "reviews nothing: no policy deployment is in force for "
-        "operations",
+        "reviews nothing: no policy deployment is in force for operations",
     )

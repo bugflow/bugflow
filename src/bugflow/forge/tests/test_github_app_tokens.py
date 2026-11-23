@@ -144,7 +144,7 @@ def test_the_forge_signs_an_installed_owner_s_requests_with_its_token() -> (
     github = FakeGitHub(clock)
     held = GitHubTokens(
         any_owner="any",
-        by_owner={"initech": "initech"},
+        by_owner={"initech": "theirs"},
         app=InstallationTokens(APP, github.transport(), now=clock),
     )
     forge = GitHubForge(held, github.transport())
@@ -154,7 +154,7 @@ def test_the_forge_signs_an_installed_owner_s_requests_with_its_token() -> (
     forge.is_open(PullRequestRef(owner="other", repo="thing", number=3))
     assert [one for one in github.seen if "/pulls/" in one[0]] == [
         ("/repos/acme/office/pulls/1", "Bearer ghs_1"),
-        ("/repos/initech/permits/pulls/2", "Bearer initech"),
+        ("/repos/initech/permits/pulls/2", "Bearer theirs"),
         ("/repos/other/thing/pulls/3", "Bearer any"),
     ]
     assert held.owners == frozenset({"acme", "initech"})

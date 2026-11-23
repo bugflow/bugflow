@@ -212,7 +212,7 @@ def ingress_for_tenants(
         return clients[settings.namespace]
 
     environ = environment(database_url) | {
-        "TENANTS": "brand=brand/bd-queue"
+        "TENANTS": "brand=brand/brand-queue"
     }
     return app_from_environment(environ, connect=connect), clients
 

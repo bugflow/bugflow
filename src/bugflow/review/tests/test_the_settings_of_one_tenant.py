@@ -50,7 +50,5 @@ def test_a_setting_saved_through_it_is_the_tenants_own() -> None:
         setting("o/widgets", "prose", THEIRS)
     )
     assert len(everything.settings()) == 1
-    with pytest.raises(
-        ValueError, match="is default's, not brand's"
-    ):
+    with pytest.raises(ValueError, match="is default's, not brand's"):
         TenantSettings(everything, THEIRS).save(setting("o/widgets", "prose"))

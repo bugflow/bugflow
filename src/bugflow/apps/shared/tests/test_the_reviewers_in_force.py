@@ -100,9 +100,7 @@ def test_the_reviewers_are_the_tenants_own() -> None:
         path.replace("prose", "site"): text.replace("prose", "site")
         for path, text in READ.items()
     }
-    deployments.deploy(
-        replace(deployment(site, "c2"), tenant="brand")
-    )
+    deployments.deploy(replace(deployment(site, "c2"), tenant="brand"))
     ours = reviewers_in_force(deployments, ())
     theirs = reviewers_in_force(deployments, (), tenant="brand")
     assert ours is not None and set(ours.agents) == {"prose"}
@@ -123,9 +121,7 @@ def test_the_reviewers_are_the_tenants_own() -> None:
     }
     assert set(everyone.profiles) == {"prose", "brand/site"}
     assert set(everyone.agents) == {"prose", "brand/site"}
-    assert everyone.profiles_of("brand") == {
-        "site": ("default",)
-    }
+    assert everyone.profiles_of("brand") == {"site": ("default",)}
     assert everyone.profiles_of("nobody") == {}
     assert set(everyone.layers) == {"pull-request"}
     assert set(everyone.layers_of("brand")) == {"pull-request"}
@@ -155,9 +151,7 @@ def test_a_gnome_two_tenants_hold_is_named_for_each() -> None:
     tenant's keeps the id and the other's is named ``tenant/id``."""
     deployments = InMemoryPolicyDeployments()
     deployments.deploy(deployment())
-    deployments.deploy(
-        replace(deployment(READ, "c2"), tenant="brand")
-    )
+    deployments.deploy(replace(deployment(READ, "c2"), tenant="brand"))
     everyone = tenants_in_force(deployments, ())
     assert everyone.holders == {"prose": ("brand", "default")}
     assert everyone.tenants_of("prose") == ("brand", "default")

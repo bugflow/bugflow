@@ -50,9 +50,7 @@ def test_a_gnome_one_tenant_holds_is_that_tenants() -> None:
 
 def test_a_gnome_two_tenants_hold_needs_its_tenant_named() -> None:
     reviewers = tenants_in_force(in_force(READ), ())
-    with pytest.raises(
-        ValueError, match="held by brand and default"
-    ):
+    with pytest.raises(ValueError, match="held by brand and default"):
         tenant_of_setting(reviewers, "prose", ())
     assert tenant_of_setting(reviewers, "prose", (), THEIRS) == THEIRS
     with pytest.raises(ValueError, match="no tenant's name"):

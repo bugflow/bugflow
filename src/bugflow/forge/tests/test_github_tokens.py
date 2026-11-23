@@ -22,13 +22,13 @@ def recording(seen: list[tuple[str, str]]) -> httpx2.MockTransport:
 def test_an_owner_s_token_signs_its_requests_and_others_the_default() -> None:
     seen: list[tuple[str, str]] = []
     forge = GitHubForge(
-        GitHubTokens(any_owner="any", by_owner={"initech": "initech"}),
+        GitHubTokens(any_owner="any", by_owner={"initech": "theirs"}),
         recording(seen),
     )
     forge.is_open(PullRequestRef(owner="initech", repo="permits", number=1))
     forge.is_open(PullRequestRef(owner="acme", repo="office", number=2))
     assert seen == [
-        ("/repos/initech/permits/pulls/1", "Bearer initech"),
+        ("/repos/initech/permits/pulls/1", "Bearer theirs"),
         ("/repos/acme/office/pulls/2", "Bearer any"),
     ]
 
@@ -36,7 +36,7 @@ def test_an_owner_s_token_signs_its_requests_and_others_the_default() -> None:
 def test_an_owner_with_no_token_is_refused_before_anything_is_sent() -> None:
     seen: list[tuple[str, str]] = []
     forge = GitHubForge(
-        GitHubTokens(by_owner={"initech": "initech"}), recording(seen)
+        GitHubTokens(by_owner={"initech": "theirs"}), recording(seen)
     )
     with pytest.raises(ForgeRejectedError, match="acme=TOKEN"):
         forge.is_open(PullRequestRef(owner="acme", repo="office", number=2))
@@ -44,5 +44,5 @@ def test_an_owner_with_no_token_is_refused_before_anything_is_sent() -> None:
 
 
 def test_an_owner_s_name_is_read_without_regard_to_case() -> None:
-    tokens = GitHubTokens(by_owner={"initech": "initech"})
-    assert tokens.for_owner("INITECH") == "initech"
+    tokens = GitHubTokens(by_owner={"initech": "theirs"})
+    assert tokens.for_owner("INITECH") == "theirs"
